@@ -42,7 +42,7 @@ class VirtualLibrary:
         os.makedirs(db_dir, exist_ok=True)
 
         db_path = os.path.join(db_dir, 'library.sqlite')
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, timeout=30)
         self._conn.execute('PRAGMA journal_mode=WAL')
         self._create_tables()
         return True

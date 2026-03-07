@@ -31,10 +31,8 @@ from unifile.categories import (
     CATEGORIES, BUILTIN_CATEGORIES, get_all_categories, get_all_category_names,
     load_custom_categories, save_custom_categories, _CategoryIndex
 )
-from unifile.naming import _normalize, _beautify_name, _smart_name
+from unifile.naming import _beautify_name, _smart_name
 from unifile.classifier import tiered_classify, _SCAN_FILTERS
-from unifile.workers import _collect_scan_folders
-from unifile.metadata import extract_folder_metadata
 from unifile.ollama import load_ollama_settings, save_ollama_settings
 from unifile.photos import (
     load_photo_settings, save_photo_settings, FaceDB,
@@ -42,7 +40,7 @@ from unifile.photos import (
     _PHOTO_FOLDER_PRESETS
 )
 from unifile.duplicates import ProgressiveDuplicateDetector, ConflictResolver
-from unifile.files import _load_pc_categories, _save_pc_categories, _build_ext_map
+from unifile.files import _load_pc_categories, _save_pc_categories
 from unifile.engine import RuleEngine, EventGrouper, ScheduleManager, RenameTemplateEngine
 from unifile.plugins import PluginManager, ProfileManager, CategoryPresetManager, CloudPathResolver
 from unifile.models import RenameItem, CategorizeItem, FileItem
