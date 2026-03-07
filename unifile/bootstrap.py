@@ -12,6 +12,10 @@ import xml.etree.ElementTree as ET
 
 def _bootstrap():
     """Auto-install dependencies before any imports."""
+    # Skip bootstrap inside frozen PyInstaller bundles — all deps are already bundled
+    if getattr(sys, 'frozen', False):
+        return
+
     if sys.version_info < (3, 8):
         print("Python 3.8+ required"); sys.exit(1)
 
