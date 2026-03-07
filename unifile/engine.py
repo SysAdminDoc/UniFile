@@ -554,6 +554,138 @@ class RenameTemplateEngine:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ITERATIVE CATEGORY BALANCER
+# Merges tiny categories and splits oversized ones for cleaner organization.
+# ══════════════════════════════════════════════════════════════════════════════
+
+class CategoryBalancer:
+    """Iteratively rebalances category assignments after classification.
+
+    Rules:
+    - Categories with <= min_merge files get merged into nearest parent/sibling.
+    - Categories with > split_threshold% of total files get split into subcategories.
+    - Runs up to max_passes iterations until stable.
+    """
+
+    def __init__(self, min_merge: int = 3, split_pct: float = 0.20,
+                 max_passes: int = 5):
+        self.min_merge = min_merge
+        self.split_pct = split_pct
+        self.max_passes = max_passes
+
+    def balance(self, items: list, category_attr: str = 'category',
+                all_categories: list[str] | None = None) -> dict:
+        """Rebalance category assignments on a list of items.
+
+        Args:
+            items: List of objects with a category attribute.
+            category_attr: Name of the category attribute.
+            all_categories: Available category names for merging targets.
+
+        Returns:
+            dict with 'merges', 'splits', 'passes', 'changes' counts.
+        """
+        stats = {'merges': 0, 'splits': 0, 'passes': 0, 'changes': 0}
+        if not items:
+            return stats
+
+        for pass_num in range(self.max_passes):
+            changed = False
+            distribution = {}
+            for it in items:
+                cat = getattr(it, category_attr, '')
+                if cat:
+                    distribution.setdefault(cat, []).append(it)
+
+            total = len(items)
+
+            # Phase 1: Merge small categories
+            for cat, cat_items in list(distribution.items()):
+                if len(cat_items) <= self.min_merge and len(distribution) > 1:
+                    # Find best merge target (most similar category name)
+                    best_target = self._find_merge_target(
+                        cat, [c for c in distribution if c != cat])
+                    if best_target:
+                        for it in cat_items:
+                            setattr(it, category_attr, best_target)
+                            stats['changes'] += 1
+                        stats['merges'] += 1
+                        changed = True
+
+            # Phase 2: Split large categories
+            distribution = {}
+            for it in items:
+                cat = getattr(it, category_attr, '')
+                if cat:
+                    distribution.setdefault(cat, []).append(it)
+
+            for cat, cat_items in list(distribution.items()):
+                if len(cat_items) > total * self.split_pct and len(cat_items) > 10:
+                    # Split by extension or name pattern
+                    subcats = self._suggest_splits(cat, cat_items)
+                    if subcats:
+                        for it, new_cat in subcats:
+                            setattr(it, category_attr, new_cat)
+                            stats['changes'] += 1
+                        stats['splits'] += 1
+                        changed = True
+
+            stats['passes'] += 1
+            if not changed:
+                break
+
+        return stats
+
+    @staticmethod
+    def _find_merge_target(cat_name: str, candidates: list[str]) -> str | None:
+        """Find the most similar category to merge into."""
+        if not candidates:
+            return None
+        # Simple word overlap scoring
+        cat_words = set(cat_name.lower().split())
+        best = None
+        best_score = -1
+        for c in candidates:
+            c_words = set(c.lower().split())
+            overlap = len(cat_words & c_words)
+            if overlap > best_score:
+                best_score = overlap
+                best = c
+        # If no word overlap, merge into "Other" if it exists, else first candidate
+        if best_score == 0:
+            return 'Other' if 'Other' in candidates else candidates[0]
+        return best
+
+    @staticmethod
+    def _suggest_splits(cat_name: str, items: list) -> list[tuple] | None:
+        """Try to split a large category into subcategories by extension."""
+        from collections import Counter
+        ext_counts = Counter()
+        for it in items:
+            name = getattr(it, 'name', '') or getattr(it, 'filename', '')
+            ext = os.path.splitext(name)[1].lower() if name else ''
+            ext_counts[ext] += 1
+
+        # Only split if we have at least 2 major extension groups
+        major_exts = [(ext, cnt) for ext, cnt in ext_counts.most_common()
+                      if cnt >= 3 and ext]
+        if len(major_exts) < 2:
+            return None
+
+        reassignments = []
+        for it in items:
+            name = getattr(it, 'name', '') or getattr(it, 'filename', '')
+            ext = os.path.splitext(name)[1].lower() if name else ''
+            if ext and any(ext == me[0] for me in major_exts[1:]):
+                # Assign to subcategory
+                ext_label = ext.lstrip('.').upper()
+                new_cat = f"{cat_name} ({ext_label})"
+                reassignments.append((it, new_cat))
+
+        return reassignments if reassignments else None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PROGRESSIVE DUPLICATE DETECTOR — Phase 3 (PC File Organizer)
 # 4-stage pipeline: size grouping → prefix hash → suffix hash → full hash
 # Plus optional perceptual image hashing for near-duplicate images.

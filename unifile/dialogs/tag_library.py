@@ -132,6 +132,28 @@ class TagLibraryPanel(QWidget):
         quick_row.addStretch()
         tag_lay.addLayout(quick_row)
 
+        # Tag Pack import/export buttons
+        pack_row = QHBoxLayout()
+        pack_row.setSpacing(4)
+        btn_import = QPushButton("Import Tag Pack")
+        btn_import.setFixedHeight(24)
+        btn_import.setStyleSheet(
+            f"QPushButton {{ font-size: 10px; padding: 2px 8px; background: {_t['selection']};"
+            f"color: {_t['fg']}; border: 1px solid {_t['border']}; border-radius: 3px; }}"
+            f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
+        btn_import.clicked.connect(self._import_tag_pack)
+        pack_row.addWidget(btn_import)
+        btn_export = QPushButton("Export Tag Pack")
+        btn_export.setFixedHeight(24)
+        btn_export.setStyleSheet(
+            f"QPushButton {{ font-size: 10px; padding: 2px 8px; background: {_t['selection']};"
+            f"color: {_t['fg']}; border: 1px solid {_t['border']}; border-radius: 3px; }}"
+            f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
+        btn_export.clicked.connect(self._export_tag_pack)
+        pack_row.addWidget(btn_export)
+        pack_row.addStretch()
+        tag_lay.addLayout(pack_row)
+
         splitter.addWidget(tag_panel)
 
         # ── Right: Entry List + Preview ──────────────────────────────────
@@ -151,9 +173,16 @@ class TagLibraryPanel(QWidget):
 
         self.txt_entry_search = QLineEdit()
         self.txt_entry_search.setPlaceholderText("Search files... (tag:Name, ext:pdf, field:key=val)")
-        self.txt_entry_search.setFixedWidth(300)
+        self.txt_entry_search.setFixedWidth(250)
         self.txt_entry_search.textChanged.connect(self._on_entry_search)
         entry_header.addWidget(self.txt_entry_search)
+
+        # Semantic search (natural language)
+        self.txt_semantic = QLineEdit()
+        self.txt_semantic.setPlaceholderText("Semantic search (natural language)...")
+        self.txt_semantic.setFixedWidth(200)
+        self.txt_semantic.returnPressed.connect(self._on_semantic_search)
+        entry_header.addWidget(self.txt_semantic)
 
         btn_add_files = QPushButton("Add Files")
         btn_add_files.setFixedHeight(28)
@@ -572,6 +601,7 @@ class TagLibraryPanel(QWidget):
                 lambda checked, s=color_name: self._set_tag_color(tag_id, s))
 
         menu.addSeparator()
+        menu.addAction("Set Parent Tag...", lambda: self._set_parent_tag(tag_id))
         menu.addAction("Toggle Category", lambda: self._toggle_category(tag_id))
         menu.addSeparator()
         menu.addAction("Delete Tag", lambda: self._delete_tag(tag_id))
@@ -605,6 +635,95 @@ class TagLibraryPanel(QWidget):
         self._lib.delete_tag(tag_id)
         self._refresh_tags()
         self._update_stats()
+
+    def _set_parent_tag(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if not tag:
+            return
+        all_tags = self._lib.get_all_tags()
+        candidates = [t for t in all_tags if t.id != tag_id]
+        if not candidates:
+            return
+        names = [t.name for t in candidates]
+        name, ok = QInputDialog.getItem(
+            self, "Set Parent Tag",
+            f"Select parent tag for '{tag.name}':",
+            names, 0, False)
+        if ok and name:
+            parent = next((t for t in candidates if t.name == name), None)
+            if parent:
+                self._lib.add_parent_tag(tag_id, parent.id)
+                self._refresh_tags()
+
+    def _import_tag_pack(self):
+        if not self._lib.is_open:
+            return
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Import Tag Pack", "", "Tag Packs (*.json);;All Files (*)")
+        if not filepath:
+            return
+        result = self._lib.import_tag_pack(filepath)
+        self._refresh_tags()
+        self._update_stats()
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.information(
+            self, "Tag Pack Imported",
+            f"Imported: {result['imported']}\n"
+            f"Skipped (existing): {result['skipped']}\n"
+            f"Errors: {result['errors']}")
+
+    def _export_tag_pack(self):
+        if not self._lib.is_open:
+            return
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export Tag Pack", "tag_pack.json",
+            "Tag Packs (*.json);;All Files (*)")
+        if not filepath:
+            return
+        selected_ids = None
+        sel = self.tag_tree.selectedItems()
+        if sel:
+            ids = [item.data(0, Qt.ItemDataRole.UserRole) for item in sel]
+            ids = [i for i in ids if i is not None]
+            if ids:
+                selected_ids = ids
+        self._lib.export_tag_pack(filepath, tag_ids=selected_ids)
+
+    def _on_semantic_search(self):
+        query = self.txt_semantic.text().strip()
+        if not query or not self._lib.is_open:
+            return
+        try:
+            from unifile.semantic import SemanticIndex
+            idx = SemanticIndex()
+            if not idx.is_available():
+                self.lbl_selection_info.setText("Semantic search unavailable (no embedding model)")
+                return
+            results = idx.search(query, top_k=50)
+            if not results:
+                self.lbl_selection_info.setText("No semantic matches found")
+                self.tbl_entries.setRowCount(0)
+                return
+            paths = [r['path'] for r in results]
+            entries = []
+            for p in paths:
+                entry = self._lib.get_entry_by_path(p)
+                if entry:
+                    entries.append(entry)
+            self.tbl_entries.setRowCount(len(entries))
+            for row, entry in enumerate(entries):
+                item_name = QTableWidgetItem(entry.filename)
+                item_name.setData(Qt.ItemDataRole.UserRole, entry.id)
+                self.tbl_entries.setItem(row, 0, item_name)
+                tag_str = ", ".join(entry.tag_names) if hasattr(entry, 'tag_names') else ""
+                self.tbl_entries.setItem(row, 1, QTableWidgetItem(tag_str))
+                self.tbl_entries.setItem(row, 2, QTableWidgetItem(entry.suffix.upper()))
+                mod = entry.date_modified.strftime("%Y-%m-%d") if entry.date_modified else ""
+                self.tbl_entries.setItem(row, 3, QTableWidgetItem(mod))
+                self.tbl_entries.setItem(row, 4, QTableWidgetItem(str(entry.path)))
+            self.lbl_selection_info.setText(f"{len(entries)} semantic matches")
+        except Exception as e:
+            self.lbl_selection_info.setText(f"Semantic search error: {e}")
 
     # ── Entry Operations ──────────────────────────────────────────────────
 

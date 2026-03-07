@@ -76,14 +76,18 @@ from unifile.profiles import (
 )
 from unifile.scan_mixin import ScanMixin
 from unifile.apply_mixin import ApplyMixin
+from unifile.theme_mixin import ThemeMixin
+from unifile.learning import get_learner
+from unifile.engine import CategoryBalancer
 
-class UniFile(ScanMixin, ApplyMixin, QMainWindow):
+class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
     OP_AEP   = 0
     OP_CAT   = 1
     OP_SMART = 2   # Categorize + rename from project files (combined)
     OP_FILES = 3   # PC File Organizer
     OP_TAGS  = 4   # Tag Library (from TagStudio integration)
     OP_MEDIA = 5   # Media Lookup (from mnamer integration)
+    OP_VLIB  = 6   # Virtual Library (non-destructive overlay)
 
     # Classification method → display color (shared by Categorize + PC Files modes)
     _METHOD_COLORS_CAT = {
@@ -151,15 +155,33 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
 
     def dropEvent(self, event: QDropEvent):
         urls = event.mimeData().urls()
-        if urls:
-            path = urls[0].toLocalFile()
-            if os.path.isdir(path):
-                op = self.cmb_op.currentIndex()
-                if op == self.OP_FILES and hasattr(self, 'txt_pc_src'):
-                    self.txt_pc_src.setText(path)
-                else:
-                    self.txt_src.setText(path)
-                self._log(f"Dropped: {path}")
+        if not urls:
+            return
+        paths = [u.toLocalFile() for u in urls if u.toLocalFile()]
+        if not paths:
+            return
+        dirs = [p for p in paths if os.path.isdir(p)]
+        files = [p for p in paths if os.path.isfile(p)]
+        # Directory drop — set as source
+        if dirs:
+            path = dirs[0]
+            op = self.cmb_op.currentIndex()
+            if op == self.OP_FILES and hasattr(self, 'txt_pc_src'):
+                self.txt_pc_src.setText(path)
+            else:
+                self.txt_src.setText(path)
+            self._log(f"Dropped folder: {path}")
+        # File drop — add to tag library if open, otherwise log
+        if files:
+            stack_idx = self.content_stack.currentIndex()
+            if stack_idx == 3 and hasattr(self, 'tag_lib_panel'):
+                lib = self.tag_lib_panel._lib
+                if lib and lib.is_open:
+                    count = lib.add_entries_bulk(files)
+                    self.tag_lib_panel._refresh_entries()
+                    self._log(f"Added {count} file(s) to tag library via drag-and-drop")
+                    return
+            self._log(f"Dropped {len(files)} file(s)")
 
     # ═══ SETTINGS PERSISTENCE ═════════════════════════════════════════════════
     def _load_settings(self):
@@ -310,6 +332,7 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
             ("PC File Organizer",             self.OP_FILES),
             ("Tag Library",                   self.OP_TAGS),
             ("Media Lookup",                  self.OP_MEDIA),
+            ("Virtual Library",               self.OP_VLIB),
         ]
         for label, op_idx in _nav_items_organize:
             btn = QPushButton(f"  {label}")
@@ -430,6 +453,13 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
         menu_tools.addSeparator()
         menu_tools.addAction("Protected Paths...", self._open_protected_paths)
         menu_tools.addAction("Color Theme...", self._open_theme_picker)
+        menu_tools.addSeparator()
+        menu_ai = menu_tools.addMenu("AI & Intelligence")
+        menu_ai.addAction("AI Providers...", self._open_ai_providers)
+        menu_ai.addAction("Whisper Audio...", self._open_whisper_settings)
+        menu_ai.addAction("Semantic Search...", self._open_semantic_settings)
+        menu_ai.addAction("Metadata Embedding...", self._open_embedding_settings)
+        menu_ai.addAction("Adaptive Learning...", self._open_learning_stats)
         self.menu_presets = menu_tools.addMenu("Category Presets")
         self._refresh_presets_menu()
 
@@ -1081,6 +1111,11 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
         self._media_panel.metadata_applied.connect(self._on_media_metadata_applied)
         self._content_stack.addWidget(self._media_panel)  # index 4
 
+        # ── Page 5: Virtual Library (non-destructive overlay) ──────────
+        from unifile.dialogs.virtual_library_panel import VirtualLibraryPanel
+        self._vlib_panel = VirtualLibraryPanel()
+        self._content_stack.addWidget(self._vlib_panel)  # index 5
+
         self._content_stack.setCurrentIndex(0)
         right_col.addWidget(self._content_stack, 1)
 
@@ -1271,7 +1306,8 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
                 ri.setForeground(QColor(_rt['sidebar_btn_active_fg']) if renamed else QColor(_rt['muted']))
             mi = self.tbl.item(row, 9)
             if mi: mi.setText("manual"); mi.setForeground(QColor(get_active_theme()['accent_hover']))
-
+            # Feed to adaptive learner
+            get_learner().record_correction(it.name, it.full_src, new_cat)
 
     def _reclassify_rows(self, rows: list):
         """Re-classify selected visual rows using LLM in a background thread."""
@@ -1414,6 +1450,9 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
             if mi: mi.setText("Manual"); mi.setForeground(QColor(_rt['accent_hover']))
             self._log(f"  Reassigned: {it.folder_name}  ->  {new_cat}")
             save_correction(it.folder_name, new_cat)
+            # Feed correction to adaptive learner
+            get_learner().record_correction(
+                it.folder_name, it.full_source_path, new_cat, old_category=it.category)
             self._stats_cat()
 
     def _batch_reassign(self, rows):
@@ -1423,10 +1462,12 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
             f"Select category for {len(rows)} folders:", all_cats, 0, False)
         if not ok or not new_cat: return
         dst_dir = self.txt_dst.text()
+        corrections = []
         for visual_row in rows:
             idx = self._item_idx_from_row(visual_row)
             if idx >= len(self.cat_items): continue
             it = self.cat_items[idx]
+            old_cat = it.category
             it.category = new_cat; it.method = 'Manual'; it.detail = 'Batch user override'; it.topic = ''
             it.full_dest_path = os.path.join(dst_dir, new_cat, it.folder_name)
             # Update table cells (use visual row)
@@ -1438,6 +1479,12 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
             mi = self.tbl.item(visual_row, 5)
             if mi: mi.setText("Manual"); mi.setForeground(QColor(_rt['accent_hover']))
             save_correction(it.folder_name, new_cat)
+            corrections.append({'filename': it.folder_name,
+                                'filepath': it.full_source_path,
+                                'category': new_cat, 'old_category': old_cat})
+        # Feed batch corrections to adaptive learner
+        if corrections:
+            get_learner().record_batch_corrections(corrections)
         self._log(f"  Batch reassigned {len(rows)} folders  ->  {new_cat}")
         self._stats_cat()
 
@@ -1468,6 +1515,39 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
         dlg = OllamaSettingsDialog(self)
         if dlg.exec():
             self._log(f"Ollama settings saved: {dlg.settings['url']} / {dlg.settings['model']}")
+
+    def _open_ai_providers(self):
+        from unifile.dialogs.advanced_settings import AIProviderSettingsDialog
+        dlg = AIProviderSettingsDialog(self)
+        if dlg.exec():
+            self._log("AI provider settings saved")
+
+    def _open_whisper_settings(self):
+        from unifile.dialogs.advanced_settings import WhisperSettingsDialog
+        dlg = WhisperSettingsDialog(self)
+        if dlg.exec():
+            from unifile.whisper_backend import get_transcriber
+            model = dlg.get_model_size()
+            get_transcriber(model)
+            self._log(f"Whisper model set to: {model}")
+
+    def _open_semantic_settings(self):
+        from unifile.dialogs.advanced_settings import SemanticSearchSettingsDialog
+        dlg = SemanticSearchSettingsDialog(self)
+        dlg.exec()
+
+    def _open_embedding_settings(self):
+        from unifile.dialogs.advanced_settings import EmbeddingSettingsDialog
+        dlg = EmbeddingSettingsDialog(self)
+        if dlg.exec():
+            self.settings.setValue("auto_embed", dlg.chk_auto.isChecked())
+            self.settings.setValue("embed_tags", dlg.chk_tags.isChecked())
+            self._log(f"Metadata embedding: auto={dlg.chk_auto.isChecked()}")
+
+    def _open_learning_stats(self):
+        from unifile.dialogs.advanced_settings import LearningStatsDialog
+        dlg = LearningStatsDialog(self)
+        dlg.exec()
 
     # ═══ DESTINATION TREE PREVIEW ════════════════════════════════════════════
     def _show_preview(self):
@@ -1610,12 +1690,15 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
             elif kind == 'tool':
                 btn.setChecked(False)
 
-        # Tag Library and Media Lookup get their own content stack pages
+        # Tag Library, Media Lookup, and Virtual Library get their own content stack pages
         if op_idx == self.OP_TAGS:
             self._content_stack.setCurrentIndex(3)
             return
         if op_idx == self.OP_MEDIA:
             self._content_stack.setCurrentIndex(4)
+            return
+        if op_idx == self.OP_VLIB:
+            self._content_stack.setCurrentIndex(5)
             return
 
         # Show organizer page
@@ -3195,15 +3278,17 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
         cat_color = next((c.get('color', '#4ade80') for c in self._pc_categories
                           if c['name'] == cat_name), '#4ade80')
         changed = 0
+        corrections = []
         for visual_row in row_indices:
             idx = self._item_idx_from_row(visual_row)
             if 0 <= idx < len(self.file_items):
                 it = self.file_items[idx]
                 if it.category != cat_name:
+                    old_cat = it.category
                     it.category = cat_name
                     it.method = 'drag_drop'
                     changed += 1
-                    # Update category cell color (visual_row is correct for table cells)
+                    corrections.append((it.filename, it.full_src, old_cat, cat_name))
                     ci = self.tbl.item(visual_row, 5)
                     if ci:
                         ci.setText(f"\u2B24 {cat_name}")
@@ -3212,6 +3297,13 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
             self._log(f"Recategorized {changed} item(s) → {cat_name}")
             self._stats_files()
             self._update_dashboard()
+            # Record as learning corrections
+            try:
+                learner = get_learner()
+                for fname, fpath, old_cat, new_cat in corrections:
+                    learner.record_correction(fname, fpath, new_cat)
+            except Exception:
+                pass
 
     # ═══ RULE EDITOR ═════════════════════════════════════════════════════════
     def _open_rule_editor(self):
@@ -3270,246 +3362,7 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
         dlg.theme_changed.connect(self._on_theme_changed)
         dlg.exec()
 
-    def _on_theme_changed(self, name: str):
-        """Apply a new theme live to the entire application."""
-        theme = THEMES.get(name)
-        if not theme:
-            return
-        if name == 'Steam Dark':
-            qss = DARK_STYLE
-        else:
-            qss = _build_theme_qss(theme)
-        self.setStyleSheet(qss)
-        self._apply_theme_to_widgets(theme)
-        self._log(f"Theme changed to: {name}")
-
-    def _apply_sidebar_theme(self, t: dict):
-        """Legacy wrapper — delegates to comprehensive theme applicator."""
-        self._apply_theme_to_widgets(t)
-
-    def _apply_theme_to_widgets(self, t: dict):
-        """Re-apply ALL inline widget styles when the theme changes."""
-
-        # ── Sidebar ──────────────────────────────────────────────────────
-        sidebar = self.findChild(QWidget, "sidebar")
-        if sidebar:
-            sidebar.setStyleSheet(
-                f"QWidget#sidebar {{ background: {t['sidebar_bg']}; "
-                f"border-right: 1px solid {t['sidebar_border']}; }}")
-
-        _NAV_BTN = (
-            f"QPushButton {{ background: transparent; color: {t['sidebar_btn']}; border: none;"
-            f"border-left: 3px solid transparent; padding: 10px 14px; font-size: 12px;"
-            f"font-weight: 500; text-align: left; }}"
-            f"QPushButton:hover {{ background: {t['sidebar_btn_hover_bg']}; color: {t['fg']};"
-            f"border-left: 3px solid {t['sidebar_btn_hover_border']}; }}"
-            f"QPushButton:checked {{ background: {t['sidebar_btn_active_bg']}; color: {t['sidebar_btn_active_fg']};"
-            f"border-left: 3px solid {t['sidebar_btn_active_border']}; font-weight: 600; }}"
-        )
-        for _, _, btn in self._nav_buttons:
-            btn.setStyleSheet(_NAV_BTN)
-
-        # Brand header widget
-        if hasattr(self, '_brand_w'):
-            self._brand_w.setStyleSheet(
-                f"background: {t['sidebar_brand']}; border-bottom: 1px solid {t['sidebar_border']};")
-
-        # LLM status widget
-        if hasattr(self, '_llm_w'):
-            self._llm_w.setStyleSheet(
-                f"background: {t['sidebar_brand']}; border-top: 1px solid {t['sidebar_border']};")
-
-        # Section labels
-        _NAV_SECTION = (
-            f"color: {t['sidebar_section']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
-            f"padding: 12px 16px 4px 16px; background: transparent;"
-        )
-        if hasattr(self, '_nav_section_labels'):
-            for lbl in self._nav_section_labels:
-                lbl.setStyleSheet(_NAV_SECTION)
-
-        # Profile combo
-        if hasattr(self, 'cmb_profile'):
-            self.cmb_profile.setStyleSheet(
-                f"QComboBox {{ background: {t['sidebar_profile_bg']}; color: {t['sidebar_profile_fg']}; "
-                f"border: 1px solid {t['sidebar_profile_border']};"
-                f"border-radius: 4px; padding: 6px 10px; font-size: 11px; font-weight: bold; }}"
-                f"QComboBox:hover {{ border-color: {t['sidebar_profile_fg']}; }}"
-                f"QComboBox::drop-down {{ border: none; }}"
-                f"QComboBox QAbstractItemView {{ background: {t['sidebar_profile_bg']}; color: {t['fg']};"
-                f"selection-background-color: {t['selection']}; border: 1px solid {t['sidebar_profile_border']}; }}")
-
-        # ── Action Bar ───────────────────────────────────────────────────
-        if hasattr(self, '_themed_action_bar'):
-            self._themed_action_bar.setStyleSheet(
-                f"QWidget#action_bar {{ background: {t['header_bg']}; border-bottom: 1px solid {t['btn_bg']}; }}")
-
-        # ── Dir Panel ────────────────────────────────────────────────────
-        if hasattr(self, '_themed_dir_panel'):
-            self._themed_dir_panel.setStyleSheet(
-                f"QWidget#dir_panel {{ background: {t['bg_alt']}; border-bottom: 1px solid {t['btn_bg']}; }}")
-
-        # ── Toolbar buttons (common style helper) ────────────────────────
-        _TB = (
-            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {t['selection']};"
-            f"color: {t['sidebar_btn_active_fg']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
-            f"QPushButton:hover {{ background: {t['btn_hover']}; }}"
-        )
-        _TB_SMALL = (
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['selection']};"
-            f"color: {t['sidebar_btn_active_fg']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
-            f"QPushButton:hover {{ background: {t['btn_hover']}; }}"
-        )
-        _TB_CHECK = _TB_SMALL + (
-            f"QPushButton:checked {{ background: {t['sidebar_btn_active_fg']}; color: {t['sidebar_brand']}; }}"
-        )
-
-        # Replay, Export, Export HTML, Open Dest
-        for btn in [self.btn_replay, self.btn_export, self.btn_export_html, self.btn_open_dest]:
-            btn.setStyleSheet(_TB)
-
-        # PC Cats button
-        self.btn_pc_cats.setStyleSheet(_TB)
-
-        # Photo button (green accent)
-        self.btn_photo.setStyleSheet(
-            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {t['selection']};"
-            f"color: {t['green']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
-            f"QPushButton:hover {{ background: {t['btn_hover']}; }}")
-
-        # Grid, Preview, Graph toggles (checkable, standard accent)
-        self.btn_grid_toggle.setStyleSheet(_TB_CHECK)
-        self.btn_preview_toggle.setStyleSheet(_TB_CHECK)
-        self.btn_graph_toggle.setStyleSheet(_TB_CHECK)
-
-        # Map toggle (green checkable)
-        self.btn_map_toggle.setStyleSheet(
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['selection']};"
-            f"color: {t['green']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
-            f"QPushButton:hover {{ background: {t['btn_hover']}; }}"
-            f"QPushButton:checked {{ background: {t['green']}; color: {t['sidebar_brand']}; }}")
-
-        # Before/After
-        self.btn_before_after.setStyleSheet(
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['selection']};"
-            f"color: {t['accent_hover']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
-            f"QPushButton:hover {{ background: {t['btn_hover']}; }}")
-
-        # Events
-        self.btn_events.setStyleSheet(
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['selection']};"
-            f"color: {t['accent_hover']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
-            f"QPushButton:hover {{ background: {t['btn_hover']}; }}")
-
-        # Watch Mode button
-        if hasattr(self, 'btn_watch'):
-            self.btn_watch.setStyleSheet(_TB_CHECK)
-
-        # ── Filter controls ──────────────────────────────────────────────
-        if hasattr(self, 'lbl_conf'):
-            self.lbl_conf.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
-        if hasattr(self, '_themed_lbl_cf'):
-            self._themed_lbl_cf.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
-
-        if hasattr(self, 'cmb_face_filter'):
-            self.cmb_face_filter.setStyleSheet(
-                f"QComboBox {{ font-size: 11px; background: {t['selection']}; color: {t['green']};"
-                f"border: 1px solid {t['border']}; border-radius: 4px; padding: 2px 6px; }}")
-
-        if hasattr(self, 'cmb_type_filter'):
-            self.cmb_type_filter.setStyleSheet(
-                f"QComboBox {{ background: {t['input_bg']}; color: {t['accent_hover']}; border: 1px solid {t['border']};"
-                f"border-radius: 3px; padding: 2px 6px; font-size: 11px; font-weight: bold; }}"
-                f"QComboBox:hover {{ border-color: {t['accent_hover']}; }}"
-                f"QComboBox::drop-down {{ border: none; }}"
-                f"QComboBox QAbstractItemView {{ background: {t['input_bg']}; color: {t['fg']};"
-                f"selection-background-color: {t['selection']}; border: 1px solid {t['border']}; }}")
-
-        # ── Dashboard ────────────────────────────────────────────────────
-        if hasattr(self, 'dashboard_panel'):
-            self.dashboard_panel.setStyleSheet(
-                f"background: {t['header_bg']}; border-radius: 6px; padding: 4px;")
-        if hasattr(self, 'lbl_dash_summary'):
-            self.lbl_dash_summary.setStyleSheet(
-                f"color: {t['fg']}; font-size: 12px; font-weight: bold;")
-        if hasattr(self, '_themed_btn_hide_dash'):
-            self._themed_btn_hide_dash.setStyleSheet(
-                f"QPushButton{{font-size:10px;color:{t['muted']};background:{t['sidebar_brand']};"
-                f"border:1px solid {t['border']};border-radius:3px}}"
-                f"QPushButton:hover{{color:{t['fg']}}}")
-
-        # ── Empty / Toast / Stats ────────────────────────────────────────
-        if hasattr(self, 'lbl_empty'):
-            self.lbl_empty.setStyleSheet(
-                f"color: {t['muted']}; font-size: 13px; padding: 50px; font-weight: 500;")
-        if hasattr(self, 'lbl_toast'):
-            self.lbl_toast.setStyleSheet(
-                f"QLabel {{ background: {t['selection']};"
-                f"color: {t['fg']}; font-size: 13px; font-weight: bold;"
-                f"padding: 10px 20px; border-radius: 8px;"
-                f"border: 1px solid {t['border']}; }}")
-        if hasattr(self, 'lbl_stats'):
-            self.lbl_stats.setStyleSheet(
-                f"color: {t['muted']}; font-size: 12px; padding: 4px 0;")
-
-        # ── Progress Panel ───────────────────────────────────────────────
-        if hasattr(self, 'prog_panel'):
-            self.prog_panel.setStyleSheet(
-                f"QWidget#prog_panel {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; "
-                f"border-radius: 6px; margin: 2px 0; }}")
-        if hasattr(self, 'lbl_prog_phase'):
-            self.lbl_prog_phase.setStyleSheet(
-                f"color: {t['sidebar_btn_active_fg']}; font-weight: bold; font-size: 12px; letter-spacing: 0.5px;")
-        if hasattr(self, 'lbl_prog_counter'):
-            self.lbl_prog_counter.setStyleSheet(
-                f"color: {t['fg']}; font-size: 11px; font-family: monospace;")
-        if hasattr(self, 'lbl_prog_eta'):
-            self.lbl_prog_eta.setStyleSheet(
-                f"color: {t['muted']}; font-size: 11px; padding-left: 10px;")
-        if hasattr(self, 'pbar'):
-            self.pbar.setStyleSheet(
-                f"QProgressBar {{ background:{t['header_bg']}; border:none; border-radius:3px; }}"
-                f"QProgressBar::chunk {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-                f"stop:0 {t['accent']}, stop:0.5 {t['sidebar_btn_active_fg']}, stop:1 {t['accent']}); border-radius:3px; }}")
-        if hasattr(self, 'lbl_prog_method'):
-            self.lbl_prog_method.setStyleSheet(
-                f"color: {t['muted']}; font-size: 11px; font-style: italic;")
-        if hasattr(self, 'lbl_prog_speed'):
-            self.lbl_prog_speed.setStyleSheet(
-                f"color: {t['muted']}; font-size: 11px; font-family: monospace;")
-
-        # ── Console Log ──────────────────────────────────────────────────
-        if hasattr(self, 'btn_toggle_log'):
-            self.btn_toggle_log.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {t['muted']}; font-size: 11px; "
-                f"border: none; padding: 2px 4px; text-align: left; font-family: monospace; }}"
-                f"QPushButton:hover {{ color: {t['fg']}; }}"
-                f"QPushButton:checked {{ color: {t['sidebar_btn_active_fg']}; }}")
-        if hasattr(self, '_themed_btn_clear_log'):
-            self._themed_btn_clear_log.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {t['muted']}; font-size: 11px; "
-                f"border: none; padding: 2px 6px; }}"
-                f"QPushButton:hover {{ color: #ef4444; }}")
-        if hasattr(self, 'txt_log'):
-            self.txt_log.setStyleSheet(
-                f"QTextEdit {{ background:{t['header_bg']}; color:{t['muted']}; font-family: 'Consolas','Courier New',monospace; "
-                f"font-size: 11px; border: 1px solid {t['border']}; border-radius: 4px; padding: 4px; }}")
-
-        # ── Status Bar ───────────────────────────────────────────────────
-        if hasattr(self, '_themed_status_bar'):
-            self._themed_status_bar.setStyleSheet(
-                f"background-color: {t['sidebar_brand']}; border-top: 1px solid {t['sidebar_border']};")
-        if hasattr(self, 'lbl_statusbar'):
-            self.lbl_statusbar.setStyleSheet(
-                f"color: {t['muted']}; font-size: 11px; font-family: monospace;")
-        if hasattr(self, 'lbl_ollama') and not self._ollama_ready:
-            self.lbl_ollama.setStyleSheet(
-                f"color: {t['muted']}; font-size: 11px; font-family: monospace;")
-
-        # ── Grid Scroll ──────────────────────────────────────────────────
-        if hasattr(self, 'grid_scroll'):
-            self.grid_scroll.setStyleSheet(
-                f"QScrollArea {{ background: {t['header_bg']}; border: none; }}")
+    # Theme methods are provided by ThemeMixin (theme_mixin.py)
 
     # ═══ CLEANUP TOOLS ═══════════════════════════════════════════════════════
     def _open_cleanup_tools(self):
