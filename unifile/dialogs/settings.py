@@ -28,6 +28,10 @@ from unifile.bootstrap import (
     HAS_REVERSE_GEOCODER, HAS_FACE_RECOGNITION, HAS_CV2
 )
 from unifile.workers import ModelListWorker, ModelPullWorker, ModelDeleteWorker, format_size
+from unifile.nexa_backend import (
+    load_nexa_settings, save_nexa_settings, is_nexa_available,
+    _NEXA_MODEL_CATALOG, _NEXA_DEFAULTS,
+)
 
 
 class OllamaSettingsDialog(QDialog):
@@ -244,6 +248,59 @@ class OllamaSettingsDialog(QDialog):
         row_mgr.addStretch()
         layout.addLayout(row_mgr)
 
+        # ── Nexa SDK Backend ───────────────────────────────────────────────────
+        sep_nexa = QFrame(); sep_nexa.setFrameShape(QFrame.Shape.HLine)
+        sep_nexa.setStyleSheet(f"QFrame{{background-color:{_t['border']};max-height:1px;}}"); layout.addWidget(sep_nexa)
+
+        lbl_nexa_header = QLabel("Alternative Backend: Nexa SDK")
+        lbl_nexa_header.setStyleSheet(f"color: {_t['fg_bright']}; font-weight: 700; font-size: 12px;")
+        layout.addWidget(lbl_nexa_header)
+
+        self._nexa_settings = load_nexa_settings()
+
+        row_nexa_enable = QHBoxLayout()
+        self.chk_nexa_enabled = QCheckBox("Use Nexa SDK instead of Ollama")
+        self.chk_nexa_enabled.setChecked(self._nexa_settings.get('enabled', False))
+        self.chk_nexa_enabled.setToolTip(
+            "Enable Nexa SDK as the AI backend. Requires 'pip install nexaai'. "
+            "Uses LLaVA for vision and Llama 3.2 for text classification.")
+        row_nexa_enable.addWidget(self.chk_nexa_enabled)
+
+        nexa_status = "Available" if is_nexa_available() else "Not Installed"
+        nexa_color = _t['green'] if is_nexa_available() else '#ef4444'
+        lbl_nexa_status = QLabel(f"[{nexa_status}]")
+        lbl_nexa_status.setStyleSheet(f"color: {nexa_color}; font-size: 11px;")
+        row_nexa_enable.addWidget(lbl_nexa_status)
+        row_nexa_enable.addStretch()
+        layout.addLayout(row_nexa_enable)
+
+        row_nexa_models = QHBoxLayout()
+        row_nexa_models.addWidget(QLabel("Vision Model:"))
+        self.cmb_nexa_vision = QComboBox()
+        for m in _NEXA_MODEL_CATALOG:
+            if m['type'] == 'vision':
+                self.cmb_nexa_vision.addItem(m['label'], m['name'])
+        # Select current
+        for i in range(self.cmb_nexa_vision.count()):
+            if self.cmb_nexa_vision.itemData(i) == self._nexa_settings['vision_model']:
+                self.cmb_nexa_vision.setCurrentIndex(i)
+                break
+        row_nexa_models.addWidget(self.cmb_nexa_vision, 1)
+        layout.addLayout(row_nexa_models)
+
+        row_nexa_text = QHBoxLayout()
+        row_nexa_text.addWidget(QLabel("Text Model:"))
+        self.cmb_nexa_text = QComboBox()
+        for m in _NEXA_MODEL_CATALOG:
+            if m['type'] == 'text':
+                self.cmb_nexa_text.addItem(m['label'], m['name'])
+        for i in range(self.cmb_nexa_text.count()):
+            if self.cmb_nexa_text.itemData(i) == self._nexa_settings['text_model']:
+                self.cmb_nexa_text.setCurrentIndex(i)
+                break
+        row_nexa_text.addWidget(self.cmb_nexa_text, 1)
+        layout.addLayout(row_nexa_text)
+
         # ── Save / Cancel ─────────────────────────────────────────────────────
         row_btns = QHBoxLayout()
         btn_save = QPushButton("Save")
@@ -368,6 +425,15 @@ class OllamaSettingsDialog(QDialog):
         self.settings['convert_heic_to_jpg'] = self.chk_convert_heic.isChecked()
         self.settings['convert_webp_to_jpg'] = self.chk_convert_webp.isChecked()
         save_ollama_settings(self.settings)
+        # Save Nexa settings
+        self._nexa_settings['enabled'] = self.chk_nexa_enabled.isChecked()
+        vision_idx = self.cmb_nexa_vision.currentIndex()
+        if vision_idx >= 0:
+            self._nexa_settings['vision_model'] = self.cmb_nexa_vision.itemData(vision_idx)
+        text_idx = self.cmb_nexa_text.currentIndex()
+        if text_idx >= 0:
+            self._nexa_settings['text_model'] = self.cmb_nexa_text.itemData(text_idx)
+        save_nexa_settings(self._nexa_settings)
         self.accept()
 
 
