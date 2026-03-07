@@ -344,20 +344,114 @@ class TagLibrary:
     # ── Search ────────────────────────────────────────────────────────────────
 
     def search_entries(self, query: str, limit: int = 100) -> list[Entry]:
+        """Search entries with query language support.
+
+        Supported syntax:
+            tag:TagName          — entries with a specific tag
+            -tag:TagName         — entries WITHOUT a tag (NOT)
+            ext:pdf              — entries with specific extension
+            field:key=value      — entries with a field matching value
+            special:untagged     — entries with no tags
+            special:tagged       — entries with at least one tag
+            tag:A AND tag:B      — boolean AND (intersection)
+            tag:A OR tag:B       — boolean OR (union)
+            plain text           — filename search (ilike)
+        """
         q = query.strip()
+        if not q:
+            return self.get_all_entries(limit=limit)
+
+        # Boolean AND/OR
+        if ' AND ' in q:
+            parts = [p.strip() for p in q.split(' AND ')]
+            result_sets = [set(e.id for e in self.search_entries(p, limit=10000)) for p in parts]
+            if not result_sets:
+                return []
+            common_ids = result_sets[0]
+            for s in result_sets[1:]:
+                common_ids &= s
+            if not common_ids:
+                return []
+            return list(self._session.execute(
+                select(Entry).where(Entry.id.in_(common_ids))
+                .order_by(Entry.filename).limit(limit)
+            ).scalars().all())
+
+        if ' OR ' in q:
+            parts = [p.strip() for p in q.split(' OR ')]
+            all_ids = set()
+            for p in parts:
+                all_ids.update(e.id for e in self.search_entries(p, limit=10000))
+            if not all_ids:
+                return []
+            return list(self._session.execute(
+                select(Entry).where(Entry.id.in_(all_ids))
+                .order_by(Entry.filename).limit(limit)
+            ).scalars().all())
+
+        # NOT tag
+        if q.startswith("-tag:"):
+            tag_name = q[5:].strip().strip('"')
+            tag = self.get_tag_by_name(tag_name)
+            if not tag:
+                return self.get_all_entries(limit=limit)
+            tagged_ids = {e.id for e in self.get_entries_by_tag(tag.id)}
+            return list(self._session.execute(
+                select(Entry).where(~Entry.id.in_(tagged_ids))
+                .order_by(Entry.filename).limit(limit)
+            ).scalars().all())
+
+        # Tag search
         if q.startswith("tag:"):
             tag_name = q[4:].strip().strip('"')
             tag = self.get_tag_by_name(tag_name)
             if tag:
                 return self.get_entries_by_tag(tag.id)[:limit]
             return []
-        elif q == "special:untagged":
-            return self.get_untagged_entries()[:limit]
-        else:
+
+        # Extension search
+        if q.startswith("ext:"):
+            ext = q[4:].strip().lower().lstrip('.')
             return list(self._session.execute(
-                select(Entry).where(Entry.filename.ilike(f"%{q}%"))
+                select(Entry).where(Entry.suffix == ext)
                 .order_by(Entry.filename).limit(limit)
             ).scalars().all())
+
+        # Field search
+        if q.startswith("field:"):
+            field_query = q[6:].strip()
+            if '=' in field_query:
+                key, val = field_query.split('=', 1)
+                key = key.strip()
+                val = val.strip().strip('"')
+                matching = self._session.execute(
+                    select(TextField.entry_id).where(
+                        TextField.type_key == key,
+                        TextField.value.ilike(f"%{val}%"),
+                    )
+                ).scalars().all()
+                if not matching:
+                    return []
+                return list(self._session.execute(
+                    select(Entry).where(Entry.id.in_(matching))
+                    .order_by(Entry.filename).limit(limit)
+                ).scalars().all())
+
+        # Special queries
+        if q == "special:untagged":
+            return self.get_untagged_entries()[:limit]
+        if q == "special:tagged":
+            subq = select(TagEntry.entry_id)
+            return list(self._session.execute(
+                select(Entry).where(Entry.id.in_(subq))
+                .order_by(Entry.filename).limit(limit)
+            ).scalars().all())
+
+        # Default: filename search
+        return list(self._session.execute(
+            select(Entry).where(Entry.filename.ilike(f"%{q}%"))
+            .order_by(Entry.filename).limit(limit)
+        ).scalars().all())
 
     # ── Stats ─────────────────────────────────────────────────────────────────
 
