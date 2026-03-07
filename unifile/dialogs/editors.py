@@ -18,7 +18,10 @@ from unifile.config import (
 from unifile.categories import (
     load_custom_categories
 )
-from unifile.files import _load_pc_categories, _save_pc_categories, _DEFAULT_PC_CATEGORIES
+from unifile.files import (
+    _load_pc_categories, _save_pc_categories, _DEFAULT_PC_CATEGORIES,
+    import_classifier_config, export_classifier_config, merge_categories,
+)
 from unifile.engine import RuleEngine, RenameTemplateEngine
 from unifile.config import _APP_DATA_DIR
 
@@ -323,9 +326,22 @@ class PCCategoryEditorDialog(QDialog):
         self.btn_del.clicked.connect(self._del_cat)
         row_add.addWidget(btn_add); row_add.addWidget(self.btn_del)
         lv.addLayout(row_add)
-        btn_reset = QPushButton("↺ Reset to Defaults"); btn_reset.setObjectName("btn_reset")
+        btn_reset = QPushButton("Reset to Defaults"); btn_reset.setObjectName("btn_reset")
         btn_reset.clicked.connect(self._reset_defaults)
         lv.addWidget(btn_reset)
+
+        # Import/Export (classifier-compatible config)
+        io_row = QHBoxLayout()
+        btn_import = QPushButton("Import")
+        btn_import.setToolTip("Import categories from a .conf file (classifier format)")
+        btn_import.clicked.connect(self._import_config)
+        io_row.addWidget(btn_import)
+        btn_export = QPushButton("Export")
+        btn_export.setToolTip("Export categories to a .conf file (classifier format)")
+        btn_export.clicked.connect(self._export_config)
+        io_row.addWidget(btn_export)
+        lv.addLayout(io_row)
+
         root.addWidget(left)
 
         # ── Right: editor ────────────────────────────────────────────────────
@@ -518,6 +534,37 @@ class PCCategoryEditorDialog(QDialog):
             self.cats = [dict(c) for c in _DEFAULT_PC_CATEGORIES]
             self._populate_list()
             if self.lst_cats.count(): self.lst_cats.setCurrentRow(0)
+
+    def _import_config(self):
+        """Import categories from a classifier-format .conf file."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Category Config",
+            filter="Config Files (*.conf *.txt);;All Files (*)")
+        if not path:
+            return
+        try:
+            imported = import_classifier_config(path)
+            if imported:
+                self.cats = merge_categories(self.cats, imported)
+                self._populate_list()
+                self._dirty = True
+                if self.lst_cats.count():
+                    self.lst_cats.setCurrentRow(0)
+        except Exception as e:
+            QMessageBox.warning(self, "Import Error", f"Failed to import: {e}")
+
+    def _export_config(self):
+        """Export categories to a classifier-format .conf file."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Category Config",
+            "unifile_categories.conf",
+            filter="Config Files (*.conf);;All Files (*)")
+        if not path:
+            return
+        try:
+            export_classifier_config(self.cats, path)
+        except Exception as e:
+            QMessageBox.warning(self, "Export Error", f"Failed to export: {e}")
 
     def _save_close(self):
         if self._dirty:

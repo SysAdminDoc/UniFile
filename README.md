@@ -261,7 +261,7 @@ All dependencies auto-installed: PyQt6, SQLAlchemy, rapidfuzz, psd-tools, Pillow
 
 - [x] **Media Lookup** — TMDb/TVDb/TVMaze metadata panel (from mnamer's provider system)
 - [x] **Nexa SDK Backend** — Alternative AI backend with Llama 3.2 + LLaVA vision (from Local-File-Organizer)
-- [ ] **Category Presets** — Per-directory config and extension-based presets (from classifier)
+- [x] **Category Presets** — Per-directory config, import/export, extension-based presets (from classifier)
 - [ ] **Search Query Language** — Advanced tag search with boolean operators
 - [ ] **Preview Panel** — Rich file preview with tag overlay
 
