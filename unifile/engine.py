@@ -5,6 +5,8 @@ from pathlib import Path
 
 from unifile.config import _APP_DATA_DIR
 
+_RULES_FILE = os.path.join(_APP_DATA_DIR, 'rules.json')
+
 class RuleEngine:
     """User-defined classification rules with priority ordering."""
 
