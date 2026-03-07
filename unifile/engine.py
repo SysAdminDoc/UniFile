@@ -1,0 +1,562 @@
+"""UniFile — Rule engine, event grouping, scheduling, rename templates."""
+import os, re, json, math, subprocess, sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from unifile.config import _APP_DATA_DIR
+
+class RuleEngine:
+    """User-defined classification rules with priority ordering."""
+
+    _OPS = {
+        'eq': lambda a, b: str(a).lower() == str(b).lower(),
+        'neq': lambda a, b: str(a).lower() != str(b).lower(),
+        'gt': lambda a, b: float(a) > float(b),
+        'lt': lambda a, b: float(a) < float(b),
+        'gte': lambda a, b: float(a) >= float(b),
+        'lte': lambda a, b: float(a) <= float(b),
+        'contains': lambda a, b: str(b).lower() in str(a).lower(),
+        'not_contains': lambda a, b: str(b).lower() not in str(a).lower(),
+        'matches': lambda a, b: bool(re.search(b, str(a), re.IGNORECASE)),
+        'startswith': lambda a, b: str(a).lower().startswith(str(b).lower()),
+        'endswith': lambda a, b: str(a).lower().endswith(str(b).lower()),
+    }
+
+    @staticmethod
+    def load_rules() -> list:
+        if os.path.isfile(_RULES_FILE):
+            try:
+                with open(_RULES_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return []
+
+    @staticmethod
+    def save_rules(rules: list):
+        with open(_RULES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(rules, f, indent=2)
+
+    @staticmethod
+    def _get_field_value(item, field: str, metadata: dict):
+        """Extract field value from FileItem or metadata."""
+        if field == 'name':
+            return getattr(item, 'name', '')
+        elif field == 'extension':
+            return os.path.splitext(getattr(item, 'name', ''))[1].lower()
+        elif field == 'size':
+            return getattr(item, 'size', 0)
+        elif field == 'modified_date':
+            try:
+                return datetime.fromtimestamp(os.path.getmtime(item.full_src)).isoformat()
+            except Exception:
+                return ''
+        elif field == 'created_date':
+            try:
+                return datetime.fromtimestamp(os.path.getctime(item.full_src)).isoformat()
+            except Exception:
+                return ''
+        elif field == 'path_contains':
+            return getattr(item, 'full_src', '')
+        elif field == 'name_regex':
+            return getattr(item, 'name', '')
+        else:
+            return metadata.get(field, '')
+
+    @classmethod
+    def evaluate(cls, item, rules: list, metadata: dict = None) -> tuple:
+        """Returns (category, rename_template, confidence) or None if no match."""
+        if metadata is None:
+            metadata = getattr(item, 'metadata', {})
+        for rule in sorted(rules, key=lambda r: r.get('priority', 99)):
+            if not rule.get('enabled', True):
+                continue
+            conditions = rule.get('conditions', [])
+            if not conditions:
+                continue
+            logic = rule.get('logic', 'all')
+            results = []
+            for cond in conditions:
+                field = cond.get('field', '')
+                op = cond.get('op', 'eq')
+                value = cond.get('value', '')
+                actual = cls._get_field_value(item, field, metadata)
+                op_fn = cls._OPS.get(op, cls._OPS['eq'])
+                try:
+                    results.append(op_fn(actual, value))
+                except (ValueError, TypeError):
+                    results.append(False)
+            matched = all(results) if logic == 'all' else any(results)
+            if matched:
+                return (rule.get('action_category', ''),
+                        rule.get('action_rename', ''),
+                        rule.get('confidence', 90))
+        return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EVENT GROUPER — AI-powered photo event clustering
+# ══════════════════════════════════════════════════════════════════════════════
+
+_EVENT_CACHE_FILE = os.path.join(_APP_DATA_DIR, 'event_groups.json')
+
+
+class EventGrouper:
+    """Groups photos by event/scene using vision descriptions and timestamps."""
+
+    @staticmethod
+    def group_by_time(items, gap_hours=3) -> list:
+        """Group items by time proximity. Returns list of (event_id, [items])."""
+        # Filter items with timestamps
+        timed = []
+        for it in items:
+            ts = 0
+            try:
+                ts = os.path.getmtime(it.full_src)
+            except Exception:
+                pass
+            if ts > 0:
+                timed.append((ts, it))
+        timed.sort(key=lambda x: x[0])
+        groups = []
+        current_group = []
+        last_ts = 0
+        for ts, it in timed:
+            if current_group and (ts - last_ts) > gap_hours * 3600:
+                groups.append(current_group)
+                current_group = []
+            current_group.append(it)
+            last_ts = ts
+        if current_group:
+            groups.append(current_group)
+        return [(i + 1, g) for i, g in enumerate(groups)]
+
+    @staticmethod
+    def suggest_event_name(descriptions: list) -> str:
+        """Suggest an event name from a list of vision descriptions (offline heuristic)."""
+        if not descriptions:
+            return "Unknown Event"
+        # Count common words (excluding stopwords)
+        stopwords = {'a', 'an', 'the', 'is', 'are', 'was', 'were', 'in', 'on', 'at',
+                     'to', 'for', 'of', 'with', 'and', 'or', 'this', 'that', 'it'}
+        word_counts = Counter()
+        for desc in descriptions:
+            words = [w.lower() for w in re.findall(r'\b[a-zA-Z]{3,}\b', desc) if w.lower() not in stopwords]
+            word_counts.update(words)
+        top_words = [w for w, _ in word_counts.most_common(3)]
+        return ' '.join(w.title() for w in top_words) if top_words else "Photo Group"
+
+    @staticmethod
+    def load_cache() -> dict:
+        if os.path.isfile(_EVENT_CACHE_FILE):
+            try:
+                with open(_EVENT_CACHE_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {}
+
+    @staticmethod
+    def save_cache(data: dict):
+        with open(_EVENT_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SCHEDULE MANAGER — Windows Task Scheduler integration
+# ══════════════════════════════════════════════════════════════════════════════
+
+_SCHED_FILE = os.path.join(_APP_DATA_DIR, 'scheduled_tasks.json')
+
+
+class ScheduleManager:
+    """Windows Task Scheduler integration for periodic organization."""
+
+    @staticmethod
+    def create_task(name, profile_name, schedule_type='daily', time_str='09:00',
+                    days='', auto_apply=False):
+        """Create a Windows scheduled task."""
+        if sys.platform != 'win32':
+            return False
+        script_path = os.path.abspath(__file__) if '__file__' in dir() else ''
+        if not script_path:
+            return False
+        args = f'--profile "{profile_name}"'
+        if auto_apply:
+            args += ' --auto-apply'
+        tr = f'"{sys.executable}" "{script_path}" {args}'
+        tn = f"UniFile\\{name}"
+        cmd = ['schtasks', '/create', '/tn', tn, '/tr', tr, '/f']
+        if schedule_type == 'daily':
+            cmd += ['/sc', 'daily', '/st', time_str]
+        elif schedule_type == 'weekly':
+            cmd += ['/sc', 'weekly', '/st', time_str]
+            if days:
+                cmd += ['/d', days]
+        elif schedule_type == 'on_logon':
+            cmd += ['/sc', 'onlogon']
+        try:
+            subprocess.run(cmd, capture_output=True, check=True)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def delete_task(name):
+        if sys.platform != 'win32':
+            return False
+        try:
+            subprocess.run(['schtasks', '/delete', '/tn', f'UniFile\\{name}', '/f'],
+                          capture_output=True, check=True)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def list_tasks() -> list:
+        if sys.platform != 'win32':
+            return []
+        try:
+            result = subprocess.run(
+                ['schtasks', '/query', '/tn', 'UniFile\\', '/fo', 'CSV', '/nh'],
+                capture_output=True, text=True, timeout=10)
+            tasks = []
+            for line in result.stdout.strip().split('\n'):
+                if line.strip():
+                    parts = line.strip('"').split('","')
+                    if len(parts) >= 3:
+                        tasks.append({
+                            'name': parts[0].replace('UniFile\\', ''),
+                            'next_run': parts[1] if len(parts) > 1 else '',
+                            'status': parts[2] if len(parts) > 2 else '',
+                        })
+            return tasks
+        except Exception:
+            return []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RENAME TEMPLATE ENGINE — Phase 2 (PC File Organizer)
+# Resolves {token} syntax against file metadata + filesystem properties.
+# Supports: {name}, {ext}, {year}, {month}, {day}, {hour}, {minute}, {second},
+#   {artist}, {album}, {title}, {genre}, {track}, {camera}, {camera_make},
+#   {camera_model}, {width}, {height}, {duration}, {bitrate}, {pages},
+#   {author}, {counter}, {counter:03d}, {parent}, {size}, {category},
+#   {vision_name}, {vision_ocr}
+# ══════════════════════════════════════════════════════════════════════════════
+
+class RenameTemplateEngine:
+    """Resolves rename templates for PC File Organizer items.
+
+    Usage:
+        engine = RenameTemplateEngine()
+        new_name = engine.resolve("{year}-{month}-{day}_{name}", filepath, metadata, category)
+    """
+
+    # Tokens that come from file modification date
+    _DATE_TOKENS = {'year', 'month', 'day', 'hour', 'minute', 'second'}
+
+    @staticmethod
+    def resolve(template: str, filepath: str, metadata: dict,
+                category: str = '', counter: int = 1) -> str:
+        """Resolve a template string into a concrete filename.
+
+        Args:
+            template:  e.g. "{year}-{month}-{day}_{name}"
+            filepath:  absolute path to the original file
+            metadata:  dict from MetadataExtractor.extract()
+            category:  the assigned category name
+            counter:   sequential counter (for {counter} token)
+
+        Returns:
+            Resolved filename (stem only, no extension) — or original stem if
+            template is empty or resolution fails completely.
+        """
+        if not template or not template.strip():
+            return os.path.splitext(os.path.basename(filepath))[0]
+
+        basename = os.path.basename(filepath)
+        stem, ext = os.path.splitext(basename)
+        ext_clean = ext.lstrip('.')
+
+        # Build context dict with all available tokens
+        ctx = RenameTemplateEngine._build_context(filepath, stem, ext_clean,
+                                                   metadata, category, counter)
+
+        # Resolve conditional blocks before token substitution
+        template = RenameTemplateEngine._resolve_conditionals(template, ctx)
+
+        # Resolve tokens using regex
+        def _replacer(match):
+            raw = match.group(1)
+            # Handle format specifiers: {counter:03d}, {track:02d}
+            if ':' in raw:
+                key, fmt = raw.split(':', 1)
+                key = key.strip().lower()
+                val = ctx.get(key)
+                if val is not None:
+                    try:
+                        return format(int(val) if fmt.endswith('d') else val, fmt)
+                    except (ValueError, TypeError):
+                        return str(val)
+                return ''
+            else:
+                key = raw.strip().lower()
+                val = ctx.get(key)
+                if val is not None and val != '':
+                    return str(val)
+                return ''
+
+        try:
+            result = re.sub(r'\{([^}]+)\}', _replacer, template)
+        except Exception:
+            return stem
+
+        # Clean up result: collapse multiple separators, strip edges
+        result = re.sub(r'[_\-\s]{2,}', '_', result)  # collapse repeated separators
+        result = result.strip(' _-.')
+        if not result:
+            return stem
+
+        # Fall back to stem if result is degenerate (no letters, or too short to be useful)
+        if not any(c.isalpha() for c in result) or len(result) < 3:
+            # Append original stem to give context: "03_recording" instead of "03"
+            result = f"{result}_{stem}" if result else stem
+            result = re.sub(r'[_\-\s]{2,}', '_', result).strip(' _-.')
+
+        # Sanitise for filesystem safety
+        result = re.sub(r'[<>:"/\\|?*]', '_', result)
+        return result
+
+    @staticmethod
+    def preview(template: str, filepath: str, metadata: dict,
+                category: str = '', counter: int = 1) -> str:
+        """Like resolve(), but returns stem + extension for display."""
+        if not template or not template.strip():
+            return os.path.basename(filepath)
+        stem = RenameTemplateEngine.resolve(template, filepath, metadata, category, counter)
+        ext = os.path.splitext(filepath)[1]
+        return stem + ext
+
+    @staticmethod
+    def available_tokens() -> list:
+        """Return list of all supported token names (for UI help text)."""
+        return [
+            'name', 'ext', 'parent', 'category', 'size',
+            'year', 'month', 'day', 'hour', 'minute', 'second',
+            'artist', 'album', 'title', 'genre', 'track', 'year_tag',
+            'camera', 'camera_make', 'camera_model', 'width', 'height',
+            'duration', 'bitrate', 'pages', 'author',
+            'counter', 'counter:03d',
+            'vision_name', 'vision_ocr',
+            'city', 'country', 'scene', 'month_name', 'blur',
+            'person', 'face_count',
+        ]
+
+    @staticmethod
+    def _build_context(filepath: str, stem: str, ext_clean: str,
+                       metadata: dict, category: str, counter: int) -> dict:
+        """Build the full token→value context dict."""
+        ctx = {}
+
+        # ── File properties ──────────────────────────────────────────────────
+        ctx['original_name'] = stem
+        ctx['ext'] = ext_clean
+        ctx['category'] = category
+        ctx['parent'] = os.path.basename(os.path.dirname(filepath))
+        try:
+            ctx['size'] = os.path.getsize(filepath)
+        except OSError:
+            ctx['size'] = 0
+
+        # ── Date tokens — prefer EXIF date_taken, fallback to file mtime ────
+        dt = None
+        date_taken = metadata.get('date_taken', '')
+        if date_taken:
+            # Try common EXIF date formats with known output lengths
+            _DATE_FMTS = [
+                ('%Y:%m:%d %H:%M:%S', 19),   # standard EXIF: "2024:03:15 14:30:00"
+                ('%Y-%m-%d %H:%M:%S', 19),   # ISO-ish:       "2024-03-15 14:30:00"
+                ('%Y:%m:%d',          10),   # date only:     "2024:03:15"
+                ('%Y-%m-%d',          10),   # ISO date:      "2024-03-15"
+            ]
+            for fmt, expected_len in _DATE_FMTS:
+                try:
+                    dt = datetime.strptime(date_taken[:expected_len], fmt)
+                    break
+                except (ValueError, IndexError):
+                    continue
+        # PDF/Office creation date
+        if dt is None:
+            for key in ('creation_date', 'created'):
+                val = metadata.get(key, '')
+                if val:
+                    try:
+                        dt = datetime.fromisoformat(str(val).replace('Z', '+00:00'))
+                        break
+                    except (ValueError, TypeError):
+                        continue
+        # Filename-extracted date (e.g. IMG_20240315_142300.jpg)
+        if dt is None and metadata.get('fname_year'):
+            try:
+                y = int(metadata['fname_year'])
+                m = int(metadata.get('fname_month', '1'))
+                d = int(metadata.get('fname_day', '1'))
+                dt = datetime(y, m, d)
+            except (ValueError, TypeError):
+                pass
+        # Fallback to file modification time
+        if dt is None:
+            try:
+                dt = datetime.fromtimestamp(os.path.getmtime(filepath))
+            except OSError:
+                dt = datetime.now()
+
+        ctx['year'] = dt.strftime('%Y')
+        ctx['month'] = dt.strftime('%m')
+        ctx['day'] = dt.strftime('%d')
+        ctx['hour'] = dt.strftime('%H')
+        ctx['minute'] = dt.strftime('%M')
+        ctx['second'] = dt.strftime('%S')
+
+        # ── Photo organization tokens ────────────────────────────────────────
+        ctx['month_name'] = dt.strftime('%B')
+        ctx['city'] = metadata.get('_photo_city', '') or 'Unknown_Location'
+        ctx['country'] = metadata.get('_photo_country', '')
+        ctx['scene'] = metadata.get('_photo_scene', '') or 'Other'
+        blur_val = metadata.get('_photo_blur', -1.0)
+        ctx['blur'] = 'sharp' if blur_val < 0 else ('blurry' if blur_val < metadata.get('_photo_blur_threshold', 100) else 'sharp')
+        ctx['person'] = metadata.get('_photo_face_primary', '') or 'Unknown_Person'
+        fc = metadata.get('_photo_face_count', -1)
+        ctx['face_count'] = str(fc) if fc >= 0 else '0'
+
+        # ── Audio metadata ───────────────────────────────────────────────────
+        ctx['artist'] = metadata.get('artist', '')
+        ctx['album'] = metadata.get('album', '')
+        ctx['title'] = metadata.get('title', '')
+        ctx['genre'] = metadata.get('genre', '')
+        ctx['track'] = metadata.get('track', '')
+        ctx['year_tag'] = metadata.get('year', '')  # from ID3 tag
+
+        # ── Image metadata ───────────────────────────────────────────────────
+        make = metadata.get('camera_make', '')
+        model = metadata.get('camera_model', '')
+        ctx['camera_make'] = make
+        ctx['camera_model'] = model
+        # {camera} = combined make+model (deduplicated)
+        if make and model and model.lower().startswith(make.lower()):
+            ctx['camera'] = model
+        elif make or model:
+            ctx['camera'] = f"{make} {model}".strip()
+        else:
+            ctx['camera'] = ''
+        ctx['width'] = metadata.get('width', '')
+        ctx['height'] = metadata.get('height', '')
+
+        # ── Media metadata ───────────────────────────────────────────────────
+        ctx['duration'] = metadata.get('duration', '')
+        ctx['bitrate'] = metadata.get('bitrate', '')
+        ctx['codec'] = metadata.get('codec', '')
+        ctx['fps'] = metadata.get('fps', '')
+
+        # ── Document metadata ────────────────────────────────────────────────
+        ctx['pages'] = metadata.get('pages', '')
+        ctx['author'] = metadata.get('author', '')
+
+        # ── Counter ──────────────────────────────────────────────────────────
+        ctx['counter'] = counter
+
+        # ── Vision AI tokens ─────────────────────────────────────────────────
+        vname = metadata.get('_vision_name', '')
+        # Validate vision name — reject JSON key leakage or garbage
+        if vname:
+            vl = vname.lower().replace('-', '_').replace(' ', '_')
+            _poison = ('category', 'confidence', 'reason', 'suggested_name',
+                       'detected_text', 'description', 'the_image_is',
+                       'this_image', 'image_is', 'no_ext', 'json', 'null',
+                       'undefined', 'true', 'false',
+                       'according_to', 'here_is', 'classified', 'classification',
+                       'given_input', 'provided_image', 'based_on')
+            if any(p in vl for p in _poison):
+                vname = ''
+        ctx['vision_name'] = vname
+        ctx['vision_ocr'] = metadata.get('_vision_ocr', '')
+        # {name} — prefer vision-derived name when available, else original stem
+        # {original_name} always has the raw filename stem
+        ctx['name'] = vname if vname else stem
+        ctx['smart_name'] = ctx['name']  # alias
+
+        return ctx
+
+    @staticmethod
+    def _resolve_conditionals(template: str, ctx: dict) -> str:
+        """Resolve {if:cond}...{else}...{endif} blocks in template.
+
+        Supports:
+          - Existence: {if:city}...{endif}  (true if city is non-empty)
+          - Comparison: {if:face_count>0}...{endif}
+          - Equality: {if:scene=portrait}...{endif}
+        No nesting supported.
+        """
+        def _eval_condition(cond: str) -> bool:
+            cond = cond.strip()
+            # Comparison operators
+            for op_str, op_fn in [('>=', lambda a, b: a >= b), ('<=', lambda a, b: a <= b),
+                                   ('>', lambda a, b: a > b), ('<', lambda a, b: a < b),
+                                   ('!=', lambda a, b: str(a) != str(b)),
+                                   ('=', lambda a, b: str(a).lower() == str(b).lower())]:
+                if op_str in cond:
+                    parts = cond.split(op_str, 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip().lower()
+                        val = parts[1].strip()
+                        ctx_val = ctx.get(key, '')
+                        try:
+                            return op_fn(float(ctx_val), float(val))
+                        except (ValueError, TypeError):
+                            return op_fn(str(ctx_val), val)
+            # Existence check
+            key = cond.lower()
+            val = ctx.get(key, '')
+            return bool(val) and str(val) not in ('', '0', 'Unknown_Person', 'Unknown_Location')
+
+        pattern = re.compile(r'\{if:([^}]+)\}(.*?)(?:\{else\}(.*?))?\{endif\}', re.DOTALL)
+        def _replacer(m):
+            cond = m.group(1)
+            if_body = m.group(2) or ''
+            else_body = m.group(3) or ''
+            return if_body if _eval_condition(cond) else else_body
+        try:
+            return pattern.sub(_replacer, template)
+        except Exception:
+            return template
+
+    @staticmethod
+    def get_default_template(category_name: str) -> str:
+        """Return a sensible default template for a given category."""
+        defaults = {
+            'Images':     '{year}-{month}-{day}_{name}',
+            'Audio':      '{artist} - {album} - {track:02d} - {title}',
+            'Videos':     '{year}-{month}-{day}_{name}',
+            'Documents':  '',
+            'Archives':   '',
+            'Code':       '',
+            'Executables': '',
+            'Fonts':      '',
+            'Data':       '',
+            'Design':     '',
+            'Shortcuts':  '',
+            'Other':      '',
+        }
+        return defaults.get(category_name, '')
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROGRESSIVE DUPLICATE DETECTOR — Phase 3 (PC File Organizer)
+# 4-stage pipeline: size grouping → prefix hash → suffix hash → full hash
+# Plus optional perceptual image hashing for near-duplicate images.
+# ══════════════════════════════════════════════════════════════════════════════
+
+_PHASH_IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff',
+                     '.webp', '.heic', '.heif', '.avif'}
+
