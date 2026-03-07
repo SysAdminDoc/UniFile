@@ -28,7 +28,7 @@ def _bootstrap():
                 'python-pptx', 'reverse_geocoder', 'opencv-python-headless',
                 'cmake', 'dlib', 'face_recognition',
                 'guessit', 'requests', 'requests-cache', 'babelfish', 'pydantic',
-                'platformdirs']
+                'platformdirs', 'nexaai']
 
     # Cache failed optional installs so we don't retry pip every launch (7-day TTL)
     _cache_dir = os.path.join(os.path.expanduser('~'), '.unifile')

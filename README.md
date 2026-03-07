@@ -75,6 +75,21 @@ Movie and TV metadata lookup powered by TMDb, OMDb, and TVMaze APIs (adapted fro
 | Copy Metadata | One-click copy of all metadata fields to clipboard |
 | Cached Requests | API responses cached for 6 days to reduce API calls |
 
+### Nexa SDK Backend (NEW in v8.0)
+
+Alternative local AI backend using Nexa SDK (adapted from Local-File-Organizer):
+
+| Feature | Description |
+|---------|-------------|
+| LLaVA Vision | Image understanding and description via LLaVA v1.6 |
+| Llama 3.2 Text | Text summarization and classification via Llama 3.2 3B |
+| One-Click Switch | Toggle between Ollama and Nexa in Settings |
+| Image Classification | Vision model describes images, text model classifies |
+| File Content Analysis | Reads text files and generates summaries for classification |
+| Model Catalog | 5 pre-configured model options for vision and text |
+
+Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `pip install nexaai`.
+
 ### AI Classification
 
 | Feature | Description |
@@ -177,6 +192,7 @@ unifile/
 ├── duplicates.py        # Duplicate detection engine
 ├── widgets.py           # Custom Qt widgets (charts, map, preview)
 ├── main_window.py       # Main application window (UniFile class)
+├── nexa_backend.py      # Nexa SDK AI backend (LLaVA + Llama 3.2)
 ├── scan_mixin.py        # Scan pipeline + auto-tag integration
 ├── apply_mixin.py       # Apply/move operations
 ├── tagging/
@@ -244,7 +260,7 @@ All dependencies auto-installed: PyQt6, SQLAlchemy, rapidfuzz, psd-tools, Pillow
 ## Roadmap
 
 - [x] **Media Lookup** — TMDb/TVDb/TVMaze metadata panel (from mnamer's provider system)
-- [ ] **Nexa SDK Backend** — Alternative AI backend with Llama 3.2 + LLaVA vision (from Local-File-Organizer)
+- [x] **Nexa SDK Backend** — Alternative AI backend with Llama 3.2 + LLaVA vision (from Local-File-Organizer)
 - [ ] **Category Presets** — Per-directory config and extension-based presets (from classifier)
 - [ ] **Search Query Language** — Advanced tag search with boolean operators
 - [ ] **Preview Panel** — Rich file preview with tag overlay
