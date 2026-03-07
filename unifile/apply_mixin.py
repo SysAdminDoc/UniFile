@@ -102,6 +102,9 @@ class ApplyMixin:
         if status == "Done":
             if vr >= 0:
                 QTimer.singleShot(350, lambda r=vr: self.tbl.setRowHidden(r, True))
+            if getattr(self, '_watch_manager', None) and self._watch_manager.is_active:
+                self._watch_manager.notify_file_organized(
+                    getattr(it, 'folder_name', ''), getattr(it, 'category', ''))
         else:
             if vr >= 0:
                 self._set_status(vr, status, "#ef4444", 6)
@@ -152,6 +155,9 @@ class ApplyMixin:
         if status == "Done":
             if vr >= 0:
                 QTimer.singleShot(350, lambda r=vr: self.tbl.setRowHidden(r, True))
+            if getattr(self, '_watch_manager', None) and self._watch_manager.is_active:
+                self._watch_manager.notify_file_organized(
+                    getattr(it, 'filename', ''), getattr(it, 'category', ''))
         else:
             if vr >= 0:
                 si = self.tbl.item(vr, 10)   # Status col

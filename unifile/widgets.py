@@ -483,7 +483,15 @@ class WatchSettingsDialog(QDialog):
 
 
 class WatchModeManager:
-    """Manages QFileSystemWatcher for auto-organizing watched folders."""
+    """Manages QFileSystemWatcher for auto-organizing watched folders.
+
+    Enhanced features:
+    - Snapshot-based change detection to learn from manual file moves
+    - Download-folder cooldown (longer delay for Downloads-like dirs)
+    - Tray notification per organized file
+    """
+
+    _DOWNLOAD_NAMES = {'downloads', 'download', 'descargas', 'téléchargements'}
 
     def __init__(self, parent_window):
         self.parent = parent_window
@@ -492,18 +500,21 @@ class WatchModeManager:
         self._watcher.directoryChanged.connect(self._on_dir_changed)
         self._delay_timers = {}  # folder -> QTimer
         self._active = False
+        self._snapshots = {}  # folder -> set of filenames at last snapshot
+        self._files_organized = 0
 
     def start(self, folders: list, delay: int = 5):
         """Start watching the given folders."""
-        # Clear existing
         watched = self._watcher.directories()
         if watched:
             self._watcher.removePaths(watched)
         for folder in folders:
             if os.path.isdir(folder):
                 self._watcher.addPath(folder)
+                self._snapshots[folder] = self._snapshot_dir(folder)
         self._delay = delay
         self._active = True
+        self._files_organized = 0
 
     def stop(self):
         """Stop watching all folders."""
@@ -513,21 +524,79 @@ class WatchModeManager:
         for t in self._delay_timers.values():
             t.stop()
         self._delay_timers.clear()
+        self._snapshots.clear()
         self._active = False
 
     @property
     def is_active(self) -> bool:
         return self._active
 
+    @staticmethod
+    def _snapshot_dir(folder: str) -> set:
+        try:
+            return set(os.listdir(folder))
+        except OSError:
+            return set()
+
+    def _is_download_folder(self, folder: str) -> bool:
+        return os.path.basename(folder).lower() in self._DOWNLOAD_NAMES
+
     def _on_dir_changed(self, path: str):
         """Called when a watched directory changes. Delays then triggers scan."""
         if path in self._delay_timers:
             self._delay_timers[path].stop()
+
+        # Detect manual moves (files disappeared) and learn from them
+        self._detect_manual_moves(path)
+
+        # Use longer cooldown for download folders (files may still be writing)
+        delay = self._delay
+        if self._is_download_folder(path):
+            delay = max(delay, 15)
+
         timer = QTimer()
         timer.setSingleShot(True)
         timer.timeout.connect(lambda p=path: self._trigger_scan(p))
-        timer.start(self._delay * 1000)
+        timer.start(delay * 1000)
         self._delay_timers[path] = timer
+
+    def _detect_manual_moves(self, folder: str):
+        """Compare folder snapshot to detect manually moved/deleted files and learn."""
+        old_snap = self._snapshots.get(folder, set())
+        new_snap = self._snapshot_dir(folder)
+        self._snapshots[folder] = new_snap
+
+        disappeared = old_snap - new_snap
+        appeared = new_snap - old_snap
+
+        if not disappeared:
+            return
+
+        # Check if disappeared files moved to subdirectories (manual organization)
+        try:
+            from unifile.learning import get_learner
+            learner = get_learner()
+        except Exception:
+            return
+
+        for fname in disappeared:
+            old_path = os.path.join(folder, fname)
+            if os.path.isdir(old_path):
+                continue
+            # Search subdirs for the file
+            for sub in os.listdir(folder):
+                sub_path = os.path.join(folder, sub)
+                if os.path.isdir(sub_path) and os.path.isfile(os.path.join(sub_path, fname)):
+                    # User manually moved fname into sub/ — learn this as a correction
+                    learner.record_correction(fname, old_path, sub)
+                    if hasattr(self.parent, '_log'):
+                        self.parent._log(f"Watch: learned manual move {fname} -> {sub}/")
+                    append_watch_event({
+                        'folder': folder,
+                        'action': 'learned_move',
+                        'details': f'{fname} -> {sub}/',
+                    })
+                    break
 
     def _trigger_scan(self, folder: str):
         """Trigger a mini-scan for the changed folder."""
@@ -545,6 +614,19 @@ class WatchModeManager:
             self.parent.txt_pc_src.setText(folder)
         self.parent.cmb_op.setCurrentIndex(3)  # OP_FILES
         QTimer.singleShot(100, self.parent._on_scan)
+
+        # Update snapshot after scan trigger
+        self._snapshots[folder] = self._snapshot_dir(folder)
+
+    def notify_file_organized(self, filename: str, category: str):
+        """Called after a file is organized to show tray notification."""
+        self._files_organized += 1
+        tray = getattr(self.parent, '_tray', None)
+        if tray and tray.isVisible():
+            tray.showMessage(
+                "UniFile — File Organized",
+                f"{filename} -> {category}",
+                QSystemTrayIcon.MessageIcon.Information, 2000)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

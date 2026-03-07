@@ -17,6 +17,7 @@ from unifile.photos import load_photo_settings, _PHOTO_FOLDER_PRESETS
 from unifile.duplicates import ConflictResolver
 from unifile.plugins import PluginManager
 from unifile.models import RenameItem, CategorizeItem, FileItem
+from unifile.engine import CategoryBalancer
 from unifile.workers import (
     ScanAepWorker, ScanCategoryWorker, ScanLLMWorker,
     ScanFilesWorker, ScanFilesLLMWorker, format_size
@@ -460,6 +461,8 @@ class ScanMixin:
         if matched > 0:
             self._show_scan_toast(f"Scan complete: {matched} folders categorized")
             self._update_dashboard()
+            # Category balancing — suggest merges/splits for imbalanced categories
+            self._run_category_balancer('cat')
         if matched == 0: self.lbl_empty.setText("No folders could be categorized"); self.lbl_empty.show()
 
     # ═══ PC FILE SCAN ════════════════════════════════════════════════════════
@@ -662,6 +665,8 @@ class ScanMixin:
                 pass
             # Auto-tag entries in tag library if open
             self._auto_tag_scan_results()
+            # Category balancing — suggest merges/splits for imbalanced categories
+            self._run_category_balancer('files')
         if total == 0:
             self.lbl_empty.setText("No files or folders found"); self.lbl_empty.show()
 
@@ -702,3 +707,26 @@ class ScanMixin:
         count = ConflictResolver.resolve(conflicts, strategy, self.file_items)
         if count:
             self._log(f"  Resolved {count} destination conflict(s) via '{strategy}'")
+
+    def _run_category_balancer(self, mode: str):
+        """Run category balancing and log suggestions for merges/splits."""
+        if not self.settings.value("category_balancing", True, type=bool):
+            return
+        balancer = CategoryBalancer()
+        if mode == 'cat':
+            items = self.cat_items
+            cats = set(it.category for it in items if it.category and it.category != '[Uncategorized]')
+        else:
+            items = self.file_items
+            cats = set(it.category for it in items if it.category)
+        if len(items) < 10 or len(cats) < 3:
+            return
+        suggestions = balancer.balance(items, all_categories=cats)
+        merges = suggestions.get('merges', {})
+        splits = suggestions.get('splits', {})
+        if merges:
+            merge_str = ', '.join(f"{k} -> {v}" for k, v in list(merges.items())[:5])
+            self._log(f"  [BALANCE] Merge suggestions: {merge_str}")
+        if splits:
+            split_str = ', '.join(f"{k} ({len(v)} sub-groups)" for k, v in list(splits.items())[:5])
+            self._log(f"  [BALANCE] Split suggestions: {split_str}")

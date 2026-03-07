@@ -401,12 +401,12 @@ class TagLibrary:
                 .order_by(Entry.filename).limit(limit)
             ).scalars().all())
 
-        # Tag search
+        # Tag search (with transitive inheritance)
         if q.startswith("tag:"):
             tag_name = q[4:].strip().strip('"')
             tag = self.get_tag_by_name(tag_name)
             if tag:
-                return self.get_entries_by_tag(tag.id)[:limit]
+                return self.get_entries_by_tag_recursive(tag.id)[:limit]
             return []
 
         # Extension search
@@ -452,6 +452,175 @@ class TagLibrary:
             select(Entry).where(Entry.filename.ilike(f"%{q}%"))
             .order_by(Entry.filename).limit(limit)
         ).scalars().all())
+
+    # ── Tag Inheritance (transitive parent search) ──────────────────────────
+
+    def get_descendant_tag_ids(self, tag_id: int) -> set[int]:
+        """Get all descendant tag IDs (children, grandchildren, etc.) transitively."""
+        descendants = set()
+        queue = [tag_id]
+        while queue:
+            current = queue.pop()
+            children = self._session.execute(
+                select(TagParent.child_id).where(TagParent.parent_id == current)
+            ).scalars().all()
+            for child_id in children:
+                if child_id not in descendants:
+                    descendants.add(child_id)
+                    queue.append(child_id)
+        return descendants
+
+    def get_ancestor_tag_ids(self, tag_id: int) -> set[int]:
+        """Get all ancestor tag IDs (parents, grandparents, etc.) transitively."""
+        ancestors = set()
+        queue = [tag_id]
+        while queue:
+            current = queue.pop()
+            parents = self._session.execute(
+                select(TagParent.parent_id).where(TagParent.child_id == current)
+            ).scalars().all()
+            for pid in parents:
+                if pid not in ancestors:
+                    ancestors.add(pid)
+                    queue.append(pid)
+        return ancestors
+
+    def get_entries_by_tag_recursive(self, tag_id: int) -> list[Entry]:
+        """Get entries matching a tag OR any of its descendant tags."""
+        all_ids = {tag_id} | self.get_descendant_tag_ids(tag_id)
+        return list(self._session.execute(
+            select(Entry).join(Entry.tags).where(Tag.id.in_(all_ids))
+            .order_by(Entry.filename)
+        ).unique().scalars().all())
+
+    def get_tag_display_name(self, tag: Tag) -> str:
+        """Get disambiguated display name using parent shorthand.
+
+        Example: Two tags named 'Freddy' with parents 'FNAF' and 'Elm Street'
+        display as 'Freddy (FNAF)' and 'Freddy (Elm Street)'.
+        """
+        # Check if any other tag shares the same name
+        others = self._session.execute(
+            select(Tag).where(Tag.name == tag.name, Tag.id != tag.id)
+        ).scalars().all()
+        if not others:
+            return tag.name
+        # Find disambiguating parent
+        if tag.parent_tags:
+            parent = next(iter(tag.parent_tags))
+            suffix = parent.shorthand or parent.name
+            return f"{tag.name} ({suffix})"
+        return tag.name
+
+    def get_tag_hierarchy(self) -> list[dict]:
+        """Get full tag hierarchy as a tree structure for UI display.
+
+        Returns list of root tags (those with no parents) with their children nested.
+        """
+        all_tags = self.get_all_tags()
+        tag_map = {t.id: t for t in all_tags}
+        # Find roots (tags with no parents)
+        roots = [t for t in all_tags if not t.parent_tags]
+
+        def _build_tree(tag):
+            children_ids = self._session.execute(
+                select(TagParent.child_id).where(TagParent.parent_id == tag.id)
+            ).scalars().all()
+            children = [tag_map[cid] for cid in children_ids if cid in tag_map]
+            return {
+                'id': tag.id,
+                'name': tag.name,
+                'shorthand': tag.shorthand,
+                'color': tag.color_slug,
+                'is_category': tag.is_category,
+                'children': [_build_tree(c) for c in sorted(children, key=lambda t: t.name)],
+            }
+
+        return [_build_tree(r) for r in sorted(roots, key=lambda t: t.name)]
+
+    # ── Tag Packs (import/export) ─────────────────────────────────────────
+
+    def export_tag_pack(self, filepath: str, tag_ids: list[int] | None = None) -> bool:
+        """Export tags as a shareable JSON tag pack.
+
+        Args:
+            filepath: Output file path.
+            tag_ids: Specific tag IDs to export, or None for all.
+        """
+        tags = self.get_all_tags() if not tag_ids else [
+            self.get_tag(tid) for tid in tag_ids if self.get_tag(tid)]
+        pack = {
+            'version': '1.0',
+            'name': os.path.splitext(os.path.basename(filepath))[0],
+            'created': dt.now().isoformat(),
+            'tags': [],
+        }
+        for tag in tags:
+            entry = {
+                'name': tag.name,
+                'shorthand': tag.shorthand,
+                'color': tag.color_slug,
+                'is_category': tag.is_category,
+                'aliases': tag.alias_strings,
+                'parents': [p.name for p in tag.parent_tags],
+            }
+            pack['tags'].append(entry)
+
+        import json
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(pack, f, indent=2)
+        return True
+
+    def import_tag_pack(self, filepath: str) -> dict:
+        """Import tags from a tag pack JSON file.
+
+        Returns: {'imported': int, 'skipped': int, 'errors': int}
+        """
+        import json
+        with open(filepath, 'r', encoding='utf-8') as f:
+            pack = json.load(f)
+
+        stats = {'imported': 0, 'skipped': 0, 'errors': 0}
+        tag_entries = pack.get('tags', [])
+
+        # First pass: create all tags
+        name_to_tag = {}
+        for entry in tag_entries:
+            name = entry.get('name', '').strip()
+            if not name:
+                continue
+            existing = self.get_tag_by_name(name)
+            if existing:
+                name_to_tag[name] = existing
+                stats['skipped'] += 1
+                continue
+            tag = self.add_tag(
+                name=name,
+                shorthand=entry.get('shorthand'),
+                color_slug=entry.get('color'),
+                is_category=entry.get('is_category', False),
+            )
+            if tag:
+                name_to_tag[name] = tag
+                # Add aliases
+                for alias in entry.get('aliases', []):
+                    self.add_alias(tag.id, alias)
+                stats['imported'] += 1
+            else:
+                stats['errors'] += 1
+
+        # Second pass: set parent relationships
+        for entry in tag_entries:
+            name = entry.get('name', '').strip()
+            tag = name_to_tag.get(name)
+            if not tag:
+                continue
+            for parent_name in entry.get('parents', []):
+                parent = name_to_tag.get(parent_name) or self.get_tag_by_name(parent_name)
+                if parent:
+                    self.add_parent_tag(tag.id, parent.id)
+
+        return stats
 
     # ── Stats ─────────────────────────────────────────────────────────────────
 

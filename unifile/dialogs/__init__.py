@@ -21,6 +21,11 @@ from unifile.dialogs.tools import (
 from unifile.dialogs.theme import (
     ThemePickerDialog, ProtectedPathsDialog
 )
+from unifile.dialogs.advanced_settings import (
+    AIProviderSettingsDialog, WhisperSettingsDialog,
+    SemanticSearchSettingsDialog, EmbeddingSettingsDialog,
+    LearningStatsDialog
+)
 
 __all__ = [
     'OllamaSettingsDialog', 'PhotoSettingsDialog', 'FaceManagerDialog', 'ModelManagerDialog',
@@ -32,4 +37,7 @@ __all__ = [
     'UndoTimelineDialog', 'UndoBatchDialog', 'PluginManagerDialog',
     'RelationshipGraphWidget', 'WatchHistoryDialog',
     'ThemePickerDialog', 'ProtectedPathsDialog',
+    'AIProviderSettingsDialog', 'WhisperSettingsDialog',
+    'SemanticSearchSettingsDialog', 'EmbeddingSettingsDialog',
+    'LearningStatsDialog',
 ]

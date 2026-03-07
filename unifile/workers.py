@@ -45,6 +45,8 @@ from unifile.files import (
 from unifile.engine import RuleEngine, RenameTemplateEngine
 from unifile.plugins import PluginManager
 from unifile.models import RenameItem, CategorizeItem, FileItem
+from unifile.ignore import IgnoreFilter
+from unifile.learning import get_learner
 
 
 def _get_ai_backend() -> str:
@@ -236,17 +238,28 @@ FILE_ACTIONS = {
 
 
 # ── Workers ────────────────────────────────────────────────────────────────────
-def _collect_scan_folders(root: Path, scan_depth: int = 0) -> list:
+def _collect_scan_folders(root: Path, scan_depth: int = 0,
+                          ignore_filter: IgnoreFilter | None = None) -> list:
     """Collect folders to process at the specified depth.
     depth=0: immediate children (default, original behavior)
     depth=1: grandchildren (subfolders within each top-level folder)
     depth=2+: deeper nesting levels
-    Protected paths are automatically excluded."""
+    Protected paths and .unifile_ignore patterns are automatically excluded."""
+    # Load ignore filter from root if not provided
+    if ignore_filter is None:
+        ignore_filter = IgnoreFilter.from_directory(str(root))
+
     try:
         top_dirs = sorted([f for f in root.iterdir()
                            if f.is_dir() and not is_protected(str(f))])
     except PermissionError:
         return []
+
+    # Apply ignore filter
+    if ignore_filter.has_rules:
+        top_dirs = [d for d in top_dirs
+                    if not ignore_filter.is_ignored(
+                        os.path.relpath(str(d), str(root)), is_dir=True)]
 
     if scan_depth <= 0:
         return top_dirs
@@ -255,7 +268,7 @@ def _collect_scan_folders(root: Path, scan_depth: int = 0) -> list:
     folders = []
     for top_dir in top_dirs:
         try:
-            subs = _collect_scan_folders(top_dir, scan_depth - 1)
+            subs = _collect_scan_folders(top_dir, scan_depth - 1, ignore_filter)
             folders.extend(subs)
         except (PermissionError, OSError):
             continue
@@ -1431,6 +1444,19 @@ class ScanFilesWorker(QThread):
                     except Exception:
                         pass
 
+                # Adaptive learning — check if user corrections suggest a category
+                if not is_folder and conf < 80:
+                    try:
+                        learner = get_learner()
+                        learned = learner.predict(name, fpath_str)
+                        if learned and learned['confidence'] > conf:
+                            cat = learned['category']
+                            conf = learned['confidence']
+                            method = 'learned'
+                            self.log.emit(f"    [LEARNED] {cat} ({conf:.0f}%) — {learned['detail']}")
+                    except Exception:
+                        pass
+
                 # Store in cache for next scan
                 if not is_folder and fsize > 0:
                     cache.store(fpath_str, fmtime, fsize, cat, conf, method, item_meta)
@@ -1464,11 +1490,15 @@ class ScanFilesWorker(QThread):
 
     def _collect(self, src: Path) -> list:
         """Collect (path, is_folder) tuples at the configured depth.
-        Filters out OS metadata, temp files, lock files, and hidden items.
+        Filters out OS metadata, temp files, lock files, hidden items,
+        and .unifile_ignore patterns.
         When ext_filter is set, only files with matching extensions are included.
         """
         result = []
         _ef = self.ext_filter   # None or set of allowed extensions
+        _ignore = IgnoreFilter.from_directory(str(src))
+        if _ignore.has_rules:
+            self.log.emit(f"  Loaded .unifile_ignore ({len(_ignore.patterns)} patterns)")
         try:
             if self.scan_depth == 0:
                 for entry in src.iterdir():
@@ -1478,6 +1508,8 @@ class ScanFilesWorker(QThread):
                         continue
                     ext_low = os.path.splitext(entry.name)[1].lower()
                     if ext_low in _JUNK_SUFFIXES:
+                        continue
+                    if _ignore.has_rules and _ignore.is_ignored(entry.name, entry.is_dir()):
                         continue
                     if entry.is_dir() and self.include_folders and not _ef:
                         result.append((entry, True))
@@ -1493,7 +1525,9 @@ class ScanFilesWorker(QThread):
                     depth = 0 if rel == '.' else rel.count(os.sep) + 1
                     dirs[:] = [d for d in dirs
                                if not d.startswith('.') and not d.startswith('$')
-                               and not _JUNK_PATTERNS.match(d)]
+                               and not _JUNK_PATTERNS.match(d)
+                               and not (_ignore.has_rules and _ignore.is_ignored(
+                                   os.path.relpath(os.path.join(root, d), str(src)), True))]
                     if depth > self.scan_depth:
                         dirs.clear(); continue
                     if self.include_files:
@@ -1505,6 +1539,10 @@ class ScanFilesWorker(QThread):
                                 continue
                             if _ef and f_ext not in _ef:
                                 continue
+                            if _ignore.has_rules:
+                                f_rel = os.path.relpath(os.path.join(root, f), str(src))
+                                if _ignore.is_ignored(f_rel, False):
+                                    continue
                             result.append((Path(root) / f, False))
                     if self.include_folders and depth < self.scan_depth and not _ef:
                         for d in dirs:
