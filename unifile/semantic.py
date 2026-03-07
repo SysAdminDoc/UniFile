@@ -3,8 +3,11 @@ import os
 import json
 import math
 import hashlib
+import logging
 import sqlite3
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 from unifile.config import _APP_DATA_DIR
 
@@ -72,8 +75,8 @@ class SemanticIndex:
             embeddings = data.get('embeddings', [])
             if embeddings:
                 return embeddings[0]
-        except Exception:
-            pass
+        except Exception as e:
+            _log.debug("Embedding request failed for model %s: %s", self._model, e)
         return None
 
     def is_available(self) -> bool:
@@ -83,7 +86,8 @@ class SemanticIndex:
         try:
             vec = self._get_embedding("test")
             self._available = vec is not None and len(vec) > 0
-        except Exception:
+        except Exception as e:
+            _log.debug("Semantic search availability check failed: %s", e)
             self._available = False
         return self._available
 

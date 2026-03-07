@@ -2,6 +2,7 @@
 import os
 import re
 import json
+import threading
 from collections import Counter, defaultdict
 from datetime import datetime
 
@@ -25,6 +26,7 @@ class PatternLearner:
 
     MIN_CONFIDENCE_THRESHOLD = 3  # need at least N corrections before trusting a pattern
     LEARNED_CONFIDENCE = 75       # confidence score for learned classifications
+    _lock = threading.Lock()
 
     def __init__(self):
         self._ext_patterns: dict[str, Counter] = defaultdict(Counter)
@@ -76,32 +78,33 @@ class PatternLearner:
     def record_correction(self, filename: str, filepath: str, category: str,
                           old_category: str = ""):
         """Record a user correction to strengthen patterns."""
-        self._total_corrections += 1
+        with self._lock:
+            self._total_corrections += 1
 
-        # Extension pattern
-        ext = os.path.splitext(filename)[1].lower()
-        if ext:
-            self._ext_patterns[ext][category] += 1
+            # Extension pattern
+            ext = os.path.splitext(filename)[1].lower()
+            if ext:
+                self._ext_patterns[ext][category] += 1
 
-        # Token patterns (words from filename)
-        tokens = re.findall(r'[a-zA-Z]{3,}', os.path.splitext(filename)[0].lower())
-        for tok in tokens:
-            self._token_patterns[tok][category] += 1
+            # Token patterns (words from filename)
+            tokens = re.findall(r'[a-zA-Z]{3,}', os.path.splitext(filename)[0].lower())
+            for tok in tokens:
+                self._token_patterns[tok][category] += 1
 
-        # Folder structure pattern (parent folder name)
-        parent = os.path.basename(os.path.dirname(filepath)).lower()
-        if parent and parent not in ('.', ''):
-            self._folder_patterns[parent][category] += 1
+            # Folder structure pattern (parent folder name)
+            parent = os.path.basename(os.path.dirname(filepath)).lower()
+            if parent and parent not in ('.', ''):
+                self._folder_patterns[parent][category] += 1
 
-        # Size range pattern
-        try:
-            size = os.path.getsize(filepath)
-            size_bucket = self._size_bucket(size)
-            self._size_patterns[size_bucket][category] += 1
-        except OSError:
-            pass
+            # Size range pattern
+            try:
+                size = os.path.getsize(filepath)
+                size_bucket = self._size_bucket(size)
+                self._size_patterns[size_bucket][category] += 1
+            except OSError:
+                pass
 
-        self._save()
+            self._save()
 
     def record_batch_corrections(self, corrections: list[dict]):
         """Record multiple corrections at once.

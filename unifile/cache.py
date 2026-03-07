@@ -1,5 +1,5 @@
 """UniFile — Caching, corrections, undo log, and backup utilities."""
-import os, json, csv, hashlib, sqlite3, shutil, gzip
+import os, json, csv, hashlib, sqlite3, shutil, gzip, re, threading
 from datetime import datetime
 from pathlib import Path
 
@@ -74,15 +74,15 @@ def check_corrections(folder_name):
 
 # ── Classification Cache (SQLite) ─────────────────────────────────────────────
 _CACHE_DB = os.path.join(_APP_DATA_DIR, 'classification_cache.db')
-_cache_conn = None  # Persistent connection for scan performance
+_cache_local = threading.local()  # Thread-local storage for connections
 
 def _get_cache_conn():
-    """Get persistent SQLite connection, creating if needed."""
-    global _cache_conn
-    if _cache_conn is None:
-        _cache_conn = sqlite3.connect(_CACHE_DB)
-        _cache_conn.execute('PRAGMA journal_mode=WAL')
-        _cache_conn.execute('CREATE TABLE IF NOT EXISTS cache ('
+    """Get thread-local SQLite connection, creating if needed."""
+    conn = getattr(_cache_local, 'conn', None)
+    if conn is None:
+        conn = sqlite3.connect(_CACHE_DB, timeout=10)
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('CREATE TABLE IF NOT EXISTS cache ('
             'fingerprint TEXT PRIMARY KEY,'
             'category TEXT,'
             'confidence REAL,'
@@ -92,18 +92,19 @@ def _get_cache_conn():
             'topic TEXT,'
             'created_at TEXT DEFAULT CURRENT_TIMESTAMP'
         ')')
-        _cache_conn.commit()
-    return _cache_conn
+        conn.commit()
+        _cache_local.conn = conn
+    return conn
 
 def _close_cache_conn():
-    """Close persistent connection (call after scan completes)."""
-    global _cache_conn
-    if _cache_conn:
+    """Close thread-local connection (call after scan completes)."""
+    conn = getattr(_cache_local, 'conn', None)
+    if conn:
         try:
-            _cache_conn.close()
+            conn.close()
         except Exception:
             pass
-        _cache_conn = None
+        _cache_local.conn = None
 
 def _init_cache_db():
     """Initialize the cache database. Uses persistent connection."""

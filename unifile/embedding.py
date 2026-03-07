@@ -7,7 +7,10 @@ Writes classification results, tags, and AI descriptions into file metadata:
 """
 import os
 import json
+import logging
 from datetime import datetime
+
+_log = logging.getLogger(__name__)
 
 from unifile.config import _APP_DATA_DIR
 
@@ -62,7 +65,8 @@ class MetadataEmbedder:
                 success = self._embed_mp4(filepath, tags, description, category)
             elif ext == '.pdf':
                 success = self._embed_pdf(filepath, tags, description)
-        except Exception:
+        except Exception as e:
+            _log.warning("Metadata embedding failed for %s: %s", filepath, e)
             success = False
 
         self._log_entries.append({
