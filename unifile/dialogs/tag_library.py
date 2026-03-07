@@ -4,10 +4,10 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QComboBox, QMenu, QInputDialog, QFileDialog, QTreeWidget, QTreeWidgetItem,
-    QSplitter, QTextEdit, QCheckBox, QFrame
+    QSplitter, QTextEdit, QCheckBox, QFrame, QScrollArea, QGridLayout
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QColor, QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
+from PyQt6.QtGui import QColor, QAction, QPixmap, QImage
 
 from unifile.config import get_active_theme, _APP_DATA_DIR
 from unifile.tagging.library import TagLibrary
@@ -134,7 +134,7 @@ class TagLibraryPanel(QWidget):
 
         splitter.addWidget(tag_panel)
 
-        # ── Right: Entry List ─────────────────────────────────────────────
+        # ── Right: Entry List + Preview ──────────────────────────────────
         entry_panel = QWidget()
         entry_lay = QVBoxLayout(entry_panel)
         entry_lay.setContentsMargins(6, 8, 12, 8)
@@ -150,8 +150,8 @@ class TagLibraryPanel(QWidget):
         entry_header.addStretch()
 
         self.txt_entry_search = QLineEdit()
-        self.txt_entry_search.setPlaceholderText("Search files...")
-        self.txt_entry_search.setFixedWidth(200)
+        self.txt_entry_search.setPlaceholderText("Search files... (tag:Name, ext:pdf, field:key=val)")
+        self.txt_entry_search.setFixedWidth(300)
         self.txt_entry_search.textChanged.connect(self._on_entry_search)
         entry_header.addWidget(self.txt_entry_search)
 
@@ -175,6 +175,9 @@ class TagLibraryPanel(QWidget):
 
         entry_lay.addLayout(entry_header)
 
+        # Vertical splitter: Entry table (top) | Preview panel (bottom)
+        v_splitter = QSplitter(Qt.Orientation.Vertical)
+
         # Entry table
         self.tbl_entries = QTableWidget()
         self.tbl_entries.setColumnCount(5)
@@ -189,7 +192,16 @@ class TagLibraryPanel(QWidget):
         self.tbl_entries.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tbl_entries.customContextMenuRequested.connect(self._on_entry_context_menu)
         self.tbl_entries.setAlternatingRowColors(True)
-        entry_lay.addWidget(self.tbl_entries, 1)
+        self.tbl_entries.itemSelectionChanged.connect(self._on_entry_selection_changed)
+        v_splitter.addWidget(self.tbl_entries)
+
+        # ── Preview Panel ──────────────────────────────────────────────
+        self._preview_widget = self._build_preview_panel(_t)
+        v_splitter.addWidget(self._preview_widget)
+        v_splitter.setStretchFactor(0, 3)
+        v_splitter.setStretchFactor(1, 1)
+
+        entry_lay.addWidget(v_splitter, 1)
 
         # Entry detail / tag assignment bar
         detail_bar = QWidget()
@@ -234,6 +246,200 @@ class TagLibraryPanel(QWidget):
         splitter.setStretchFactor(1, 3)
 
         lay.addWidget(splitter, 1)
+
+    # ── Preview Panel ────────────────────────────────────────────────────
+
+    _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".tiff", ".tif", ".svg"}
+    _TEXT_EXTS = {".txt", ".md", ".log", ".csv", ".json", ".xml", ".yaml", ".yml",
+                  ".ini", ".cfg", ".conf", ".py", ".js", ".ts", ".html", ".css",
+                  ".bat", ".sh", ".ps1", ".c", ".cpp", ".h", ".java", ".rs", ".go"}
+
+    def _build_preview_panel(self, _t: dict) -> QWidget:
+        """Build the file preview panel shown below the entry table."""
+        panel = QFrame()
+        panel.setStyleSheet(
+            f"QFrame {{ background: {_t['bg_alt']}; border-top: 1px solid {_t['btn_bg']}; }}")
+
+        lay = QHBoxLayout(panel)
+        lay.setContentsMargins(12, 8, 12, 8)
+        lay.setSpacing(12)
+
+        # Left: Thumbnail / icon
+        self._preview_thumb = QLabel()
+        self._preview_thumb.setFixedSize(140, 140)
+        self._preview_thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._preview_thumb.setStyleSheet(
+            f"background: {_t['bg']}; border: 1px solid {_t['border']}; border-radius: 6px;")
+        lay.addWidget(self._preview_thumb)
+
+        # Middle: File info + tags
+        mid = QVBoxLayout()
+        mid.setSpacing(4)
+
+        self._preview_filename = QLabel("No file selected")
+        self._preview_filename.setStyleSheet(
+            f"color: {_t['fg_bright']}; font-size: 13px; font-weight: 700; background: transparent;")
+        self._preview_filename.setWordWrap(True)
+        mid.addWidget(self._preview_filename)
+
+        self._preview_meta = QLabel("")
+        self._preview_meta.setStyleSheet(
+            f"color: {_t['muted']}; font-size: 11px; background: transparent;")
+        self._preview_meta.setWordWrap(True)
+        mid.addWidget(self._preview_meta)
+
+        # Tag chips container
+        self._preview_tags_container = QWidget()
+        self._preview_tags_container.setStyleSheet("background: transparent;")
+        self._preview_tags_flow = QHBoxLayout(self._preview_tags_container)
+        self._preview_tags_flow.setContentsMargins(0, 2, 0, 2)
+        self._preview_tags_flow.setSpacing(4)
+        self._preview_tags_flow.addStretch()
+        mid.addWidget(self._preview_tags_container)
+
+        mid.addStretch()
+        lay.addLayout(mid, 1)
+
+        # Right: Fields / text excerpt
+        right = QVBoxLayout()
+        right.setSpacing(2)
+
+        lbl_fields = QLabel("Fields")
+        lbl_fields.setStyleSheet(
+            f"color: {_t['fg_bright']}; font-size: 11px; font-weight: 600; background: transparent;")
+        right.addWidget(lbl_fields)
+
+        self._preview_fields = QTextEdit()
+        self._preview_fields.setReadOnly(True)
+        self._preview_fields.setStyleSheet(
+            f"QTextEdit {{ background: {_t['bg']}; color: {_t['fg']}; border: 1px solid {_t['border']}; "
+            f"border-radius: 4px; font-size: 11px; padding: 4px; }}")
+        self._preview_fields.setMaximumHeight(120)
+        right.addWidget(self._preview_fields, 1)
+
+        lay.addLayout(right, 1)
+
+        return panel
+
+    def _on_entry_selection_changed(self):
+        """Update preview panel when entry selection changes."""
+        rows = set(idx.row() for idx in self.tbl_entries.selectedIndexes())
+        if len(rows) != 1:
+            self._clear_preview()
+            if len(rows) > 1:
+                self._preview_filename.setText(f"{len(rows)} files selected")
+            return
+
+        row = next(iter(rows))
+        item = self.tbl_entries.item(row, 0)
+        if not item:
+            self._clear_preview()
+            return
+
+        entry_id = item.data(Qt.ItemDataRole.UserRole)
+        entry = self._lib.get_entry(entry_id)
+        if not entry:
+            self._clear_preview()
+            return
+
+        _t = get_active_theme()
+
+        # Filename
+        self._preview_filename.setText(entry.filename)
+
+        # File metadata
+        full_path = str(entry.path)
+        meta_parts = [entry.suffix.upper().lstrip('.')]
+        if os.path.exists(full_path):
+            size = os.path.getsize(full_path)
+            if size < 1024:
+                meta_parts.append(f"{size} B")
+            elif size < 1024 * 1024:
+                meta_parts.append(f"{size / 1024:.1f} KB")
+            else:
+                meta_parts.append(f"{size / (1024 * 1024):.1f} MB")
+        if entry.date_modified:
+            meta_parts.append(f"Modified: {entry.date_modified.strftime('%Y-%m-%d %H:%M')}")
+        if entry.date_created:
+            meta_parts.append(f"Created: {entry.date_created.strftime('%Y-%m-%d')}")
+        meta_parts.append(str(entry.path))
+        self._preview_meta.setText("  |  ".join(meta_parts))
+
+        # Thumbnail
+        suffix = entry.suffix.lower()
+        if suffix in self._IMAGE_EXTS and os.path.exists(full_path):
+            pixmap = QPixmap(full_path)
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(
+                    QSize(136, 136),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation)
+                self._preview_thumb.setPixmap(scaled)
+            else:
+                self._preview_thumb.setText(suffix.upper())
+        elif suffix in self._TEXT_EXTS and os.path.exists(full_path):
+            try:
+                with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+                    excerpt = f.read(500)
+                self._preview_thumb.setText("")
+                self._preview_thumb.setStyleSheet(
+                    self._preview_thumb.styleSheet())
+                # Show text excerpt in the thumbnail area
+                lbl_text = excerpt[:80].replace('\n', ' ')
+                self._preview_thumb.setText(lbl_text[:60] + "..." if len(lbl_text) > 60 else lbl_text)
+                self._preview_thumb.setStyleSheet(
+                    f"background: {_t['bg']}; border: 1px solid {_t['border']}; border-radius: 6px; "
+                    f"color: {_t['muted']}; font-size: 9px; padding: 6px;")
+            except Exception:
+                self._preview_thumb.setText(suffix.upper())
+        else:
+            self._preview_thumb.setPixmap(QPixmap())
+            self._preview_thumb.setText(suffix.upper().lstrip('.') if suffix else "FILE")
+            self._preview_thumb.setStyleSheet(
+                f"background: {_t['bg']}; border: 1px solid {_t['border']}; border-radius: 6px; "
+                f"color: {_t['muted']}; font-size: 18px; font-weight: 700;")
+
+        # Tags as colored chips
+        self._clear_tag_chips()
+        from unifile.tagging.models import TAG_COLORS
+        for tag in sorted(entry.tags, key=lambda t: t.name):
+            color = TAG_COLORS.get(tag.color_slug or "blue", "#3b82f6")
+            chip = QLabel(tag.name)
+            chip.setStyleSheet(
+                f"background: {color}22; color: {color}; border: 1px solid {color}44; "
+                f"border-radius: 3px; padding: 1px 6px; font-size: 10px; font-weight: 600;")
+            # Insert before the stretch
+            self._preview_tags_flow.insertWidget(
+                self._preview_tags_flow.count() - 1, chip)
+
+        # Fields
+        fields = self._lib.get_entry_fields(entry_id)
+        if fields:
+            lines = []
+            for key, value in fields.items():
+                if value:
+                    lines.append(f"<b>{key.replace('_', ' ').title()}:</b> {value}")
+            self._preview_fields.setHtml("<br>".join(lines) if lines else
+                                          "<i style='color: gray;'>No fields set</i>")
+        else:
+            self._preview_fields.setHtml("<i style='color: gray;'>No fields set</i>")
+
+    def _clear_preview(self):
+        _t = get_active_theme()
+        self._preview_filename.setText("No file selected")
+        self._preview_meta.setText("")
+        self._preview_thumb.setPixmap(QPixmap())
+        self._preview_thumb.setText("")
+        self._preview_thumb.setStyleSheet(
+            f"background: {_t['bg']}; border: 1px solid {_t['border']}; border-radius: 6px;")
+        self._clear_tag_chips()
+        self._preview_fields.setHtml("")
+
+    def _clear_tag_chips(self):
+        while self._preview_tags_flow.count() > 1:
+            item = self._preview_tags_flow.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
     # ── Library Operations ────────────────────────────────────────────────
 
