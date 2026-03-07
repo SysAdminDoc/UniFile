@@ -32,6 +32,10 @@ from unifile.photos import (
     _reverse_geocode, _compute_blur_score, FaceDB, _convert_image_to_jpg
 )
 from unifile.duplicates import ProgressiveDuplicateDetector, ConflictResolver
+from unifile.nexa_backend import (
+    is_nexa_available, nexa_classify_folder, nexa_classify_file,
+    load_nexa_settings,
+)
 from unifile.files import (
     _load_pc_categories, _build_ext_map, _classify_pc_item, _classify_pc_folder,
     _ScanCache, _JUNK_PATTERNS, _extract_filename_date, _detect_mime_category
@@ -39,6 +43,31 @@ from unifile.files import (
 from unifile.engine import RuleEngine, RenameTemplateEngine
 from unifile.plugins import PluginManager
 from unifile.models import RenameItem, CategorizeItem, FileItem
+
+
+def _get_ai_backend() -> str:
+    """Return 'nexa' if Nexa is enabled and available, else 'ollama'."""
+    nexa_settings = load_nexa_settings()
+    if nexa_settings.get('enabled') and is_nexa_available():
+        return 'nexa'
+    return 'ollama'
+
+
+def _ai_classify_folder(folder_name: str, folder_path: str = None,
+                         log_cb=None) -> dict:
+    """Route folder classification to the active AI backend."""
+    backend = _get_ai_backend()
+    if backend == 'nexa':
+        return nexa_classify_folder(folder_name, folder_path,
+                                     settings=load_nexa_settings(),
+                                     log_cb=log_cb)
+    else:
+        settings = load_ollama_settings()
+        return ollama_classify_folder(folder_name, folder_path,
+                                      url=settings['url'],
+                                      model=settings['model'],
+                                      log_cb=log_cb)
+
 
 # ── Safe merge (standalone for use in workers) ─────────────────────────────────
 def safe_merge_move(src, dst, log_cb=None, check_hashes=False):
