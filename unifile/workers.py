@@ -38,7 +38,8 @@ from unifile.nexa_backend import (
 )
 from unifile.files import (
     _load_pc_categories, _build_ext_map, _classify_pc_item, _classify_pc_folder,
-    _ScanCache, _JUNK_PATTERNS, _extract_filename_date, _detect_mime_category
+    _ScanCache, _JUNK_PATTERNS, _extract_filename_date, _detect_mime_category,
+    load_directory_config, merge_categories,
 )
 from unifile.engine import RuleEngine, RenameTemplateEngine
 from unifile.plugins import PluginManager
@@ -1257,7 +1258,14 @@ class ScanFilesWorker(QThread):
     def run(self):
         self.phase.emit("Scanning", "Collecting files and folders…")
         src = Path(self.src_dir)
-        ext_map = _build_ext_map(self.categories)
+        # Check for per-directory config (.unifile.conf or .classifier.conf)
+        dir_config = load_directory_config(str(src))
+        if dir_config:
+            effective_cats = merge_categories(self.categories, dir_config)
+            self.log.emit(f"  Found local config — merged {len(dir_config)} category overrides")
+        else:
+            effective_cats = self.categories
+        ext_map = _build_ext_map(effective_cats)
         items = self._collect(src)
         if not items:
             self.log.emit("No files/folders found.")
