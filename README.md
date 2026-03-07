@@ -60,6 +60,21 @@ Full tag-based file management adapted from TagStudio's SQLAlchemy models:
 
 The tag library stores data in `.unifile/unifile_tags.sqlite` within your library directory — non-destructive, no files are modified.
 
+### Media Lookup (NEW in v8.0)
+
+Movie and TV metadata lookup powered by TMDb, OMDb, and TVMaze APIs (adapted from mnamer):
+
+| Feature | Description |
+|---------|-------------|
+| TMDb Search | Search movies by title/year with poster art and full details |
+| TVMaze Search | Search TV shows, browse full episode lists by season |
+| OMDb Fallback | Secondary movie lookup via IMDb IDs |
+| guessit Parser | Parse media filenames to auto-detect title, year, season, episode |
+| Poster Preview | Full poster art display with synopsis, genres, and external IDs |
+| Apply to Tags | Push metadata (title, synopsis, genres, IMDb/TMDb IDs) to Tag Library entries |
+| Copy Metadata | One-click copy of all metadata fields to clipboard |
+| Cached Requests | API responses cached for 6 days to reduce API calls |
+
 ### AI Classification
 
 | Feature | Description |
@@ -119,7 +134,7 @@ The tag library stores data in `.unifile/unifile_tags.sqlite` within your librar
 |---------|-------------|
 | 6 Color Themes | Steam Dark, Catppuccin Mocha, OLED Black, GitHub Dark, Nord, Dracula |
 | Live Theme Preview | See themes applied instantly before committing |
-| Sidebar Navigation | Left panel with Organizer, Cleanup, Duplicates, Tag Library sections |
+| Sidebar Navigation | Left panel with Organizer, Cleanup, Duplicates, Tag Library, Media Lookup |
 | Before/After Preview | Visual directory tree comparison |
 | Dashboard Chart | Interactive category distribution with drag-reassign |
 | File Preview Panel | Split-view with image preview, text excerpt, metadata |
@@ -168,8 +183,11 @@ unifile/
 │   ├── db.py            # SQLAlchemy engine, Base, PathType
 │   ├── models.py        # Tag, Entry, Folder, ValueType ORM models
 │   └── library.py       # TagLibrary CRUD API
+├── media/
+│   └── providers.py     # TMDb, OMDb, TVMaze API + guessit parser
 └── dialogs/
     ├── tag_library.py   # Tag Library browser panel
+    ├── media_lookup.py  # Media Lookup panel (movie/TV search)
     ├── cleanup.py       # Cleanup results dialog
     ├── duplicates.py    # Duplicate comparison dialog
     ├── editors.py       # Rules/category editors
@@ -225,7 +243,7 @@ All dependencies auto-installed: PyQt6, SQLAlchemy, rapidfuzz, psd-tools, Pillow
 
 ## Roadmap
 
-- [ ] **Media Lookup** — TMDb/TVDb metadata panel (from mnamer's provider system)
+- [x] **Media Lookup** — TMDb/TVDb/TVMaze metadata panel (from mnamer's provider system)
 - [ ] **Nexa SDK Backend** — Alternative AI backend with Llama 3.2 + LLaVA vision (from Local-File-Organizer)
 - [ ] **Category Presets** — Per-directory config and extension-based presets (from classifier)
 - [ ] **Search Query Language** — Advanced tag search with boolean operators

@@ -63,6 +63,7 @@ from unifile.dialogs import (
     ProtectedPathsDialog, ThemePickerDialog, WatchHistoryDialog
 )
 from unifile.dialogs.tag_library import TagLibraryPanel
+from unifile.dialogs.media_lookup import MediaLookupPanel
 from unifile.widgets import (
     CategoryBarChart, FlowLayout, ThumbnailLoader, ThumbnailCard,
     _ThumbSignals, PhotoMapWidget, WatchSettingsDialog, WatchModeManager,
@@ -82,6 +83,7 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
     OP_SMART = 2   # Categorize + rename from project files (combined)
     OP_FILES = 3   # PC File Organizer
     OP_TAGS  = 4   # Tag Library (from TagStudio integration)
+    OP_MEDIA = 5   # Media Lookup (from mnamer integration)
 
     # Classification method → display color (shared by Categorize + PC Files modes)
     _METHOD_COLORS_CAT = {
@@ -307,6 +309,7 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
             ("Categorize + Smart Rename",     self.OP_SMART),
             ("PC File Organizer",             self.OP_FILES),
             ("Tag Library",                   self.OP_TAGS),
+            ("Media Lookup",                  self.OP_MEDIA),
         ]
         for label, op_idx in _nav_items_organize:
             btn = QPushButton(f"  {label}")
@@ -1073,6 +1076,11 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
         self._tag_panel = TagLibraryPanel()
         self._content_stack.addWidget(self._tag_panel)  # index 3
 
+        # ── Page 4: Media Lookup (from mnamer integration) ─────────────
+        self._media_panel = MediaLookupPanel()
+        self._media_panel.metadata_applied.connect(self._on_media_metadata_applied)
+        self._content_stack.addWidget(self._media_panel)  # index 4
+
         self._content_stack.setCurrentIndex(0)
         right_col.addWidget(self._content_stack, 1)
 
@@ -1602,9 +1610,12 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
             elif kind == 'tool':
                 btn.setChecked(False)
 
-        # Tag Library gets its own content stack page
+        # Tag Library and Media Lookup get their own content stack pages
         if op_idx == self.OP_TAGS:
             self._content_stack.setCurrentIndex(3)
+            return
+        if op_idx == self.OP_MEDIA:
+            self._content_stack.setCurrentIndex(4)
             return
 
         # Show organizer page
@@ -1760,6 +1771,58 @@ class UniFile(ScanMixin, ApplyMixin, QMainWindow):
     def _toggle_log(self, checked):
         self.txt_log.setVisible(checked)
         self.btn_toggle_log.setText("Console Log  [hide]" if checked else "Console Log  [show]")
+
+    # ═══ MEDIA METADATA → TAG LIBRARY ═══════════════════════════════════════
+    def _on_media_metadata_applied(self, meta: dict):
+        """Apply media metadata from Media Lookup to the Tag Library."""
+        if not hasattr(self, '_tag_panel') or not self._tag_panel.library.is_open:
+            self._log("  Media Lookup: Tag Library not open — metadata not saved")
+            return
+        lib = self._tag_panel.library
+        media_type = meta.get("media_type", "")
+        title = meta.get("title", "") or meta.get("series", "")
+
+        # Create a genre tag for each genre
+        for genre in meta.get("genres", []):
+            tag = lib.get_tag_by_name(genre)
+            if not tag:
+                lib.add_tag(genre, is_category=True, color_slug="purple")
+
+        # Store metadata fields on any selected entries in the tag panel
+        fields_map = {
+            "title": "title",
+            "synopsis": "ai_summary",
+            "id_imdb": "imdb_id",
+            "id_tmdb": "tmdb_id",
+        }
+        if media_type == "episode":
+            fields_map["series"] = "series"
+
+        saved = 0
+        rows = set(idx.row() for idx in self._tag_panel.tbl_entries.selectedIndexes())
+        for r in rows:
+            item = self._tag_panel.tbl_entries.item(r, 0)
+            if not item:
+                continue
+            entry_id = item.data(Qt.ItemDataRole.UserRole)
+            for src_key, field_key in fields_map.items():
+                val = meta.get(src_key, "")
+                if val:
+                    lib.set_entry_field(entry_id, field_key, str(val))
+            # Apply genre tags
+            for genre in meta.get("genres", []):
+                tag = lib.get_tag_by_name(genre)
+                if tag:
+                    lib.add_tags_to_entry(entry_id, [tag.id])
+            saved += 1
+
+        if saved:
+            self._log(f"  Media Lookup: applied metadata to {saved} entries")
+            self._tag_panel._refresh_tags()
+            self._tag_panel._refresh_entries()
+            self._tag_panel._update_stats()
+        else:
+            self._log(f"  Media Lookup: {title} — metadata ready (select entries in Tag Library to apply)")
 
     _LOG_MAX_BLOCKS = 10000
 
