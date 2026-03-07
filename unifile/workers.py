@@ -16,7 +16,8 @@ from unifile.cache import (
 from unifile.categories import (
     get_all_categories, get_all_category_names, is_generic_aep, _score_aep
 )
-from unifile.naming import _normalize, _beautify_name, _smart_name
+from unifile.naming import _normalize, _beautify_name, _smart_name, _ASSET_FOLDER_NAMES
+from unifile.bootstrap import HAS_RAPIDFUZZ, HAS_PSD_TOOLS
 from unifile.classifier import (
     categorize_folder, classify_by_extensions, tiered_classify
 )

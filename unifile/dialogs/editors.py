@@ -624,6 +624,7 @@ class _FileBrowserDialog(QDialog):
         self._populate(folder_path)
 
     def _build_ui(self, current_name):
+        _t = get_active_theme()
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
         layout.setContentsMargins(12, 12, 12, 12)
