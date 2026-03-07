@@ -93,6 +93,128 @@ def _build_ext_map(categories: list) -> dict:
     return m
 
 
+# ── Classifier-format config import/export ───────────────────────────────────
+# Compatible with bhrigu123/classifier's .classifier.conf format:
+#   Category: ext1, ext2, ext3
+
+DIRCONF_FILENAME = '.unifile.conf'
+
+
+def import_classifier_config(config_path: str) -> list:
+    """Import a classifier-format config file into UniFile category list.
+
+    Format: 'Category: ext1, ext2, ext3' (one per line).
+    Lines starting with IGNORE are treated as ignored extensions.
+    """
+    categories = []
+    ignored_exts = []
+    with open(config_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if ':' not in line:
+                continue
+            parts = line.split(':', 1)
+            name = parts[0].strip()
+            exts = [e.strip().lower().lstrip('.') for e in parts[1].split(',') if e.strip()]
+            if name.upper() == 'IGNORE':
+                ignored_exts.extend(exts)
+                continue
+            categories.append({
+                'name': name,
+                'color': '#6b7280',
+                'rename_template': '',
+                'extensions': exts,
+            })
+    return categories
+
+
+def export_classifier_config(categories: list, output_path: str):
+    """Export UniFile categories to classifier-format config file."""
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write('# UniFile category config (classifier-compatible format)\n')
+        for cat in categories:
+            exts = cat.get('extensions', [])
+            if exts:
+                f.write(f"{cat['name']}: {', '.join(exts)}\n")
+
+
+def load_directory_config(directory: str) -> list | None:
+    """Load per-directory .unifile.conf if it exists.
+
+    Returns category list or None if no local config found.
+    Supports both classifier format (Category: ext1, ext2) and
+    UniFile extended format (Category:OutputPath: ext1, ext2).
+    """
+    conf_path = os.path.join(directory, DIRCONF_FILENAME)
+    # Also check for .classifier.conf for backwards compatibility
+    if not os.path.exists(conf_path):
+        conf_path = os.path.join(directory, '.classifier.conf')
+    if not os.path.exists(conf_path):
+        return None
+
+    categories = []
+    with open(conf_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split(':')
+            if len(parts) < 2:
+                continue
+            if len(parts) == 3:
+                # Extended format: Category:OutputPath:ext1,ext2
+                name = parts[0].strip()
+                output_dir = parts[1].strip()
+                exts = [e.strip().lower().lstrip('.') for e in parts[2].split(',') if e.strip()]
+                categories.append({
+                    'name': name,
+                    'color': '#6b7280',
+                    'rename_template': '',
+                    'extensions': exts,
+                    'output_dir': output_dir,
+                })
+            else:
+                # Standard format: Category: ext1, ext2
+                name = parts[0].strip()
+                if name.upper() == 'IGNORE':
+                    continue
+                exts = [e.strip().lower().lstrip('.') for e in parts[1].split(',') if e.strip()]
+                categories.append({
+                    'name': name,
+                    'color': '#6b7280',
+                    'rename_template': '',
+                    'extensions': exts,
+                })
+    return categories if categories else None
+
+
+def merge_categories(base: list, override: list) -> list:
+    """Merge override categories into base, adding new ones and extending existing."""
+    merged = [dict(c) for c in base]
+    name_map = {c['name'].lower(): i for i, c in enumerate(merged)}
+
+    for ov in override:
+        key = ov['name'].lower()
+        if key in name_map:
+            # Extend existing category with new extensions
+            idx = name_map[key]
+            existing_exts = set(merged[idx].get('extensions', []))
+            for ext in ov.get('extensions', []):
+                existing_exts.add(ext)
+            merged[idx]['extensions'] = sorted(existing_exts)
+            # Override output_dir if specified
+            if 'output_dir' in ov:
+                merged[idx]['output_dir'] = ov['output_dir']
+        else:
+            # Add new category
+            merged.append(dict(ov))
+            name_map[key] = len(merged) - 1
+
+    return merged
+
+
 
 # ── Junk / temp file patterns — skip during scan ────────────────────────────
 _JUNK_PATTERNS = re.compile(
