@@ -257,6 +257,15 @@ python -m unifile                                 # Alternative launch
 
 All dependencies auto-installed: PyQt6, SQLAlchemy, rapidfuzz, psd-tools, Pillow, and more.
 
+## Related Tools
+
+| Tool | Best For |
+|------|----------|
+| **UniFile** (this repo) | Everything — AI classification, tag library, media lookup, vision AI, cleanup, duplicates, photo organization |
+| [FileOrganizer](https://github.com/SysAdminDoc/FileOrganizer) | Focused file organization without the tag library overhead — lighter, simpler, same core classification engine |
+
+UniFile is built directly on FileOrganizer's foundation. If you only need folder sorting and cleanup without tag-based library management or media metadata, [FileOrganizer](https://github.com/SysAdminDoc/FileOrganizer) is the lighter option.
+
 ## Roadmap
 
 - [x] **Media Lookup** — TMDb/TVDb/TVMaze metadata panel (from mnamer's provider system)
