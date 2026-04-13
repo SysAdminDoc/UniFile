@@ -1,0 +1,6 @@
+importlib.util
+mimetypes
+PyQt6
+pytest
+unifile
+xml.etree.ElementTree
