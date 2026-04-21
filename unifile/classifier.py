@@ -158,6 +158,16 @@ EXTENSION_CATEGORY_MAP = [
     ({'.afpub'},                                 "Affinity - Publisher Layouts",      88),
     ({'.kra'},                                   "Clipart & Illustrations",           78),
     ({'.clip'},                                  "Clipart & Illustrations",           80),
+    # v8.7.0 additions
+    ({'.rpp'},                                   "Music Production - DAW Projects",   85),
+    ({'.band', '.bandproject'},                  "Music Production - DAW Projects",   83),
+    ({'.fcpbundle', '.fcpxml'},                  "Final Cut Pro - Templates",         90),
+    ({'.aco'},                                   "Photoshop - Gradients & Swatches",  88),
+    ({'.brushset'},                              "Procreate - Brushes & Stamps",      88),
+    ({'.hip', '.hiplc', '.hipnc'},               "3D",                                85),
+    ({'.ma', '.mb'},                             "3D",                                82),
+    ({'.max'},                                   "3D",                                82),
+    ({'.stl', '.3mf'},                           "3D Printing - STL Files",           85),
 ]
 
 def classify_by_extensions(folder_path: str) -> tuple:
@@ -618,6 +628,7 @@ def infer_asset_type(initial_category: str, initial_confidence: float,
 DESIGN_TEMPLATE_EXTS = {
     '.psd', '.psb', '.ai', '.indd', '.idml', '.eps', '.fig',
     '.afdesign', '.afphoto', '.afpub', '.sketch', '.xd', '.kra', '.clip',
+    '.fcpbundle', '.fcpxml',
 }
 VIDEO_TEMPLATE_EXTS = {
     '.aep', '.aet', '.prproj', '.mogrt', '.drp', '.drfx',
@@ -675,7 +686,7 @@ FILENAME_ASSET_MAP = [
     # Photography
     (["raw photo", "raw files", "camera raw", "nef", "cr2", "arw", "raw pack"], "Photography - RAW Files", 82),
     # Calendars & planners
-    (["calendar template", "planner template", "daily planner", "weekly planner", "yearly planner"], "Calendars & Planners", 85),
+    (["calendar template", "planner template", "daily planner", "weekly planner", "yearly planner", "monthly planner", "wall calendar", "desk calendar", "editorial calendar"], "Calendar", 85),
     # General
     (["icon pack", "icon set", "icon bundle", "web icons", "app icons"], "Icons & Symbols", 87),
     (["pattern design", "seamless pattern", "repeat pattern", "surface pattern"], "Patterns - Seamless", 82),
@@ -698,6 +709,14 @@ FILENAME_ASSET_MAP = [
     # Sample packs / music production
     (["sample pack", "loop pack", "one shot pack", "drum kit", "drum samples", "splice sample", "loopmasters"], "Stock Music & Audio", 80),
     (["midi pack", "midi files", "midi kit"], "Music Production - DAW Projects", 80),
+    # v8.7.0 additions
+    (["canva template", "canva design", "canva graphic", "canva social", "canva presentation", "canva flyer", "canva resume", "canva story", "canva post", "canva bundle", "canva kit"], "Canva - Templates", 88),
+    (["final cut", "fcpx template", "final cut template", "fcpx effect", "final cut effect", "fcpx transition", "final cut title", "fcpx plugin", "final cut generator", "fcp template"], "Final Cut Pro - Templates", 88),
+    (["3d print", "3d printing", "stl file", "stl model", "fdm print", "resin print", "tabletop miniature", "miniature stl", "print in place", "functional print"], "3D Printing - STL Files", 85),
+    (["filmora", "filmora template", "filmora effect", "filmora title", "filmora transition"], "After Effects - Templates", 80),
+    (["pond5", "storyblocks", "videoblocks", "epidemic sound", "artlist music", "musicbed"], "Stock Music & Audio", 78),
+    (["looperman", "splice sample", "zapsplat", "soundsnap", "freesound"], "Sound Effects & SFX", 78),
+    (["aejuice", "motionbro", "mixkit", "envato elements"], "After Effects - Templates", 78),
 ]
 
 # Categories that, when detected as "topic" and design files are also present,
@@ -872,6 +891,11 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
     midi_exts = sum(ext.get(e, 0) for e in ['.mid', '.midi'])
     lr_exts = sum(ext.get(e, 0) for e in ['.lrtemplate', '.xmp'])
     archive_exts = sum(ext.get(e, 0) for e in ['.zip', '.rar', '.7z', '.tgz'])
+    lut_exts = sum(ext.get(e, 0) for e in ['.cube', '.3dl', '.lut'])
+    stl_exts = sum(ext.get(e, 0) for e in ['.stl', '.3mf'])
+    png_count = ext.get('.png', 0)
+    svg_count = ext.get('.svg', 0)
+    subs = scan.get('subfolder_names', [])
 
     # ── Archive-heavy folders: use archive name inference ─────────────────
     archive_stems = scan.get('archive_stems', [])
@@ -909,7 +933,22 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
             return ('InDesign - Templates & Layouts', 65, f"composition:InDesign files found")
         return ('Forms & Documents', 55, f"composition:{doc_exts} document files")
     if image_exts >= 8 and not any(ext.get(e, 0) for e in ['.aep', '.psd', '.prproj', '.ai']):
+        # Icon pack: many small PNG/SVG files, often in /icons/ subfolder
+        if (png_count + svg_count) >= 8 and any(s in subs for s in ['icons', 'icon']):
+            return ('Icons & Symbols', 68, f"composition:{png_count + svg_count} PNG/SVG in icons/ subfolder")
+        # Texture pack: many images in /textures/ subfolder
+        if any(s in subs for s in ['textures', 'texture', 'materials', 'material']):
+            return ('3D - Materials & Textures', 65, f"composition:{image_exts} images in textures/ subfolder")
         return ('Backgrounds & Textures', 55, f"composition:{image_exts} images, no project files")
+    # LUT/color grading packs: predominantly .cube/.3dl/.lut files
+    if lut_exts >= 2 and lut_exts / total >= 0.3:
+        return ('Color Grading & LUTs', 78, f"composition:{lut_exts} LUT files ({lut_exts/total:.0%})")
+    # 3D printing: predominantly STL/3MF files
+    if stl_exts >= 2 and stl_exts / total >= 0.4:
+        return ('3D Printing - STL Files', 75, f"composition:{stl_exts} STL/3MF files ({stl_exts/total:.0%})")
+    # Icon pack: many PNG/SVG without a clear project-file anchor
+    if png_count + svg_count >= 20 and (png_count + svg_count) / total >= 0.7:
+        return ('Icons & Symbols', 62, f"composition:{png_count + svg_count} PNG/SVG ({(png_count + svg_count)/total:.0%})")
     return (None, 0, '')
 
 
