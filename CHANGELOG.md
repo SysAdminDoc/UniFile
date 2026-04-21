@@ -2,7 +2,39 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v8.4.0]
+## [v8.5.0]
+
+- Fixed: **Critical category name mismatches** — ~19 category names in `archive_inference.py` and `FILENAME_ASSET_MAP` didn't match actual category names in `categories.py`, causing files to land in wrong/nonexistent folders. All corrected:
+  - `'YouTube & Streaming'` → `'YouTube & Video Platform'`; twitch/stream rules → `'Twitch & Streaming'`
+  - `'Web Templates & HTML'` → `'Website Design'`
+  - `'Email Templates'` → `'Email & Newsletter'`
+  - `'Banners & Ads'` → `'Banners'`
+  - `'Icons & Icon Packs'` → `'Icons & Symbols'`
+  - `'Patterns & Seamless'` → `'Patterns - Seamless'`
+  - `'Photo Effects & Overlays'` → `'Overlays & Effects'`
+  - `'Infographics & Data Viz'` → `'Infographic'`
+  - `'Illustrations & Clipart'` → `'Clipart & Illustrations'`
+  - `'Coupons & Vouchers'` → `'Gift Voucher & Coupon'`
+  - `'Apparel & Merchandise'` → `'Clothing & Apparel'`
+  - `'Catalogs & Lookbooks'` → `'InDesign - Magazine & Editorial'`
+  - `'Book Covers & eBook'` → `'Book & Literature'`
+  - `'Logos & Branding'` → `'Logo & Identity'`
+  - `'Mockups'` (generic) → `'Photoshop - Mockups'`; device/apparel/packaging/branding/print/signage → specific `Mockups - *` subcategories
+  - `'Social Media Templates'` → `'Social Media'`
+  - `'Certificates & Awards'` → `'Certificate'`
+  - `'Resume & CV Templates'` → `'Resume & CV'`
+  - `'Menus & Food Templates'` → `'Menu Design'`
+  - `'Wedding & Events'` → `'Wedding'`
+  - Letterhead/stationery rules → `'Letterhead & Stationery'`
+  - Rollup banner rules → `'Rollup Banners & Signage'`
+- Fixed: **Archive inference skipped on topic-named folders** — `_apply_context_from_scan()` exited early at `has_design_files=False` before archive inference could fire. Archive check now runs before that gate so folders like "Christmas" full of Videohive ZIPs classify correctly
+- Fixed: **Archive threshold too strict** — changed from `>= 25%` to `>= 5 archives OR >= 15%` so preview images don't dilute the archive ratio
+- Added: **AudioJungle marketplace rules** — `audiojungle` → `'Stock Music & Audio'`; sfx variants → `'Sound Effects & SFX'`
+- Added: **ThemeForest/CodeCanyon rules** — `themeforest`/WordPress themes → `'Website Design'`
+- Added: **Numeric Envato ID prefix rules** (7-9 digit IDs like `25461234-wedding-slideshow.zip`) — 12 specific AE subcategory rules + generic catch-all `'After Effects - Templates'`
+- Added: WordPress/WooCommerce/Elementor template rules → `'Website Design'`
+
+
 
 - Added: **Archive name inference engine** (`unifile/archive_inference.py`) — 140+ regex rules classify ZIP/RAR/7z folders by filename patterns (marketplace-aware: Videohive, GraphicRiver, MotionElements; AE subcategories, print, social, seasonal, audio, game dev, 3D, and more)
 - Added: `aggregate_archive_names(stems)` voting system — samples all archive names in a folder, computes consensus category with confidence scaling
