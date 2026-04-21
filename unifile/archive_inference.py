@@ -43,7 +43,7 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'videohive.{0,60}countdown',                                            'After Effects - Countdown & Timer',      87),
     (r'videohive.{0,60}(glitch|distortion)',                                  'Glitch & Distortion FX',                 85),
     (r'videohive.{0,60}(instagram|story|stories|social.?media)',              'After Effects - Social Media Templates', 87),
-    (r'videohive.{0,60}youtube',                                              'YouTube & Streaming',                    82),
+    (r'videohive.{0,60}youtube',                                              'YouTube & Video Platform',               82),
     (r'videohive.{0,60}(particle|particles|dust|snow|sparkle)',               'After Effects - Particles & FX',         85),
     (r'videohive.{0,60}(cinematic|trailer|epic|film)',                        'After Effects - Cinematic & Trailers',   84),
     (r'videohive.{0,60}(lyric|music.?video)',                                 'After Effects - Lyric Video',            85),
@@ -52,29 +52,54 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'videohive.{0,60}(real.?estate)',                                       'Real Estate',                            80),
     (r'videohive',                                                            'After Effects - Templates',              75),
 
+    # ── AUDIOJUNGLE (music/sfx marketplace) ───────────────────────────────
+    (r'audiojungle.{0,60}(sfx|sound.?effect)',                                'Sound Effects & SFX',                    88),
+    (r'audiojungle',                                                          'Stock Music & Audio',                    82),
+
+    # ── THEMEFOREST / CODECANYON (web themes & code marketplace) ──────────
+    (r'themeforest.{0,60}(wordpress|woocommerce|elementor|wp.?theme)',        'Website Design',                         88),
+    (r'themeforest',                                                          'Website Design',                         80),
+    (r'codecanyon',                                                           'Website Design',                         75),
+
     # ── GRAPHICRIVER / ENVATO ELEMENTS (print/graphics marketplace) ───────
     (r'(graphicriver|graphicstock).{0,60}flyer',                              'Flyers & Print',                         88),
     (r'(graphicriver|graphicstock).{0,60}brochure',                           'Flyers & Print',                         87),
     (r'(graphicriver|graphicstock).{0,60}business.?card',                     'Business Cards',                         90),
-    (r'(graphicriver|graphicstock).{0,60}logo',                               'Logos & Branding',                       86),
-    (r'(graphicriver|graphicstock).{0,60}(resume|cv)',                        'Resume & CV Templates',                  88),
-    (r'(graphicriver|graphicstock).{0,60}mockup',                             'Mockups',                                88),
+    (r'(graphicriver|graphicstock).{0,60}logo',                               'Logo & Identity',                        86),
+    (r'(graphicriver|graphicstock).{0,60}(resume|cv)',                        'Resume & CV',                            88),
+    (r'(graphicriver|graphicstock).{0,60}mockup',                             'Photoshop - Mockups',                    88),
     (r'(graphicriver|graphicstock).{0,60}(poster|billboard)',                 'Posters',                                85),
     (r'(graphicriver|graphicstock).{0,60}invitation',                         'Invitations & Save the Date',            88),
-    (r'(graphicriver|graphicstock).{0,60}certificate',                        'Certificates & Awards',                  88),
-    (r'(graphicriver|graphicstock).{0,60}social',                             'Social Media Templates',                 85),
+    (r'(graphicriver|graphicstock).{0,60}certificate',                        'Certificate',                            88),
+    (r'(graphicriver|graphicstock).{0,60}social',                             'Social Media',                           85),
     (r'(graphicriver|graphicstock).{0,60}(powerpoint|presentation)',          'Presentations & PowerPoint',             87),
-    (r'(graphicriver|graphicstock).{0,60}infographic',                        'Infographics & Data Viz',                87),
-    (r'(graphicriver|graphicstock).{0,60}menu',                               'Menus & Food Templates',                 85),
-    (r'(graphicriver|graphicstock).{0,60}banner',                             'Banners & Ads',                          83),
-    (r'(graphicriver|graphicstock).{0,60}(t.?shirt|apparel)',                 'Apparel & Merchandise',                  83),
-    (r'(graphicriver|graphicstock).{0,60}(catalog|catalogue)',                'Catalogs & Lookbooks',                   83),
+    (r'(graphicriver|graphicstock).{0,60}infographic',                        'Infographic',                            87),
+    (r'(graphicriver|graphicstock).{0,60}menu',                               'Menu Design',                            85),
+    (r'(graphicriver|graphicstock).{0,60}banner',                             'Banners',                                83),
+    (r'(graphicriver|graphicstock).{0,60}(t.?shirt|apparel)',                 'Clothing & Apparel',                     83),
+    (r'(graphicriver|graphicstock).{0,60}(catalog|catalogue)',                'InDesign - Magazine & Editorial',        83),
     (r'graphicriver|graphicstock',                                            'Flyers & Print',                         70),
 
     # ── MOTIONELEMENTS / OTHER VIDEO MARKETPLACES ─────────────────────────
     (r'motionelements',                                                       'After Effects - Templates',              72),
     (r'(motion.?array|motionarray)',                                          'After Effects - Templates',              73),
     (r'shareae|ae\.com',                                                      'After Effects - Templates',              72),
+
+    # ── NUMERIC ENVATO ITEM ID PREFIX (7-9 digit IDs like 25461234-...) ───
+    # Specific sub-types come before the generic catch-all
+    (r'^\d{6,9}[\-_].{0,80}logo.{0,40}(reveal|sting|animation|intro)',       'After Effects - Logo Reveals',           83),
+    (r'^\d{6,9}[\-_].{0,80}lower.{0,5}third',                                 'After Effects - Lower Thirds',           84),
+    (r'^\d{6,9}[\-_].{0,80}(promo|commercial)',                               'After Effects - Explainer & Promo',      82),
+    (r'^\d{6,9}[\-_].{0,80}(title|titles|kinetic)',                           'After Effects - Titles & Typography',    82),
+    (r'^\d{6,9}[\-_].{0,80}transition',                                       'After Effects - Transitions',            83),
+    (r'^\d{6,9}[\-_].{0,80}broadcast',                                        'After Effects - Broadcast Package',      83),
+    (r'^\d{6,9}[\-_].{0,80}wedding',                                          'After Effects - Wedding & Events',       82),
+    (r'^\d{6,9}[\-_].{0,80}(social.?media|instagram|story)',                  'After Effects - Social Media Templates', 82),
+    (r'^\d{6,9}[\-_].{0,80}youtube',                                          'YouTube & Video Platform',               78),
+    (r'^\d{6,9}[\-_].{0,80}(glitch|distortion)',                              'Glitch & Distortion FX',                 80),
+    (r'^\d{6,9}[\-_].{0,80}slideshow',                                        'After Effects - Slideshows',             83),
+    (r'^\d{6,9}[\-_].{0,80}(intro|opener)',                                   'After Effects - Intros & Openers',       82),
+    (r'^\d{6,9}[\-_]',                                                        'After Effects - Templates',              65),
 
     # ── TOOL-SPECIFIC (high-confidence standalone) ────────────────────────
     (r'lightroom.{0,30}(preset|profile|filter)',                              'Lightroom - Presets & Profiles',         90),
@@ -103,14 +128,19 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'(font|typeface|typography).{0,20}(pack|bundle|family|set)',            'Fonts & Typography',                     88),
     (r'\bfont\b',                                                             'Fonts & Typography',                     78),
 
-    # ── MOCKUPS ────────────────────────────────────────────────────────────
-    (r'(device|phone|iphone|laptop|apparel|t.?shirt|mug|bag|packaging).{0,20}mockup', 'Mockups', 90),
-    (r'mockup',                                                               'Mockups',                                87),
+    # ── MOCKUPS (specific before generic) ─────────────────────────────────
+    (r'(device|phone|iphone|ipad|laptop|macbook|monitor|screen).{0,20}mockup', 'Mockups - Devices',                   90),
+    (r'(t.?shirt|hoodie|apparel|clothing|hat|cap).{0,20}mockup',              'Mockups - Apparel',                     90),
+    (r'(packaging|box|can|bottle|bag|pouch|label).{0,20}mockup',             'Mockups - Packaging',                   90),
+    (r'(branding|stationery|identity|logo).{0,20}mockup',                    'Mockups - Branding',                    90),
+    (r'(flyer|poster|book|magazine|brochure|business.?card).{0,20}mockup',   'Mockups - Print',                       88),
+    (r'(sign|signage|billboard|storefront|window).{0,20}mockup',             'Mockups - Signage',                     88),
+    (r'mockup',                                                               'Photoshop - Mockups',                   85),
 
     # ── LOGO & BRANDING ────────────────────────────────────────────────────
     (r'logo.{0,30}(reveal|sting|animation|intro|opener)',                     'After Effects - Logo Reveals',           88),
-    (r'logo.{0,20}(template|kit|pack|bundle|design)',                         'Logos & Branding',                       85),
-    (r'(brand|branding).{0,20}(identity|kit|guide|pack)',                     'Logos & Branding',                       87),
+    (r'logo.{0,20}(template|kit|pack|bundle|design)',                         'Logo & Identity',                        85),
+    (r'(brand|branding).{0,20}(identity|kit|guide|pack)',                     'Logo & Identity',                        87),
 
     # ── SLIDESHOW ──────────────────────────────────────────────────────────
     (r'(photo|wedding|travel|fashion|event|corporate|minimal|clean).{0,20}slideshow', 'After Effects - Slideshows', 84),
@@ -134,29 +164,30 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'character.{0,15}(animation|animator|rig)',                             'After Effects - Character Animation',    83),
 
     # ── PRINT & STATIONERY ─────────────────────────────────────────────────
+    # YouTube/Twitch rules come first so "youtube-banner-pack" doesn't match generic 'banner'
+    (r'(twitch|stream|obs).{0,20}(overlay|template|alert|pack)',              'Twitch & Streaming',                     83),
+    (r'youtube.{0,20}(thumbnail|banner|template|pack)',                       'YouTube & Video Platform',               85),
     (r'(flyer|flier|leaflet)',                                                'Flyers & Print',                         85),
     (r'brochure',                                                             'Flyers & Print',                         83),
     (r'business.?card',                                                       'Business Cards',                         88),
-    (r'(resume|curriculum.?vitae|\bcv\b.{0,10}template)',                     'Resume & CV Templates',                  88),
-    (r'(menu|restaurant.?template|food.?menu|cafe.?menu)',                    'Menus & Food Templates',                 85),
-    (r'(certificate|diploma|award.{0,10}ceremony)',                           'Certificates & Awards',                  87),
+    (r'(resume|curriculum.?vitae|\bcv\b.{0,10}template)',                     'Resume & CV',                            88),
+    (r'(menu|restaurant.?template|food.?menu|cafe.?menu)',                    'Menu Design',                            85),
+    (r'(certificate|diploma|award.{0,10}ceremony)',                           'Certificate',                            87),
     (r'(invitation|save.?the.?date)',                                         'Invitations & Save the Date',            85),
-    (r'(letterhead|stationery)',                                              'Flyers & Print',                         82),
-    (r'(voucher|coupon|gift.?card)',                                          'Coupons & Vouchers',                     85),
+    (r'(letterhead|stationery)',                                              'Letterhead & Stationery',                82),
+    (r'(voucher|coupon|gift.?card)',                                          'Gift Voucher & Coupon',                  85),
     (r'(packaging|box.?design|dieline|label.?design)',                        'Packaging & Product',                    83),
-    (r'(book.?cover|ebook.?cover)',                                           'Book Covers & eBook',                    85),
-    (r'(t.?shirt|apparel|merch)',                                             'Apparel & Merchandise',                  82),
-    (r'(catalog|catalogue|lookbook)',                                         'Catalogs & Lookbooks',                   83),
+    (r'(book.?cover|ebook.?cover)',                                           'Book & Literature',                      85),
+    (r'(t.?shirt|apparel|merch)',                                             'Clothing & Apparel',                     82),
+    (r'(catalog|catalogue|lookbook)',                                         'InDesign - Magazine & Editorial',        83),
     (r'(poster|billboard)',                                                   'Posters',                                80),
-    (r'(rollup|roll.?up|pull.?up.?banner)',                                   'Flyers & Print',                         80),
-    (r'(banner|web.?banner|ad.?banner)',                                      'Banners & Ads',                          78),
+    (r'(rollup|roll.?up|pull.?up.?banner)',                                   'Rollup Banners & Signage',               80),
+    (r'(banner|web.?banner|ad.?banner)',                                      'Banners',                                78),
 
     # ── SOCIAL MEDIA ───────────────────────────────────────────────────────
     (r'instagram.{0,20}(story|stories|post|template|pack)',                   'After Effects - Social Media Templates', 85),
-    (r'(twitch|stream|obs).{0,20}(overlay|template|alert|pack)',              'YouTube & Streaming',                    83),
-    (r'youtube.{0,20}(thumbnail|banner|template|pack)',                       'YouTube & Streaming',                    85),
-    (r'social.?media.{0,20}(pack|template|kit)',                              'Social Media Templates',                 85),
-    (r'instagram|facebook|tiktok',                                            'Social Media Templates',                 75),
+    (r'social.?media.{0,20}(pack|template|kit)',                              'Social Media',                           85),
+    (r'instagram|facebook|tiktok',                                            'Social Media',                           75),
 
     # ── PRESENTATIONS ──────────────────────────────────────────────────────
     (r'(powerpoint|pptx).{0,15}(template|slide)',                             'Presentations & PowerPoint',             88),
@@ -164,23 +195,23 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'(presentation|pitch.?deck|google.?slides)',                            'Presentations & PowerPoint',             82),
 
     # ── ILLUSTRATION / ART ─────────────────────────────────────────────────
-    (r'(watercolor|watercolour)',                                             'Illustrations & Clipart',                78),
-    (r'(clipart|clip.?art)',                                                  'Illustrations & Clipart',                82),
-    (r'(hand.?drawn|hand.?lettered)',                                         'Illustrations & Clipart',                78),
-    (r'illustration.{0,15}(pack|set|bundle)',                                 'Illustrations & Clipart',                82),
+    (r'(watercolor|watercolour)',                                             'Clipart & Illustrations',                78),
+    (r'(clipart|clip.?art)',                                                  'Clipart & Illustrations',                82),
+    (r'(hand.?drawn|hand.?lettered)',                                         'Clipart & Illustrations',                78),
+    (r'illustration.{0,15}(pack|set|bundle)',                                 'Clipart & Illustrations',                82),
 
     # ── ICONS ──────────────────────────────────────────────────────────────
-    (r'icon.{0,15}(pack|set|bundle)',                                         'Icons & Icon Packs',                     85),
+    (r'icon.{0,15}(pack|set|bundle)',                                         'Icons & Symbols',                        85),
 
     # ── PATTERNS ───────────────────────────────────────────────────────────
-    (r'(seamless.?pattern|pattern.{0,15}(pack|set|bundle))',                  'Patterns & Seamless',                    83),
+    (r'(seamless.?pattern|pattern.{0,15}(pack|set|bundle))',                  'Patterns - Seamless',                    83),
 
     # ── UI/UX ──────────────────────────────────────────────────────────────
     (r'(ui.?kit|wireframe|design.?system)',                                   'UI & UX Design',                         83),
 
     # ── PHOTO EFFECTS & OVERLAYS ───────────────────────────────────────────
-    (r'(light.?leak|lens.?flare|bokeh|film.?grain).{0,15}(pack|overlay)',    'Photo Effects & Overlays',               83),
-    (r'(overlay|overlays).{0,15}(pack|bundle)',                               'Photo Effects & Overlays',               80),
+    (r'(light.?leak|lens.?flare|bokeh|film.?grain).{0,15}(pack|overlay)',    'Overlays & Effects',                     83),
+    (r'(overlay|overlays).{0,15}(pack|bundle)',                               'Overlays & Effects',                     80),
 
     # ── STOCK CONTENT ──────────────────────────────────────────────────────
     (r'stock.{0,10}(photo|photos?|image)',                                    'Stock Photos - General',                 83),
@@ -205,17 +236,18 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'(svg|dxf).{0,10}(file|design|bundle)',                                 'Cutting Machine - SVG & DXF',            78),
 
     # ── WEB ────────────────────────────────────────────────────────────────
-    (r'(html|bootstrap).{0,15}template',                                      'Web Templates & HTML',                   83),
-    (r'(landing.?page|website.?template)',                                    'Web Templates & HTML',                   82),
-    (r'email.{0,15}(template|newsletter)',                                    'Email Templates',                        85),
+    (r'(wordpress|woocommerce|elementor).{0,20}(theme|template)',             'Website Design',                         85),
+    (r'(html|bootstrap).{0,15}template',                                      'Website Design',                         83),
+    (r'(landing.?page|website.?template)',                                    'Website Design',                         82),
+    (r'email.{0,15}(template|newsletter)',                                    'Email & Newsletter',                     85),
 
     # ── 3D ─────────────────────────────────────────────────────────────────
     (r'(c4d|cinema.?4d).{0,15}(pack|template|model)',                         '3D',                                     83),
     (r'blender.{0,15}(pack|addon|asset|model)',                               '3D',                                     78),
     (r'3d.{0,15}(model|object|scene|asset|pack)',                             '3D - Models & Objects',                  78),
 
-    # ── INFOGRAPHIC ────────────────────────────────────────────────────────
-    (r'infographic',                                                          'Infographics & Data Viz',                78),
+    # ── INFOGRAPHIC (non-AE: after AE subcategory catch at line above) ─────
+    (r'infographic',                                                          'Infographic',                            78),
 
     # ── GENERAL MOTION / VIDEO ─────────────────────────────────────────────
     (r'(promo|promotional).{0,20}(video|template)',                           'After Effects - Explainer & Promo',      74),
