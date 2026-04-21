@@ -18,6 +18,37 @@ from collections import Counter
 from typing import Optional
 
 # ---------------------------------------------------------------------------
+# AE subcategory collapse set
+# ---------------------------------------------------------------------------
+# When multiple AE subcategories each receive votes in aggregate_archive_names(),
+# the folder is a mixed AE collection — collapse to the generic parent.
+_AE_SUBCATEGORIES: frozenset = frozenset({
+    'After Effects - Templates',
+    'After Effects - Intros & Openers',
+    'After Effects - Slideshows',
+    'After Effects - Titles & Typography',
+    'After Effects - Lower Thirds',
+    'After Effects - Transitions',
+    'After Effects - Logo Reveals',
+    'After Effects - Infographics & Data',
+    'After Effects - HUD & UI',
+    'After Effects - Particles & FX',
+    'After Effects - Explainer & Promo',
+    'After Effects - Character Animation',
+    'After Effects - Social Media Templates',
+    'After Effects - Broadcast Package',
+    'After Effects - Wedding & Events',
+    'After Effects - Photo & Gallery',
+    'After Effects - Countdown & Timer',
+    'After Effects - Presets & Scripts',
+    'After Effects - Map & Location',
+    'After Effects - Lyric Video',
+    'After Effects - Mockup & Device',
+    'After Effects - Emoji & Stickers',
+    'After Effects - Cinematic & Trailers',
+})
+
+# ---------------------------------------------------------------------------
 # Rule table — ordered, first match wins
 # ---------------------------------------------------------------------------
 # Each entry: (regex_pattern, category, base_confidence)
@@ -85,6 +116,33 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'(motion.?array|motionarray)',                                          'After Effects - Templates',              73),
     (r'shareae|ae\.com',                                                      'After Effects - Templates',              72),
 
+    # ── CREATIVE MARKET / CREATIVE FABRICA / DESIGN BUNDLES ───────────────
+    (r'creative.?market.{0,60}(font|typeface|typography)',                    'Fonts & Typography',                     85),
+    (r'creative.?market.{0,60}(brush|brushes)',                               'Photoshop - Brushes',                    84),
+    (r'creative.?market.{0,60}mockup',                                        'Photoshop - Mockups',                    84),
+    (r'creative.?market.{0,60}(logo|branding|identity)',                      'Logo & Identity',                        82),
+    (r'creative.?market.{0,60}(svg|vector|illustration)',                     'Clipart & Illustrations',                80),
+    (r'creative.?market.{0,60}(action|preset)',                               'Photoshop - Actions',                    82),
+    (r'creative.?market',                                                     'Flyers & Print',                         70),
+    (r'creative.?fabrica.{0,60}(svg|cricut|cut|craft)',                       'Cutting Machine - SVG & DXF',            87),
+    (r'creative.?fabrica.{0,60}(font|typeface)',                              'Fonts & Typography',                     85),
+    (r'creative.?fabrica',                                                    'Cutting Machine - SVG & DXF',            78),
+    (r'design.?bundles.{0,60}(svg|cricut|cut|craft)',                         'Cutting Machine - SVG & DXF',            87),
+    (r'design.?bundles',                                                      'Cutting Machine - SVG & DXF',            78),
+    (r'font.?bundles',                                                        'Fonts & Typography',                     84),
+
+    # ── FREEPIK / VECTEEZY / ARTLIST / PLACEIT ────────────────────────────
+    (r'freepik.{0,60}mockup',                                                 'Photoshop - Mockups',                    82),
+    (r'freepik.{0,60}(photo|photograph)',                                     'Stock Photos - General',                 80),
+    (r'freepik.{0,60}(vector|svg|illustration)',                              'Clipart & Illustrations',                82),
+    (r'freepik',                                                              'Clipart & Illustrations',                70),
+    (r'(vecteezy|vectorstock)',                                               'Vectors & SVG',                          78),
+    (r'artgrid',                                                              'Stock Footage - General',                80),
+    (r'artlist',                                                              'Stock Music & Audio',                    80),
+    (r'(placeit|smartmockups).{0,30}mockup',                                  'Photoshop - Mockups',                    85),
+    (r'placeit|smartmockups',                                                 'Photoshop - Mockups',                    78),
+    (r'(pixabay|unsplash|pexels)',                                            'Stock Photos - General',                 75),
+
     # ── NUMERIC ENVATO ITEM ID PREFIX (7-9 digit IDs like 25461234-...) ───
     # Specific sub-types come before the generic catch-all
     (r'^\d{6,9}[\-_].{0,80}logo.{0,40}(reveal|sting|animation|intro)',       'After Effects - Logo Reveals',           83),
@@ -123,6 +181,12 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'unreal.{0,20}(engine.{0,15})?(asset|pack|material)',                   'Unreal Engine - Assets',                 85),
     (r'(unity|unity3d).{0,20}(asset|pack)',                                   'Game Assets & Sprites',                  85),
     (r'(safetensor|stable.?diffusion|midjourney|lora|sdxl|comfyui)',          'AI Art & Generative',                    87),
+    (r'sketch.{0,20}(ui.?kit|wireframe|component|resource|template)',         'Sketch - UI Resources',                  85),
+    (r'(adobe.?xd|xd.{0,5}(kit|template|resource|component|file)\b)',        'Adobe XD - Templates',                   85),
+    (r'affinity.{0,20}designer',                                              'Affinity - Designer Files',              85),
+    (r'affinity.{0,20}photo',                                                 'Affinity - Photo Edits',                 85),
+    (r'affinity.{0,20}publisher',                                             'Affinity - Publisher Layouts',           85),
+    (r'(krita|clip.?studio|paint.?tool.?sai)',                               'Clipart & Illustrations',                75),
 
     # ── FONTS ──────────────────────────────────────────────────────────────
     (r'(font|typeface|typography).{0,20}(pack|bundle|family|set)',            'Fonts & Typography',                     88),
@@ -153,7 +217,8 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'(title|titles|text).{0,20}(animation|reveal|template)',                'After Effects - Titles & Typography',    82),
     (r'transitions?.{0,10}(pack|bundle)?',                                    'After Effects - Transitions',            82),
     (r'broadcast.{0,20}(package|pack|graphics)',                              'After Effects - Broadcast Package',      87),
-    (r'infographic',                                                          'After Effects - Infographics & Data',    80),
+    (r'\banimated?.{0,15}infographic',                                        'After Effects - Infographics & Data',    80),
+    (r'infographic.{0,20}(animated?|motion|video)',                           'After Effects - Infographics & Data',    80),
     (r'countdown',                                                            'After Effects - Countdown & Timer',      82),
     (r'(glitch|distortion)',                                                  'Glitch & Distortion FX',                 80),
     (r'(particle|bokeh|dust|snow|fire|magic|sparkle).{0,15}(effect|pack|overlay)?', 'After Effects - Particles & FX', 76),
@@ -246,7 +311,7 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'blender.{0,15}(pack|addon|asset|model)',                               '3D',                                     78),
     (r'3d.{0,15}(model|object|scene|asset|pack)',                             '3D - Models & Objects',                  78),
 
-    # ── INFOGRAPHIC (non-AE: after AE subcategory catch at line above) ─────
+    # ── INFOGRAPHIC (non-motion: static print/web infographic packs) ─────────
     (r'infographic',                                                          'Infographic',                            78),
 
     # ── GENERAL MOTION / VIDEO ─────────────────────────────────────────────
@@ -301,6 +366,22 @@ def aggregate_archive_names(archive_stems: list[str]) -> tuple[Optional[str], in
     total = len(archive_stems)
     match_ratio = top_votes / total
     avg_conf = conf_sum[top_cat] // top_votes
+
+    # AE subcategory collapse: when multiple AE subcategories split the vote,
+    # the folder is a mixed AE collection — collapse to the generic parent.
+    if top_cat in _AE_SUBCATEGORIES:
+        ae_cats_voted = [c for c in votes if c in _AE_SUBCATEGORIES]
+        if len(ae_cats_voted) >= 2:
+            ae_votes = sum(votes[c] for c in ae_cats_voted)
+            non_ae_votes = match_count - ae_votes
+            if ae_votes >= 3 and ae_votes > non_ae_votes * 1.5:
+                ae_conf_avg = sum(conf_sum.get(c, 0) for c in ae_cats_voted) // max(ae_votes, 1)
+                collapsed_conf = min(ae_conf_avg + 3, 88)
+                collapsed_detail = (
+                    f"archive:{ae_votes}/{total} archives→After Effects - Templates "
+                    f"(AE collapse: {len(ae_cats_voted)} subcategories, {ae_votes/total:.0%} consensus)"
+                )
+                return 'After Effects - Templates', collapsed_conf, collapsed_detail
 
     # Base confidence from rule average
     conf = avg_conf

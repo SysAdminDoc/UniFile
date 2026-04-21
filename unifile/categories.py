@@ -530,6 +530,12 @@ CATEGORIES = [
     ("Cutting Machine - SVG & DXF", ["cricut", "silhouette", "cutting machine", "vinyl cut", "cricut svg", "cricut design", "silhouette studio", "cameo", "cricut file", "cricut bundle", "dxf cut", "svg cut file", "cut file", "sublimation", "htv", "heat transfer vinyl"]),
     ("After Effects - Cinematic & Trailers", ["cinematic trailer", "movie trailer", "film trailer", "epic trailer", "action trailer", "dark trailer", "dramatic trailer", "blockbuster", "cinematic titles", "cinematic opener", "film opener", "cinematic teaser", "trailer titles", "movie opener"]),
 
+    ("Sketch - UI Resources", ["sketch app", "sketch file", "sketch template", "sketch ui kit", "sketch wireframe", "sketch resource", "sketch component", "sketch artboard", "bohemian coding"]),
+    ("Adobe XD - Templates", ["adobe xd", "xd template", "xd kit", "xd resource", "xd wireframe", "xd component", "xd file", "xd ui kit", "adobe experience design"]),
+    ("Affinity - Designer Files", ["affinity designer", "affinity design", "afdesign", "affinity vector", "affinity template", "affinity serif"]),
+    ("Affinity - Photo Edits", ["affinity photo", "afphoto", "affinity retouch", "affinity raw edit", "affinity edit"]),
+    ("Affinity - Publisher Layouts", ["affinity publisher", "afpub", "affinity layout", "affinity book", "affinity publication"]),
+
     # ══════════════════════════════════════════════════════════════════════════
     # PHOTOGRAPHY & IMAGE EDITING
     # ══════════════════════════════════════════════════════════════════════════

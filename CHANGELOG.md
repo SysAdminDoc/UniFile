@@ -2,7 +2,17 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v8.5.0]
+## [v8.6.0]
+
+- Added: **5 new tool-specific categories** — `Sketch - UI Resources`, `Adobe XD - Templates`, `Affinity - Designer Files`, `Affinity - Photo Edits`, `Affinity - Publisher Layouts`
+- Added: **7 new extension mappings** — `.sketch` → `Sketch - UI Resources`, `.xd` → `Adobe XD - Templates`, `.afdesign` → `Affinity - Designer Files`, `.afphoto` → `Affinity - Photo Edits`, `.afpub` → `Affinity - Publisher Layouts`, `.kra`/`.clip` → `Clipart & Illustrations`; `.xd`, `.kra`, `.clip` added to `DESIGN_TEMPLATE_EXTS`
+- Added: **26 new marketplace archive rules** — Creative Market (sub-typed: font/brush/mockup/logo/vector/action + catch-all), Creative Fabrica (SVG/craft + font), Design Bundles (SVG/craft), Font Bundles, Freepik (mockup/photo/vector), Vecteezy/VectorStock → `Vectors & SVG`, ArtGrid → `Stock Footage - General`, ArtList → `Stock Music & Audio`, Placeit/SmartMockups → `Photoshop - Mockups`, Pixabay/Unsplash/Pexels → `Stock Photos - General`
+- Added: **Sketch/XD/Affinity archive rules** — archive names containing these tool names now route to the correct new categories
+- Added: **`_AE_SUBCATEGORIES` collapse in `aggregate_archive_names()`** — when ≥ 2 After Effects subcategories each receive votes and AE votes dominate by 1.5× over non-AE votes (≥ 3 total AE votes), result collapses to `After Effects - Templates` instead of a single arbitrarily-winning subcategory
+- Fixed: **Dead infographic rule** — standalone `(r'infographic', 'After Effects - Infographics & Data')` at position ~156 made the generic `(r'infographic', 'Infographic')` rule unreachable. Replaced with two motion-specific rules (`animated?.*infographic` / `infographic.*(animated?|motion|video)`); generic `Infographic` rule now fires for non-motion packs
+- Added: **FILENAME_ASSET_MAP entries** — Sketch/XD/Affinity keyword entries; Cricut/SVG cut file / sublimation / vinyl cut → `Cutting Machine - SVG & DXF`; Shopify/WooCommerce themes → `Website Design`; sample/loop packs → `Stock Music & Audio`; MIDI pack → `Music Production - DAW Projects`
+
+
 
 - Fixed: **Critical category name mismatches** — ~19 category names in `archive_inference.py` and `FILENAME_ASSET_MAP` didn't match actual category names in `categories.py`, causing files to land in wrong/nonexistent folders. All corrected:
   - `'YouTube & Streaming'` → `'YouTube & Video Platform'`; twitch/stream rules → `'Twitch & Streaming'`

@@ -150,6 +150,14 @@ EXTENSION_CATEGORY_MAP = [
     ({'.fon'},                                   "Fonts & Typography",                88),
     ({'.ait'},                                   "Illustrator - Vectors & Assets",    85),
     ({'.pub'},                                   "Flyers & Print",                    72),
+    # v8.6.0 additions
+    ({'.sketch'},                                "Sketch - UI Resources",             90),
+    ({'.xd'},                                    "Adobe XD - Templates",              90),
+    ({'.afdesign'},                              "Affinity - Designer Files",         88),
+    ({'.afphoto'},                               "Affinity - Photo Edits",            85),
+    ({'.afpub'},                                 "Affinity - Publisher Layouts",      88),
+    ({'.kra'},                                   "Clipart & Illustrations",           78),
+    ({'.clip'},                                  "Clipart & Illustrations",           80),
 ]
 
 def classify_by_extensions(folder_path: str) -> tuple:
@@ -609,7 +617,7 @@ def infer_asset_type(initial_category: str, initial_confidence: float,
 # Design/video template extensions used in single-pass folder scan
 DESIGN_TEMPLATE_EXTS = {
     '.psd', '.psb', '.ai', '.indd', '.idml', '.eps', '.fig',
-    '.afdesign', '.afphoto', '.afpub', '.sketch',
+    '.afdesign', '.afphoto', '.afpub', '.sketch', '.xd', '.kra', '.clip',
 }
 VIDEO_TEMPLATE_EXTS = {
     '.aep', '.aet', '.prproj', '.mogrt', '.drp', '.drfx',
@@ -676,6 +684,20 @@ FILENAME_ASSET_MAP = [
     (["banner", "web banner", "display banner", "ad banner", "leaderboard banner"], "Banners", 80),
     (["voucher", "coupon", "gift card", "gift voucher"], "Gift Voucher & Coupon", 82),
     (["wedding", "wedding invitation", "wedding card", "wedding template", "save the date"], "Wedding", 85),
+    # Design apps
+    (["sketch app", "sketch ui", "sketch kit", "sketch template", "sketch resource", "sketch file"], "Sketch - UI Resources", 88),
+    (["adobe xd", "xd template", "xd kit", "xd resource", "xd wireframe", "xd file"], "Adobe XD - Templates", 88),
+    (["affinity designer", "affinity vector", "afdesign"], "Affinity - Designer Files", 85),
+    (["affinity photo", "afphoto"], "Affinity - Photo Edits", 85),
+    (["affinity publisher", "afpub", "affinity layout"], "Affinity - Publisher Layouts", 85),
+    # Craft / cutting machines
+    (["cricut file", "cricut svg", "cricut bundle", "cricut design", "cutting file", "svg cut file", "vinyl cut"], "Cutting Machine - SVG & DXF", 88),
+    (["sublimation design", "sublimation file", "htv design", "heat transfer vinyl"], "Cutting Machine - SVG & DXF", 82),
+    # E-commerce / web platforms
+    (["shopify theme", "shopify template", "woocommerce theme", "woo theme", "ecommerce theme", "ecommerce template"], "Website Design", 87),
+    # Sample packs / music production
+    (["sample pack", "loop pack", "one shot pack", "drum kit", "drum samples", "splice sample", "loopmasters"], "Stock Music & Audio", 80),
+    (["midi pack", "midi files", "midi kit"], "Music Production - DAW Projects", 80),
 ]
 
 # Categories that, when detected as "topic" and design files are also present,
