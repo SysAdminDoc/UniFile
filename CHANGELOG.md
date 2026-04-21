@@ -2,7 +2,18 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v8.8.0]
+## [v8.9.0]
+
+- Fixed: **`.cube`/`.3dl`/`.lut` extension mapping** — previously routed to `Premiere Pro - LUTs & Color`; corrected to `Color Grading & LUTs` since LUT files are app-agnostic (work in Resolve, FCPX, Premiere, Photoshop, etc.); confidence adjusted to 90/88
+- Added: **AI art platform rules** in `archive_inference.py` — `civitai`/`civit.ai` with model/lora/checkpoint/merge sub-types (88), generic `\bcivitai\b` catch-all (82), and `hugging.face` model/lora/safetensor/checkpoint (85); placed before the existing `safetensor`/`stable.diffusion` generic rule
+- Added: **3D marketplace archive rules** — TurboSquid (sub-typed character/vehicle/weapon/prop 88, generic 82), CGTrader (sub-typed model/character/scene 88, generic 80), Sketchfab (sub-typed model/scene/pack 85, generic 78), KitBash3D (kit/pack/model/bundle 88), Renderosity/Daz3D/Poser (sub-typed figure/character/prop 85, generic 78), Poly Haven/HDRI Haven/AmbientCG (→ `3D - Materials & Textures` 88), Substance Painter/Designer/SBSAR (material/texture/pack 88), HDRI pack keyword (85), Fab/Unreal marketplace (→ `Unreal Engine - Assets` 85)
+- Added: **Game asset marketplace rules** — itch.io (asset/pack/tileset/sprite/game 85), OpenGameArt (85), Kenney (asset/pack/sprite 85), RPG Maker (asset/pack/tileset 83)
+- Added: **Music production marketplace rules** — Loopmasters (sample/loop/pack/kit 85, generic 78), Native Instruments/NI Komplete (library/preset/pack/expansion 87), Spitfire Audio (library/pack/expansion/instrument 87), ADSR/ADSR Sounds (sample/preset/pack 82), Samples From Mars (85)
+- Added: **10 new extension mappings** — `.cr3` → `Photography - RAW Files` (Canon CR3 RAW), `.exr` → `3D - Materials & Textures` (OpenEXR for HDRI/VFX renders), `.sbs`/`.sbsar` → `3D - Materials & Textures` (Substance Designer/Painter), `.ztl` → `3D` (ZBrush tool), `.usd`/`.usda`/`.usdc`/`.usdz` → `3D - Models & Objects` (Apple AR/USD scene files), `.sf2`/`.sfz` → `Music Production - Presets` (SoundFont), `.nki`/`.nkx`/`.nkc` → `Music Production - Presets` (Kontakt instruments), `.ptx` → `Music Production - DAW Projects` (Pro Tools session), `.cpr` → `Music Production - DAW Projects` (Cubase project), `.xcf` → `Clipart & Illustrations` (GIMP)
+- Added: **Composition heuristics** — USD/USDZ detection (≥ 2 files at ≥ 30% → `3D - Models & Objects` 76), Substance material detection (≥ 2 `.sbs`/`.sbsar` at ≥ 30% → `3D - Materials & Textures` 78), OpenEXR detection (≥ 3 `.exr` at ≥ 30% → `3D - Materials & Textures` 72); `.cr3` added to `raw_exts` counter
+- Added: **14 new FILENAME_ASSET_MAP entries** — TurboSquid, CGTrader, Sketchfab, KitBash3D, Poly Haven/HDRI Haven/AmbientCG, Substance material packs, Daz3D/Poser/Renderosity, Civitai, itch.io, OpenGameArt/Kenney, Loopmasters, Native Instruments/Kontakt/Spitfire Audio
+
+
 
 - Fixed: **Duplicate `is_generic_aep` and `_score_aep` definitions** in `categories.py` — first copy (lines 26–143) was silently shadowed by an identical second copy (lines 150–267); removed the second (dead) copy; `CATEGORY ENGINE` header now appears once
 - Removed: **Dead code in `classifier.py`** — `analyze_folder_composition()` (superseded by `_scan_folder_once()`), `_classify_by_composition()` (superseded by `_classify_composition_from_scan()`), and `find_near_duplicates()` (referenced undefined `IMAGE_EXTS` and `_compute_phash`; never called) — all three functions deleted

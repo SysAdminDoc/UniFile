@@ -101,8 +101,8 @@ EXTENSION_CATEGORY_MAP = [
     # (extension_set, category, base_confidence)
     # NOTE: Every category name here MUST exist in CATEGORIES or custom_categories
     ({'.ttf', '.otf', '.woff', '.woff2'},       "Fonts & Typography",                95),
-    ({'.cube', '.3dl'},                          "Premiere Pro - LUTs & Color",       92),
-    ({'.lut'},                                   "Premiere Pro - LUTs & Color",       92),
+    ({'.cube', '.3dl'},                          "Color Grading & LUTs",              90),
+    ({'.lut'},                                   "Color Grading & LUTs",              88),
     ({'.lrtemplate'},                             "Lightroom - Presets & Profiles",    92),
     ({'.xmp'},                                   "Lightroom - Presets & Profiles",    85),
     ({'.abr'},                                   "Photoshop - Brushes",               92),
@@ -178,6 +178,17 @@ EXTENSION_CATEGORY_MAP = [
     ({'.sla', '.slaz'},                          "Flyers & Print",                    82),
     ({'.pxm', '.pxd'},                           "Clipart & Illustrations",           80),
     ({'.splinecode'},                            "UI & UX Design",                    82),
+    # v8.9.0 additions
+    ({'.cr3'},                                   "Photography - RAW Files",           90),
+    ({'.exr'},                                   "3D - Materials & Textures",         82),
+    ({'.sbs', '.sbsar'},                         "3D - Materials & Textures",         85),
+    ({'.ztl'},                                   "3D",                                82),
+    ({'.usd', '.usda', '.usdc', '.usdz'},        "3D - Models & Objects",             80),
+    ({'.sf2', '.sfz'},                           "Music Production - Presets",        82),
+    ({'.nki', '.nkx', '.nkc'},                   "Music Production - Presets",        85),
+    ({'.ptx'},                                   "Music Production - DAW Projects",   83),
+    ({'.cpr'},                                   "Music Production - DAW Projects",   83),
+    ({'.xcf'},                                   "Clipart & Illustrations",           78),
 ]
 
 def classify_by_extensions(folder_path: str) -> tuple:
@@ -601,6 +612,19 @@ FILENAME_ASSET_MAP = [
     (["gumroad font", "gumroad brush", "gumroad svg", "gumroad action"], "Clipart & Illustrations", 73),
     (["premier pro preset", "premiere mogrt", "premiere transition pack", "mogrt template"], "Premiere Pro - Templates", 88),
     (["handy seamless", "handy seamless transitions"], "Premiere Pro - Transitions", 90),
+    # v8.9.0 additions
+    (["turbosquid", "turbo squid"], "3D - Models & Objects", 82),
+    (["cgtrader", "cg trader"], "3D - Models & Objects", 80),
+    (["sketchfab model", "sketchfab 3d", "sketchfab scene"], "3D - Models & Objects", 80),
+    (["kitbash3d", "kitbash kit", "kitbash pack", "kitbash bundle"], "3D - Models & Objects", 85),
+    (["poly haven", "polyhaven", "hdri haven", "hdrihaven", "ambientcg", "ambient cg"], "3D - Materials & Textures", 85),
+    (["substance designer material", "substance painter material", "sbsar material", "substance texture pack"], "3D - Materials & Textures", 87),
+    (["daz3d", "daz studio", "daz figure", "poser figure", "renderosity"], "3D", 78),
+    (["civitai model", "civitai lora", "civitai checkpoint", "civitai merge"], "AI Art & Generative", 87),
+    (["itch.io asset", "itchio asset", "itch io pack", "itchio pack"], "Game Assets & Sprites", 82),
+    (["opengameart", "open game art", "kenney assets", "kenney pack"], "Game Assets & Sprites", 82),
+    (["loopmasters sample", "loopmasters pack", "loopmasters kit"], "Stock Music & Audio", 83),
+    (["native instruments library", "kontakt library pack", "ni komplete", "spitfire audio"], "Music Production - Presets", 85),
 ]
 
 # Categories that, when detected as "topic" and design files are also present,
@@ -770,7 +794,7 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
     vector_exts = sum(ext.get(e, 0) for e in ['.svg', '.eps', '.ai'])
     font_exts = sum(ext.get(e, 0) for e in ['.ttf', '.otf', '.woff', '.woff2', '.otc', '.ttc'])
     doc_exts = sum(ext.get(e, 0) for e in ['.pdf', '.pptx', '.docx', '.xlsx', '.indd', '.idml'])
-    raw_exts = sum(ext.get(e, 0) for e in ['.nef', '.cr2', '.arw', '.crw', '.orf', '.raf', '.rw2', '.sr2', '.dng'])
+    raw_exts = sum(ext.get(e, 0) for e in ['.nef', '.cr2', '.cr3', '.arw', '.crw', '.orf', '.raf', '.rw2', '.sr2', '.dng'])
     daw_exts = sum(ext.get(e, 0) for e in ['.als', '.flp', '.logicx', '.ptx', '.cpr', '.rpp'])
     midi_exts = sum(ext.get(e, 0) for e in ['.mid', '.midi'])
     lr_exts = sum(ext.get(e, 0) for e in ['.lrtemplate', '.xmp'])
@@ -779,6 +803,9 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
     stl_exts = sum(ext.get(e, 0) for e in ['.stl', '.3mf'])
     gltf_exts = sum(ext.get(e, 0) for e in ['.glb', '.gltf'])
     lottie_exts = ext.get('.lottie', 0)
+    usd_exts = sum(ext.get(e, 0) for e in ['.usd', '.usda', '.usdc', '.usdz'])
+    sbs_exts = sum(ext.get(e, 0) for e in ['.sbs', '.sbsar'])
+    exr_exts = ext.get('.exr', 0)
     png_count = ext.get('.png', 0)
     svg_count = ext.get('.svg', 0)
     jpg_count = ext.get('.jpg', 0) + ext.get('.jpeg', 0)
@@ -806,6 +833,12 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
         return ('Photography - RAW Files', 73, f"composition:{raw_exts} RAW + {jpg_count} JPEG ({(raw_exts+jpg_count)/total:.0%})")
     if gltf_exts >= 2 and gltf_exts / total >= 0.4:
         return ('3D - Models & Objects', 78, f"composition:{gltf_exts} GLB/GLTF files ({gltf_exts/total:.0%})")
+    if usd_exts >= 2 and usd_exts / total >= 0.3:
+        return ('3D - Models & Objects', 76, f"composition:{usd_exts} USD/USDZ files ({usd_exts/total:.0%})")
+    if sbs_exts >= 2 and sbs_exts / total >= 0.3:
+        return ('3D - Materials & Textures', 78, f"composition:{sbs_exts} Substance material files")
+    if exr_exts >= 3 and exr_exts / total >= 0.3:
+        return ('3D - Materials & Textures', 72, f"composition:{exr_exts} OpenEXR files ({exr_exts/total:.0%})")
     if lottie_exts >= 2:
         return ('Animated Icons', 72, f"composition:{lottie_exts} Lottie animation files")
     if daw_exts >= 1:

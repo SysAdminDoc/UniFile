@@ -284,6 +284,10 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'unreal.{0,20}(engine.{0,15})?(asset|pack|material)',                   'Unreal Engine - Assets',                 85),
     (r'(unity|unity3d).{0,20}(asset|pack)',                                   'Game Assets & Sprites',                  85),
     (r'(safetensor|stable.?diffusion|midjourney|lora|sdxl|comfyui)',          'AI Art & Generative',                    87),
+    # v8.9.0 — AI art platforms (specific names before generic AI rule above)
+    (r'(civitai|civit.?ai).{0,30}(model|lora|checkpoint|merge|pack)',         'AI Art & Generative',                    88),
+    (r'\bcivitai\b',                                                          'AI Art & Generative',                    82),
+    (r'hugging.?face.{0,30}(model|lora|safetensor|checkpoint)',               'AI Art & Generative',                    85),
     (r'sketch.{0,20}(ui.?kit|wireframe|component|resource|template)',         'Sketch - UI Resources',                  85),
     (r'(adobe.?xd|xd.{0,5}(kit|template|resource|component|file)\b)',        'Adobe XD - Templates',                   85),
     (r'affinity.{0,20}designer',                                              'Affinity - Designer Files',              85),
@@ -298,6 +302,29 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'\bcanva\b',                                                            'Canva - Templates',                      75),
     (r'(filmora|wondershare).{0,30}(template|effect|title|transition|pack)',  'After Effects - Templates',              80),
     (r'\bfilmora\b',                                                          'After Effects - Templates',              72),
+    # v8.9.0 — platform-specific rules (must precede generic keyword rules that share terms like
+    #           'character', 'fire', 'particle', 'pack' — first-match-wins enforces platform priority)
+    # 3D marketplaces
+    (r'(turbosquid|turbo.?squid).{0,40}(character|creature|vehicle|weapon|prop|rigged)', '3D - Models & Objects',      88),
+    (r'turbosquid|turbo.?squid',                                              '3D - Models & Objects',                  82),
+    (r'(cgtrader|cg.?trader).{0,40}(model|character|scene|asset)',            '3D - Models & Objects',                  88),
+    (r'cgtrader|cg.?trader',                                                  '3D - Models & Objects',                  80),
+    (r'(sketchfab|sketch.?fab).{0,40}(model|scene|pack)',                     '3D - Models & Objects',                  85),
+    (r'sketchfab|sketch.?fab',                                                '3D - Models & Objects',                  78),
+    (r'(kitbash|kitbash3d|kit.?bash).{0,40}(kit|pack|model|bundle)',          '3D - Models & Objects',                  88),
+    (r'(renderosity|daz3d|daz.?studio|poser).{0,30}(figure|character|prop|scene)', '3D',                               85),
+    (r'renderosity|daz3d|daz.?studio|\bposer\b',                              '3D',                                     78),
+    (r'(poly.?haven|hdri.?haven|hdrihaven|ambientcg|ambient.?cg)',            '3D - Materials & Textures',              88),
+    (r'(substance.?painter|substance.?designer|sbsar).{0,30}(material|texture|pack|bundle)', '3D - Materials & Textures', 88),
+    (r'hdri.{0,20}(pack|bundle|set|environment)',                             '3D - Materials & Textures',              85),
+    (r'\bfab\b.{0,30}(asset|material|plugin|template).{0,30}(unreal|ue5|ue4)', 'Unreal Engine - Assets',               85),
+    # Music production marketplaces (before particle/fire generic rule)
+    (r'loopmasters.{0,20}(sample|loop|pack|kit)',                             'Stock Music & Audio',                    85),
+    (r'loopmasters',                                                          'Stock Music & Audio',                    78),
+    (r'(native.?instruments|ni.?komplete).{0,30}(library|preset|pack|expansion)', 'Music Production - Presets',        87),
+    (r'spitfire.{0,20}(audio.{0,10})?(library|pack|expansion|instrument)',    'Music Production - Presets',             87),
+    (r'(adsr|adsr.?sounds).{0,20}(sample|preset|pack)',                       'Stock Music & Audio',                    82),
+    (r'samples?.?from.?mars',                                                 'Stock Music & Audio',                    85),
 
     # ── FONTS ──────────────────────────────────────────────────────────────
     (r'(font|typeface|typography).{0,20}(pack|bundle|family|set)',            'Fonts & Typography',                     88),
@@ -407,6 +434,11 @@ _RAW_RULES: list[tuple[str, str, int]] = [
 
     # ── GAME DEVELOPMENT ───────────────────────────────────────────────────
     (r'(game.?asset|sprite.?sheet|tileset|pixel.?art)',                       'Game Assets & Sprites',                  85),
+    # v8.9.0 — game asset marketplaces
+    (r'(itch|itch.?io).{0,30}(asset|pack|tileset|sprite|game)',              'Game Assets & Sprites',                  85),
+    (r'(opengameart|open.?game.?art)',                                        'Game Assets & Sprites',                  85),
+    (r'kenney.{0,20}(asset|pack|sprite)',                                     'Game Assets & Sprites',                  85),
+    (r'rpg.?maker.{0,20}(asset|pack|tileset)',                               'Game Assets & Sprites',                  83),
     (r'(svg|dxf).{0,20}(cut|cricut|silhouette)',                              'Cutting Machine - SVG & DXF',            87),
     (r'(cricut|silhouette.?cameo|glowforge)',                                 'Cutting Machine - SVG & DXF',            87),
     (r'(svg|dxf).{0,10}(file|design|bundle)',                                 'Cutting Machine - SVG & DXF',            78),
