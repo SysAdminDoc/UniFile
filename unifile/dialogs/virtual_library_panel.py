@@ -45,26 +45,35 @@ class VirtualLibraryPanel(QWidget):
     def _build_ui(self):
         _t = get_active_theme()
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        # Header
+        header = QWidget()
+        header.setStyleSheet(f"background: {_t['bg_alt']}; border-bottom: 1px solid {_t['btn_bg']};")
+        header_lay = QVBoxLayout(header)
+        header_lay.setContentsMargins(16, 14, 16, 14)
+        header_lay.setSpacing(2)
         lbl_title = QLabel("Virtual Library")
         lbl_title.setStyleSheet(
             f"color: {_t['fg_bright']}; font-size: 16px; font-weight: 700;")
-        layout.addWidget(lbl_title)
+        header_lay.addWidget(lbl_title)
 
         lbl_desc = QLabel(
-            "Organize files virtually without moving them. "
-            "Creates a .unifile/ database in your source directory.")
+            "Organize files virtually without moving them. UniFile stores the overlay in a local `.unifile` database inside the source directory.")
         lbl_desc.setWordWrap(True)
         lbl_desc.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
-        layout.addWidget(lbl_desc)
+        header_lay.addWidget(lbl_desc)
+        layout.addWidget(header)
+
+        content = QWidget()
+        content_lay = QVBoxLayout(content)
+        content_lay.setContentsMargins(12, 12, 12, 12)
+        content_lay.setSpacing(8)
 
         # Directory selector
         dir_row = QHBoxLayout()
         self.txt_dir = QLineEdit()
-        self.txt_dir.setPlaceholderText("Select directory to create virtual library...")
+        self.txt_dir.setPlaceholderText("Select a directory to create a virtual library…")
         dir_row.addWidget(self.txt_dir)
         btn_browse = QPushButton("Browse")
         btn_browse.clicked.connect(self._browse_dir)
@@ -72,18 +81,18 @@ class VirtualLibraryPanel(QWidget):
         btn_open = QPushButton("Open Library")
         btn_open.clicked.connect(self._open_library)
         dir_row.addWidget(btn_open)
-        layout.addLayout(dir_row)
+        content_lay.addLayout(dir_row)
 
         # Stats bar
         self.lbl_stats = QLabel("")
         self.lbl_stats.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
-        layout.addWidget(self.lbl_stats)
+        content_lay.addWidget(self.lbl_stats)
 
         # Progress
         self.pbar = QProgressBar()
         self.pbar.setVisible(False)
         self.pbar.setMaximumHeight(6)
-        layout.addWidget(self.pbar)
+        content_lay.addWidget(self.pbar)
 
         # Action buttons
         btn_row = QHBoxLayout()
@@ -106,18 +115,18 @@ class VirtualLibraryPanel(QWidget):
         self.btn_check.clicked.connect(self._check_broken)
         self.btn_check.setEnabled(False)
         btn_row.addWidget(self.btn_check)
-        layout.addLayout(btn_row)
+        content_lay.addLayout(btn_row)
 
         # Search
         search_row = QHBoxLayout()
         self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("Search files...")
+        self.txt_search.setPlaceholderText("Search files…")
         self.txt_search.returnPressed.connect(self._search)
         search_row.addWidget(self.txt_search)
         btn_search = QPushButton("Search")
         btn_search.clicked.connect(self._search)
         search_row.addWidget(btn_search)
-        layout.addLayout(search_row)
+        content_lay.addLayout(search_row)
 
         # Tree view (virtual folder structure)
         self.tree = QTreeWidget()
@@ -129,7 +138,8 @@ class VirtualLibraryPanel(QWidget):
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for i in range(1, 4):
             h.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        layout.addWidget(self.tree, 1)
+        content_lay.addWidget(self.tree, 1)
+        layout.addWidget(content, 1)
 
     def _browse_dir(self):
         d = QFileDialog.getExistingDirectory(self, "Select Directory")

@@ -796,6 +796,9 @@ def ollama_classify_folder(folder_name: str, folder_path: str = None,
     result = {'name': None, 'category': None, 'confidence': 0,
               'method': 'llm', 'detail': ''}
 
+    # Collect file/subfolder context from the folder
+    context_lines = [f"Folder name: \"{folder_name}\""]
+
     # ── Smart ID-only enrichment ──────────────────────────────────────────────
     # If the folder name is just a marketplace ID (e.g. "VH-12345678"), scan
     # inside for project files (.aep, .prproj, .psd…) to extract a real name.
@@ -807,9 +810,6 @@ def ollama_classify_folder(folder_name: str, folder_path: str = None,
             for name, source, priority in hints[:5]:
                 context_lines.append(f"  ★ {name}  [from {source}, score {priority}]")
             context_lines.append("Use the project file name as the cleaned 'name' field.")
-
-    # Collect file/subfolder context from the folder
-    context_lines = [f"Folder name: \"{folder_name}\""]
     if folder_path and os.path.isdir(folder_path):
         files = []
         subdirs = []

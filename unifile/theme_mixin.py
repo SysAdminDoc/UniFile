@@ -86,20 +86,40 @@ class ThemeMixin:
         if hasattr(self, '_themed_dir_panel'):
             self._themed_dir_panel.setStyleSheet(
                 f"QWidget#dir_panel {{ background: {t['bg_alt']}; border-bottom: 1px solid {t['btn_bg']}; }}")
+        if hasattr(self, 'workspace_intro'):
+            self.workspace_intro.setStyleSheet(
+                f"QFrame#workspace_intro {{ background: {t['header_bg']}; border: 1px solid {t['border']}; border-radius: 14px; }}"
+            )
+        if hasattr(self, 'lbl_workspace_section'):
+            self.lbl_workspace_section.setStyleSheet(
+                f"color: {t['muted']}; font-size: 10px; font-weight: 700; letter-spacing: 1.4px;"
+            )
+        if hasattr(self, 'lbl_workspace_title'):
+            self.lbl_workspace_title.setStyleSheet(
+                f"color: {t['fg_bright']}; font-size: 20px; font-weight: 700; letter-spacing: -0.3px;"
+            )
+        if hasattr(self, 'lbl_workspace_desc'):
+            self.lbl_workspace_desc.setStyleSheet(
+                f"color: {t['fg']}; font-size: 12px; line-height: 1.4em;"
+            )
+        if hasattr(self, 'lbl_workspace_meta'):
+            self.lbl_workspace_meta.setStyleSheet(
+                f"color: {t['muted']}; font-size: 11px;"
+            )
 
         # ── Toolbar buttons (common style helper) ────────────────────────
         _TB = (
-            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {t['selection']};"
-            f"color: {t['sidebar_btn_active_fg']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
+            f"QPushButton {{ font-size: 11px; padding: 2px 12px; background: {t['bg_alt']};"
+            f"color: {t['sidebar_btn_active_fg']}; border: 1px solid {t['border']}; border-radius: 10px; }}"
             f"QPushButton:hover {{ background: {t['btn_hover']}; }}"
         )
         _TB_SMALL = (
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['selection']};"
-            f"color: {t['sidebar_btn_active_fg']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
+            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {t['bg_alt']};"
+            f"color: {t['sidebar_btn_active_fg']}; border: 1px solid {t['border']}; border-radius: 10px; }}"
             f"QPushButton:hover {{ background: {t['btn_hover']}; }}"
         )
         _TB_CHECK = _TB_SMALL + (
-            f"QPushButton:checked {{ background: {t['sidebar_btn_active_fg']}; color: {t['sidebar_brand']}; }}"
+            f"QPushButton:checked {{ background: {t['selection']}; color: {t['fg_bright']}; border-color: {t['accent']}; }}"
         )
 
         # Replay, Export, Export HTML, Open Dest
@@ -111,8 +131,8 @@ class ThemeMixin:
 
         # Photo button (green accent)
         self.btn_photo.setStyleSheet(
-            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {t['selection']};"
-            f"color: {t['green']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
+            f"QPushButton {{ font-size: 11px; padding: 2px 12px; background: {t['bg_alt']};"
+            f"color: {t['green']}; border: 1px solid {t['border']}; border-radius: 10px; }}"
             f"QPushButton:hover {{ background: {t['btn_hover']}; }}")
 
         # Grid, Preview, Graph toggles (checkable, standard accent)
@@ -122,21 +142,21 @@ class ThemeMixin:
 
         # Map toggle (green checkable)
         self.btn_map_toggle.setStyleSheet(
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['selection']};"
-            f"color: {t['green']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
+            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {t['bg_alt']};"
+            f"color: {t['green']}; border: 1px solid {t['border']}; border-radius: 10px; }}"
             f"QPushButton:hover {{ background: {t['btn_hover']}; }}"
-            f"QPushButton:checked {{ background: {t['green']}; color: {t['sidebar_brand']}; }}")
+            f"QPushButton:checked {{ background: {t['selection']}; color: {t['green']}; border-color: {t['green']}; }}")
 
         # Before/After
         self.btn_before_after.setStyleSheet(
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['selection']};"
-            f"color: {t['accent_hover']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
+            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {t['bg_alt']};"
+            f"color: {t['accent_hover']}; border: 1px solid {t['border']}; border-radius: 10px; }}"
             f"QPushButton:hover {{ background: {t['btn_hover']}; }}")
 
         # Events
         self.btn_events.setStyleSheet(
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['selection']};"
-            f"color: {t['accent_hover']}; border: 1px solid {t['border']}; border-radius: 4px; }}"
+            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {t['bg_alt']};"
+            f"color: {t['accent_hover']}; border: 1px solid {t['border']}; border-radius: 10px; }}"
             f"QPushButton:hover {{ background: {t['btn_hover']}; }}")
 
         # Watch Mode button
@@ -179,12 +199,24 @@ class ThemeMixin:
         # ── Empty / Toast / Stats ────────────────────────────────────────
         if hasattr(self, 'lbl_empty'):
             self.lbl_empty.setStyleSheet(
-                f"color: {t['muted']}; font-size: 13px; padding: 50px; font-weight: 500;")
+                f"color: {t['fg_bright']}; font-size: 18px; font-weight: 700;")
+        if hasattr(self, 'empty_state'):
+            self.empty_state.setStyleSheet(
+                f"QFrame#empty_state {{ background: {t['header_bg']}; border: 1px solid {t['border']}; border-radius: 16px; }}"
+            )
+        if hasattr(self, 'lbl_empty_kicker'):
+            self.lbl_empty_kicker.setStyleSheet(
+                f"color: {t['sidebar_btn_active_fg']}; font-size: 10px; font-weight: 700; letter-spacing: 1.4px;"
+            )
+        if hasattr(self, 'lbl_empty_detail'):
+            self.lbl_empty_detail.setStyleSheet(
+                f"color: {t['muted']}; font-size: 12px; line-height: 1.4em;"
+            )
         if hasattr(self, 'lbl_toast'):
             self.lbl_toast.setStyleSheet(
-                f"QLabel {{ background: {t['selection']};"
-                f"color: {t['fg']}; font-size: 13px; font-weight: bold;"
-                f"padding: 10px 20px; border-radius: 8px;"
+                f"QLabel {{ background: {t['header_bg']};"
+                f"color: {t['fg_bright']}; font-size: 13px; font-weight: bold;"
+                f"padding: 12px 20px; border-radius: 12px;"
                 f"border: 1px solid {t['border']}; }}")
         if hasattr(self, 'lbl_stats'):
             self.lbl_stats.setStyleSheet(
@@ -248,3 +280,5 @@ class ThemeMixin:
         if hasattr(self, 'grid_scroll'):
             self.grid_scroll.setStyleSheet(
                 f"QScrollArea {{ background: {t['header_bg']}; border: none; }}")
+        if hasattr(self, '_refresh_workspace_copy'):
+            self._refresh_workspace_copy()

@@ -1,6 +1,26 @@
 """UniFile — Application entry point."""
 import os, sys
 from datetime import datetime
+from pathlib import Path
+from PyQt6.QtGui import QIcon
+
+
+# codex-branding:start
+def _branding_icon_path() -> Path:
+    candidates = []
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir / "icon.png")
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass) / "icon.png")
+    current = Path(__file__).resolve()
+    candidates.extend([current.parent / "icon.png", current.parent.parent / "icon.png", current.parent.parent.parent / "icon.png"])
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return Path("icon.png")
+# codex-branding:end
 
 
 def main():
@@ -62,6 +82,10 @@ def main():
     from unifile.plugins import ProfileManager
 
     app = QApplication(qt_args)
+
+    branding_icon = QIcon(str(_branding_icon_path()))
+
+    app.setWindowIcon(branding_icon)
     app.setStyle("Fusion")
     app.setStyleSheet(get_active_stylesheet())
     window = UniFile()

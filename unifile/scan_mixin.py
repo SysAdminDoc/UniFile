@@ -105,10 +105,10 @@ class ScanMixin:
             src = self._pc_src_path()
             if not src or not os.path.isdir(src):
                 self._log("Select a valid source location first"); return
-            self.lbl_empty.hide(); self.tbl.setRowCount(0)
+            self._hide_empty_state(); self.tbl.setRowCount(0)
             self._scanning = True
             self.tbl.setSortingEnabled(False)
-            self.btn_scan.setText("Cancel"); self.btn_scan.setStyleSheet("QPushButton { color: #ef4444; font-weight: bold; }")
+            self.btn_scan.setText("Cancel Scan"); self.btn_scan.setStyleSheet("QPushButton { color: #ef4444; font-weight: bold; }")
             self.btn_apply.setEnabled(False); self.btn_preview.setEnabled(False); self.btn_export.setEnabled(False); self.btn_export_html.setEnabled(False)
             self._scan_start_time = time.time()
             self._scan_files(src)
@@ -117,10 +117,10 @@ class ScanMixin:
         src = self.txt_src.text()
         if not src or not os.path.isdir(src):
             self._log("Invalid source directory"); return
-        self.lbl_empty.hide(); self.tbl.setRowCount(0)
+        self._hide_empty_state(); self.tbl.setRowCount(0)
         self._scanning = True
         self.tbl.setSortingEnabled(False)
-        self.btn_scan.setText("Cancel"); self.btn_scan.setStyleSheet("QPushButton { color: #ef4444; font-weight: bold; }")
+        self.btn_scan.setText("Cancel Scan"); self.btn_scan.setStyleSheet("QPushButton { color: #ef4444; font-weight: bold; }")
         self.btn_apply.setEnabled(False); self.btn_preview.setEnabled(False); self.btn_export.setEnabled(False)
         self._scan_start_time = time.time()
         if op in (self.OP_CAT, self.OP_SMART):
@@ -159,7 +159,8 @@ class ScanMixin:
     def _reset_scan_ui(self):
         """Restore Scan button and state after scan completes or is cancelled."""
         self._scanning = False
-        self.btn_scan.setText("Scan"); self.btn_scan.setStyleSheet("")
+        self._refresh_workspace_copy()
+        self.btn_scan.setStyleSheet("")
         self.btn_scan.setEnabled(True)
         self.prog_panel.setVisible(False)
         self.lbl_statusbar.setText("Ready")
@@ -280,7 +281,12 @@ class ScanMixin:
         self._log(f"Scan complete: {shown} eligible folders found")
         if shown > 0:
             self._show_scan_toast(f"Scan complete: {shown} folders found")
-        if shown == 0: self.lbl_empty.setText("No eligible folders found"); self.lbl_empty.show()
+        if shown == 0:
+            self._show_empty_state(
+                "No eligible folders found",
+                "Try a different source folder or lower the scan depth if your projects are nested more deeply.",
+                kicker="NOTHING TO RENAME"
+            )
 
     # ═══ CATEGORY SCAN ═══════════════════════════════════════════════════════
 
@@ -463,7 +469,12 @@ class ScanMixin:
             self._update_dashboard()
             # Category balancing — suggest merges/splits for imbalanced categories
             self._run_category_balancer('cat')
-        if matched == 0: self.lbl_empty.setText("No folders could be categorized"); self.lbl_empty.show()
+        if matched == 0:
+            self._show_empty_state(
+                "No folders could be categorized",
+                "Try enabling AI, lowering the confidence filter, or choosing a source with clearer folder contents.",
+                kicker="NO MATCHES FOUND"
+            )
 
     # ═══ PC FILE SCAN ════════════════════════════════════════════════════════
 
@@ -668,7 +679,11 @@ class ScanMixin:
             # Category balancing — suggest merges/splits for imbalanced categories
             self._run_category_balancer('files')
         if total == 0:
-            self.lbl_empty.setText("No files or folders found"); self.lbl_empty.show()
+            self._show_empty_state(
+                "No files or folders were found",
+                "Check the selected source, include more depth, or broaden the current file-type filter.",
+                kicker="SCAN COMPLETE"
+            )
 
     def _auto_tag_scan_results(self):
         """Auto-tag scan results in the tag library if it's open."""

@@ -433,6 +433,20 @@ class CleanupPanel(QWidget):
         from PyQt6.QtWidgets import QTabWidget, QDoubleSpinBox
 
         _t = get_active_theme()
+        header = QWidget()
+        header.setStyleSheet(f"background: {_t['bg_alt']}; border-bottom: 1px solid {_t['btn_bg']};")
+        header_lay = QVBoxLayout(header)
+        header_lay.setContentsMargins(16, 14, 16, 14)
+        header_lay.setSpacing(2)
+        lbl_title = QLabel("Cleanup Tools")
+        lbl_title.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 16px; font-weight: 700;")
+        header_lay.addWidget(lbl_title)
+        lbl_desc = QLabel("Find clutter, stale downloads, broken files, and oversized items before you decide what should go.")
+        lbl_desc.setWordWrap(True)
+        lbl_desc.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        header_lay.addWidget(lbl_desc)
+        layout.addWidget(header)
+
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet(
             f"QTabWidget::pane {{ border: 1px solid {_t['border']}; background: {_t['bg_alt']}; }}"
@@ -447,7 +461,7 @@ class CleanupPanel(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel("Scan folder:"))
         self.txt_empty_path = QLineEdit()
-        self.txt_empty_path.setPlaceholderText("Select folder to scan for empty directories...")
+        self.txt_empty_path.setPlaceholderText("Select a folder to scan for empty directories…")
         row.addWidget(self.txt_empty_path, 1)
         btn_browse = QPushButton("Browse")
         btn_browse.setFixedWidth(75)
@@ -471,7 +485,7 @@ class CleanupPanel(QWidget):
         row2 = QHBoxLayout()
         row2.addWidget(QLabel("Scan folder:"))
         self.txt_zero_path = QLineEdit()
-        self.txt_zero_path.setPlaceholderText("Select folder to scan for zero-byte files...")
+        self.txt_zero_path.setPlaceholderText("Select a folder to scan for zero-byte files…")
         row2.addWidget(self.txt_zero_path, 1)
         btn_b2 = QPushButton("Browse")
         btn_b2.setFixedWidth(75)
@@ -486,7 +500,7 @@ class CleanupPanel(QWidget):
         row3 = QHBoxLayout()
         row3.addWidget(QLabel("Scan folder:"))
         self.txt_temp_path = QLineEdit()
-        self.txt_temp_path.setPlaceholderText("Select folder to scan for temporary files...")
+        self.txt_temp_path.setPlaceholderText("Select a folder to scan for temporary files…")
         row3.addWidget(self.txt_temp_path, 1)
         btn_b3 = QPushButton("Browse")
         btn_b3.setFixedWidth(75)
@@ -513,7 +527,7 @@ class CleanupPanel(QWidget):
         row4 = QHBoxLayout()
         row4.addWidget(QLabel("Scan folder:"))
         self.txt_broken_path = QLineEdit()
-        self.txt_broken_path.setPlaceholderText("Select folder to scan for corrupt/broken files...")
+        self.txt_broken_path.setPlaceholderText("Select a folder to scan for corrupt or broken files…")
         row4.addWidget(self.txt_broken_path, 1)
         btn_b4 = QPushButton("Browse")
         btn_b4.setFixedWidth(75)
@@ -534,7 +548,7 @@ class CleanupPanel(QWidget):
         row5 = QHBoxLayout()
         row5.addWidget(QLabel("Scan folder:"))
         self.txt_big_path = QLineEdit()
-        self.txt_big_path.setPlaceholderText("Select folder to find large files...")
+        self.txt_big_path.setPlaceholderText("Select a folder to find large files…")
         row5.addWidget(self.txt_big_path, 1)
         btn_b5 = QPushButton("Browse")
         btn_b5.setFixedWidth(75)
@@ -583,7 +597,7 @@ class CleanupPanel(QWidget):
 
         # ── Scan button + progress ────────────────────────────────────────
         scan_row = QHBoxLayout()
-        self.btn_scan = QPushButton("Scan")
+        self.btn_scan = QPushButton("Run Scan")
         self.btn_scan.setFixedHeight(34)
         self.btn_scan.setStyleSheet(
             f"QPushButton {{ background: {_t['green']}; color: white; font-weight: bold;"
@@ -627,7 +641,7 @@ class CleanupPanel(QWidget):
         btn_deselect = QPushButton("Deselect All")
         btn_deselect.clicked.connect(lambda: self._toggle_all(False))
         action_row.addWidget(btn_deselect)
-        btn_invert = QPushButton("Invert")
+        btn_invert = QPushButton("Invert Selection")
         btn_invert.clicked.connect(self._invert_selection)
         action_row.addWidget(btn_invert)
 
@@ -637,7 +651,7 @@ class CleanupPanel(QWidget):
             f"QPushButton:hover {{ background: #4a1a1a; color: #fca5a5; }}"
             f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
 
-        self.btn_delete = QPushButton("Delete Selected")
+        self.btn_delete = QPushButton("Remove Selected")
         self.btn_delete.setEnabled(False)
         self.btn_delete.setStyleSheet(_DANGER_BTN)
         self.btn_delete.clicked.connect(self._delete_selected)
@@ -684,14 +698,14 @@ class CleanupPanel(QWidget):
         }
         scanner_fn, path_field, kwargs_fn = tab_map[tab_idx]
         if not path_field.text() or not os.path.isdir(path_field.text()):
-            self.lbl_progress.setText("Please select a valid folder.")
+            self.lbl_progress.setText("Choose a valid folder to scan.")
             return
         self.btn_scan.setEnabled(False)
-        self.btn_scan.setText("Scanning...")
+        self.btn_scan.setText("Scanning…")
         self.btn_delete.setEnabled(False)
         self.tbl.setRowCount(0)
         self._results = []
-        self.lbl_progress.setText("Scanning...")
+        self.lbl_progress.setText("Scanning…")
         kwargs = kwargs_fn()
         self._worker = _CleanupScanWorker(scanner_fn, kwargs)
         self._worker.progress.connect(lambda msg: self.lbl_progress.setText(msg))
@@ -730,12 +744,14 @@ class CleanupPanel(QWidget):
 
     def _on_scan_done(self, results):
         from unifile.cleanup import _fmt_size
-        self.btn_scan.setText("Scan")
+        self.btn_scan.setText("Run Scan")
         self.btn_scan.setEnabled(True)
         total_size = sum(r.size for r in self._results)
         self.lbl_summary.setText(
-            f"Found {len(self._results)} items ({_fmt_size(total_size)})")
-        self.lbl_progress.setText(f"Scan complete: {len(self._results)} results")
+            f"Found {len(self._results)} item{'s' if len(self._results) != 1 else ''} ({_fmt_size(total_size)})")
+        self.lbl_progress.setText(
+            f"Scan complete — {len(self._results)} result{'s' if len(self._results) != 1 else ''}"
+        )
         self.btn_delete.setEnabled(len(self._results) > 0)
 
     def _on_check(self, row, state):
@@ -763,7 +779,7 @@ class CleanupPanel(QWidget):
         confirm = QMessageBox.question(
             self, "Confirm Deletion",
             f"Delete {len(selected)} items ({_fmt_size(total)})?\n\n"
-            f"Items will be sent to Trash if possible.",
+            f"Items will be sent to Trash when possible.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if confirm != QMessageBox.StandardButton.Yes:
             return

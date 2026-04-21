@@ -633,18 +633,25 @@ class DuplicatePanel(QWidget):
         lay.setSpacing(8)
         lay.setContentsMargins(0, 0, 0, 0)
 
-        # ── Header ────────────────────────────────────────────────────────
-        hdr = QLabel("Find duplicate and similar files using content hashing, "
-                      "perceptual image matching, and audio fingerprinting.")
+        header = QWidget()
+        header.setStyleSheet(f"background: {_t['bg_alt']}; border-bottom: 1px solid {_t['btn_bg']};")
+        header_lay = QVBoxLayout(header)
+        header_lay.setContentsMargins(16, 14, 16, 14)
+        header_lay.setSpacing(2)
+        lbl_title = QLabel("Duplicate Finder")
+        lbl_title.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 16px; font-weight: 700;")
+        header_lay.addWidget(lbl_title)
+        hdr = QLabel("Review exact and likely duplicates using content hashes, perceptual image matching, and optional audio fingerprinting.")
         hdr.setWordWrap(True)
-        hdr.setStyleSheet(f"color: {_t['muted']}; font-size: 12px; padding: 4px 0;")
-        lay.addWidget(hdr)
+        hdr.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        header_lay.addWidget(hdr)
+        lay.addWidget(header)
 
         # ── Folder selector ───────────────────────────────────────────────
         row1 = QHBoxLayout()
         row1.addWidget(QLabel("Scan folder:"))
         self.txt_path = QLineEdit()
-        self.txt_path.setPlaceholderText("Select a folder to scan for duplicates...")
+        self.txt_path.setPlaceholderText("Select a folder to scan for duplicates…")
         row1.addWidget(self.txt_path, 1)
         btn_browse = QPushButton("Browse")
         btn_browse.setFixedWidth(75)
@@ -773,10 +780,10 @@ class DuplicatePanel(QWidget):
     def _start_scan(self):
         path = self.txt_path.text().strip()
         if not path or not os.path.isdir(path):
-            self.lbl_status.setText("Please select a valid folder.")
+            self.lbl_status.setText("Choose a valid folder to scan.")
             return
         self.btn_scan.setEnabled(False)
-        self.btn_scan.setText("Scanning...")
+        self.btn_scan.setText("Scanning…")
         self.btn_select_dupes.setEnabled(False)
         self.btn_apply.setEnabled(False)
         self.tree.clear()
@@ -805,7 +812,7 @@ class DuplicatePanel(QWidget):
         self.btn_scan.setEnabled(True)
         self.progress.setVisible(False)
         if not dup_map:
-            self.lbl_status.setText("No duplicates found.")
+            self.lbl_status.setText("No duplicates found")
             self.lbl_summary.setText("")
             return
         self._groups = {}
@@ -829,7 +836,7 @@ class DuplicatePanel(QWidget):
                 group_size = 0
                 waste = 0
             header = QTreeWidgetItem([
-                "", f"Group {gid} -- {len(members)} files",
+                "", f"Group {gid} — {len(members)} files",
                 format_size(group_size), "", match_type
             ])
             header.setForeground(1, QColor("#4fc3f7"))
@@ -859,10 +866,10 @@ class DuplicatePanel(QWidget):
                 header.addChild(child)
             header.setExpanded(True)
         self.lbl_summary.setText(
-            f"{len(self._groups)} duplicate groups  |  "
-            f"{total_dupes} duplicate files  |  "
-            f"{format_size(total_waste)} wasted space")
-        self.lbl_status.setText("Scan complete.")
+            f"{len(self._groups)} duplicate groups  •  "
+            f"{total_dupes} duplicate files  •  "
+            f"{format_size(total_waste)} recoverable space")
+        self.lbl_status.setText("Scan complete")
         self.btn_select_dupes.setEnabled(True)
         self.btn_select_none.setEnabled(True)
         self.btn_apply.setEnabled(True)
@@ -899,7 +906,7 @@ class DuplicatePanel(QWidget):
     def _apply_action(self):
         paths = self._get_checked_paths()
         if not paths:
-            self.lbl_status.setText("No files selected.")
+            self.lbl_status.setText("Select at least one duplicate first.")
             return
         action_idx = self.cmb_action.currentIndex()
         total_size = sum(os.path.getsize(p) for p in paths if os.path.exists(p))

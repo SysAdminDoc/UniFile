@@ -230,7 +230,7 @@ def import_rules_bundle(filepath):
     return bundle
 
 # ── Undo / operation log ──────────────────────────────────────────────────────
-_UNDO_MAX_BATCHES = 10
+_UNDO_MAX_BATCHES = 50
 
 def _load_undo_stack() -> list:
     """Load multi-level undo stack. Each entry is a dict with 'timestamp', 'ops'."""
@@ -259,14 +259,20 @@ def _save_undo_stack(stack: list):
     with open(_UNDO_STACK_FILE, 'w', encoding='utf-8') as f:
         json.dump(stack, f, indent=2)
 
-def save_undo_log(operations):
-    """Push a new batch onto the undo stack (preserves previous batches, max 10)."""
+def save_undo_log(operations, **meta):
+    """Push a new batch onto the undo stack (preserves previous batches, max 50).
+
+    Extra keyword args (source_dir, mode, etc.) are stored in the batch record
+    so the history UI can show meaningful context for each operation.
+    """
     stack = _load_undo_stack()
     batch = {
         'timestamp': datetime.now().isoformat(),
         'ops': operations,
         'count': len(operations),
+        'status': 'applied',
     }
+    batch.update(meta)
     stack.append(batch)
     if len(stack) > _UNDO_MAX_BATCHES:
         stack = stack[-_UNDO_MAX_BATCHES:]

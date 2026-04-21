@@ -119,13 +119,14 @@ class AIProvider:
         self.timeout = config.get('timeout', 30)
         self._cost_tracker = {'requests': 0, 'input_tokens': 0, 'output_tokens': 0}
 
-    def classify(self, prompt: str, model: str | None = None) -> str:
+    def classify(self, prompt: str, model: str | None = None,
+                 system: str = '') -> str:
         """Send a text classification prompt and return the response."""
         model = model or self.config.get('model', '')
         if self.type == 'ollama':
-            return self._ollama_generate(prompt, model)
+            return self._ollama_generate(prompt, model, system=system)
         else:
-            return self._openai_chat(prompt, model)
+            return self._openai_chat(prompt, model, system=system)
 
     def classify_with_vision(self, prompt: str, image_path: str,
                              model: str | None = None) -> str:
@@ -156,12 +157,13 @@ class AIProvider:
     def cost_stats(self) -> dict:
         return dict(self._cost_tracker)
 
-    def _ollama_generate(self, prompt: str, model: str) -> str:
+    def _ollama_generate(self, prompt: str, model: str, system: str = '') -> str:
         """Call Ollama's /api/generate endpoint."""
         import urllib.request
         body = json.dumps({
             'model': model,
             'prompt': prompt,
+            'system': system,
             'stream': False,
             'options': {'temperature': 0.3, 'num_predict': 200},
         }).encode()
@@ -199,12 +201,16 @@ class AIProvider:
         self._cost_tracker['requests'] += 1
         return data.get('response', '').strip()
 
-    def _openai_chat(self, prompt: str, model: str) -> str:
+    def _openai_chat(self, prompt: str, model: str, system: str = '') -> str:
         """Call OpenAI-compatible /chat/completions endpoint."""
         import urllib.request
+        messages = []
+        if system:
+            messages.append({'role': 'system', 'content': system})
+        messages.append({'role': 'user', 'content': prompt})
         body = json.dumps({
             'model': model,
-            'messages': [{'role': 'user', 'content': prompt}],
+            'messages': messages,
             'temperature': 0.3,
             'max_tokens': 200,
         }).encode()
@@ -296,7 +302,7 @@ class ProviderChain:
         items.sort(key=lambda x: x[0])
         return [(k, p) for _, k, p in items]
 
-    def classify(self, prompt: str) -> tuple[str, str]:
+    def classify(self, prompt: str, system: str = '') -> tuple[str, str]:
         """Classify using the first available provider.
 
         Returns:
@@ -304,7 +310,7 @@ class ProviderChain:
         """
         for key, provider in self._ordered_providers("text"):
             try:
-                result = provider.classify(prompt)
+                result = provider.classify(prompt, system=system)
                 if result:
                     return result, key
             except Exception:
@@ -341,3 +347,153 @@ class ProviderChain:
             for k, v in inst.cost_stats.items():
                 totals[k] = totals.get(k, 0) + v
         return totals
+
+
+# ── Provider-chain folder classifier ──────────────────────────────────────────
+
+def classify_folder_via_chain(folder_name: str, folder_path: str | None,
+                              log_cb=None) -> dict:
+    """Classify a folder using the configured ProviderChain (paid/remote AI).
+
+    Replicates the same context-building, prompt, and JSON-parsing logic as
+    ``ollama_classify_folder`` but routes through ProviderChain instead of
+    calling the Ollama API directly.
+
+    Returns the same dict shape as ``ollama_classify_folder``:
+      {name, category, confidence, method, detail}
+    or an empty dict on failure.
+    """
+    import json as _json
+    import os as _os
+    from unifile.ollama import (
+        _build_llm_system_prompt,
+        _is_id_only_folder,
+        _extract_name_hints,
+        _is_generic_name,
+        _llm_cache_get,
+        _llm_cache_set,
+    )
+    from unifile.categories import get_all_category_names
+
+    def _log(msg: str):
+        if log_cb:
+            try:
+                log_cb(msg)
+            except Exception:
+                pass
+
+    # ── Cache check ────────────────────────────────────────────────────────────
+    cached = _llm_cache_get(folder_name)
+    if cached:
+        return cached
+
+    result = {'name': None, 'category': None, 'confidence': 0,
+              'method': 'llm_provider', 'detail': ''}
+
+    # ── Build context lines ────────────────────────────────────────────────────
+    context_lines = [f'Folder name: "{folder_name}"']
+
+    # ID-only enrichment
+    if folder_path and _os.path.isdir(folder_path) and _is_id_only_folder(folder_name):
+        hints = _extract_name_hints(folder_path)
+        if hints:
+            context_lines.append('')
+            context_lines.append(
+                '\u26a0 FOLDER NAME IS ID-ONLY \u2014 use the project file name below instead:'
+            )
+            for name, source, priority in hints[:5]:
+                context_lines.append(f'  \u2605 {name}  [from {source}, score {priority}]')
+            context_lines.append('Use the project file name as the cleaned \'name\' field.')
+
+    if folder_path and _os.path.isdir(folder_path):
+        files, subdirs = [], []
+        try:
+            for entry in _os.scandir(folder_path):
+                if entry.is_file():
+                    files.append(entry.name)
+                elif entry.is_dir():
+                    subdirs.append(entry.name)
+        except OSError:
+            pass
+        if files:
+            shown = files[:20]
+            context_lines.append(f'Files ({len(files)} total): {", ".join(shown)}'
+                                  + (' …' if len(files) > 20 else ''))
+        if subdirs:
+            shown = subdirs[:10]
+            context_lines.append(f'Subfolders ({len(subdirs)} total): {", ".join(shown)}'
+                                  + (' …' if len(subdirs) > 10 else ''))
+
+    # Generic-name enrichment: scan parent for sibling context
+    if _is_generic_name(folder_name) and folder_path:
+        parent = _os.path.dirname(folder_path)
+        if parent and _os.path.isdir(parent):
+            try:
+                siblings = [e.name for e in _os.scandir(parent)
+                            if e.is_dir() and e.name != folder_name][:8]
+                if siblings:
+                    context_lines.append(
+                        f'Sibling folders (for context): {", ".join(siblings)}'
+                    )
+            except OSError:
+                pass
+
+    user_prompt = '\n'.join(context_lines)
+
+    # ── Build system prompt and call chain ─────────────────────────────────────
+    system_prompt = _build_llm_system_prompt(get_all_category_names())
+
+    chain = ProviderChain()
+    try:
+        raw, provider_key = chain.classify(user_prompt, system=system_prompt)
+    except Exception as exc:
+        _log(f'Provider chain error: {exc}')
+        return {}
+
+    if not raw:
+        _log('Provider chain returned empty response')
+        return {}
+
+    # ── Parse JSON response ────────────────────────────────────────────────────
+    try:
+        # Strip markdown fences if present
+        text = raw.strip()
+        if text.startswith('```'):
+            text = '\n'.join(text.split('\n')[1:])
+            if text.endswith('```'):
+                text = text[:-3].strip()
+        data = _json.loads(text)
+    except _json.JSONDecodeError:
+        # Try extracting a JSON block from mixed output
+        import re as _re
+        m = _re.search(r'\{[^{}]+\}', raw, _re.DOTALL)
+        if m:
+            try:
+                data = _json.loads(m.group())
+            except _json.JSONDecodeError:
+                _log(f'Could not parse provider response: {raw[:120]}')
+                return {}
+        else:
+            _log(f'No JSON in provider response: {raw[:120]}')
+            return {}
+
+    # ── Validate category ──────────────────────────────────────────────────────
+    categories = get_all_category_names()
+    category = data.get('category', '').strip()
+    if category not in categories:
+        _log(f'Provider returned unknown category "{category}" for "{folder_name}"')
+        return {}
+
+    name = data.get('name', folder_name).strip() or folder_name
+    confidence = float(data.get('confidence', 0))
+    result.update({
+        'name': name,
+        'category': category,
+        'confidence': confidence,
+        'method': 'llm_provider',
+        'detail': f'provider:{provider_key}\u2192{category}',
+    })
+
+    _llm_cache_set(folder_name, result)
+    return result
+

@@ -48,18 +48,26 @@ class TagLibraryPanel(QWidget):
 
         # ── Header ────────────────────────────────────────────────────────
         header = QWidget()
-        header.setFixedHeight(48)
+        header.setFixedHeight(64)
         header.setStyleSheet(f"background: {_t['bg_alt']}; border-bottom: 1px solid {_t['btn_bg']};")
         h_lay = QHBoxLayout(header)
         h_lay.setContentsMargins(16, 0, 16, 0)
 
+        header_copy = QVBoxLayout()
+        header_copy.setSpacing(1)
         lbl_title = QLabel("Tag Library")
         lbl_title.setStyleSheet(
             f"color: {_t['fg_bright']}; font-size: 14px; font-weight: 700; background: transparent;")
-        h_lay.addWidget(lbl_title)
+        header_copy.addWidget(lbl_title)
+        lbl_subtitle = QLabel("Browse tagged files, fields, and metadata in one focused library view.")
+        lbl_subtitle.setStyleSheet(
+            f"color: {_t['muted']}; font-size: 11px; background: transparent;"
+        )
+        header_copy.addWidget(lbl_subtitle)
+        h_lay.addLayout(header_copy)
         h_lay.addStretch()
 
-        btn_open = QPushButton("Open Library")
+        btn_open = QPushButton("Open Library Folder")
         btn_open.setFixedHeight(28)
         btn_open.setStyleSheet(
             f"QPushButton {{ background: {_t['accent']}; color: #fff; border: none; "
@@ -88,7 +96,7 @@ class TagLibraryPanel(QWidget):
         tag_search_row = QHBoxLayout()
         tag_search_row.setSpacing(6)
         self.txt_tag_search = QLineEdit()
-        self.txt_tag_search.setPlaceholderText("Search tags...")
+        self.txt_tag_search.setPlaceholderText("Search tags…")
         self.txt_tag_search.textChanged.connect(self._on_tag_search)
         tag_search_row.addWidget(self.txt_tag_search, 1)
         btn_add_tag = QPushButton("+")
@@ -165,21 +173,21 @@ class TagLibraryPanel(QWidget):
         # Entry header
         entry_header = QHBoxLayout()
         entry_header.setSpacing(6)
-        self.lbl_entry_title = QLabel("All Entries")
+        self.lbl_entry_title = QLabel("All Files")
         self.lbl_entry_title.setStyleSheet(
             f"color: {_t['fg_bright']}; font-size: 12px; font-weight: 600;")
         entry_header.addWidget(self.lbl_entry_title)
         entry_header.addStretch()
 
         self.txt_entry_search = QLineEdit()
-        self.txt_entry_search.setPlaceholderText("Search files... (tag:Name, ext:pdf, field:key=val)")
+        self.txt_entry_search.setPlaceholderText("Search files… (tag:Name, ext:pdf, field:key=val)")
         self.txt_entry_search.setFixedWidth(250)
         self.txt_entry_search.textChanged.connect(self._on_entry_search)
         entry_header.addWidget(self.txt_entry_search)
 
         # Semantic search (natural language)
         self.txt_semantic = QLineEdit()
-        self.txt_semantic.setPlaceholderText("Semantic search (natural language)...")
+        self.txt_semantic.setPlaceholderText("Semantic search in natural language…")
         self.txt_semantic.setFixedWidth(200)
         self.txt_semantic.returnPressed.connect(self._on_semantic_search)
         entry_header.addWidget(self.txt_semantic)
@@ -193,7 +201,7 @@ class TagLibraryPanel(QWidget):
         btn_add_files.clicked.connect(self._on_add_files)
         entry_header.addWidget(btn_add_files)
 
-        btn_scan_dir = QPushButton("Scan Directory")
+        btn_scan_dir = QPushButton("Scan Folder")
         btn_scan_dir.setFixedHeight(28)
         btn_scan_dir.setStyleSheet(
             f"QPushButton {{ background: {_t['green']}; color: #fff; border: none; "
@@ -456,13 +464,13 @@ class TagLibraryPanel(QWidget):
     def _clear_preview(self):
         _t = get_active_theme()
         self._preview_filename.setText("No file selected")
-        self._preview_meta.setText("")
+        self._preview_meta.setText("Select a single file to inspect its preview, tags, and saved fields.")
         self._preview_thumb.setPixmap(QPixmap())
-        self._preview_thumb.setText("")
+        self._preview_thumb.setText("Preview")
         self._preview_thumb.setStyleSheet(
             f"background: {_t['bg']}; border: 1px solid {_t['border']}; border-radius: 6px;")
         self._clear_tag_chips()
-        self._preview_fields.setHtml("")
+        self._preview_fields.setHtml("<i style='color: gray;'>Fields and AI metadata will appear here.</i>")
 
     def _clear_tag_chips(self):
         while self._preview_tags_flow.count() > 1:
@@ -479,11 +487,11 @@ class TagLibraryPanel(QWidget):
 
     def _update_stats(self):
         if not self._lib.is_open:
-            self.lbl_stats.setText("")
+            self.lbl_stats.setText("Open a library folder to browse tags and entries")
             return
         stats = self._lib.get_stats()
         self.lbl_stats.setText(
-            f"{stats['entries']} files  |  {stats['tags']} tags  |  "
+            f"{stats['entries']} files  •  {stats['tags']} tags  •  "
             f"{stats['tagged_entries']} tagged")
 
     # ── Tag Operations ────────────────────────────────────────────────────
@@ -558,12 +566,12 @@ class TagLibraryPanel(QWidget):
         tag_id = item.data(0, Qt.ItemDataRole.UserRole)
         if tag_id is None:
             self._current_tag_id = None
-            self.lbl_entry_title.setText("All Entries")
+            self.lbl_entry_title.setText("All Files")
             self._refresh_entries()
             return
         self._current_tag_id = tag_id
         tag = self._lib.get_tag(tag_id)
-        self.lbl_entry_title.setText(f"Tag: {tag.name}" if tag else "All Entries")
+        self.lbl_entry_title.setText(f"Tag: {tag.name}" if tag else "All Files")
         self._refresh_entries(tag_id=tag_id)
 
     def _on_add_tag(self):
@@ -730,6 +738,8 @@ class TagLibraryPanel(QWidget):
     def _refresh_entries(self, tag_id: int | None = None):
         self.tbl_entries.setRowCount(0)
         if not self._lib.is_open:
+            self.lbl_entry_title.setText("Open a library to begin")
+            self.lbl_selection_info.setText("No library open")
             return
 
         if tag_id:
@@ -758,7 +768,11 @@ class TagLibraryPanel(QWidget):
             # Path
             self.tbl_entries.setItem(row, 4, QTableWidgetItem(str(entry.path)))
 
-        self.lbl_selection_info.setText(f"{len(entries)} entries")
+        self.lbl_selection_info.setText(
+            f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'}"
+            if entries else
+            "No files yet. Add files directly or scan a folder into the library."
+        )
 
     def _on_entry_search(self, text):
         if not self._lib.is_open:
@@ -777,7 +791,11 @@ class TagLibraryPanel(QWidget):
             mod = entry.date_modified.strftime("%Y-%m-%d") if entry.date_modified else ""
             self.tbl_entries.setItem(row, 3, QTableWidgetItem(mod))
             self.tbl_entries.setItem(row, 4, QTableWidgetItem(str(entry.path)))
-        self.lbl_selection_info.setText(f"{len(entries)} results")
+        self.lbl_selection_info.setText(
+            f"{len(entries)} result{'s' if len(entries) != 1 else ''}"
+            if entries else
+            "No matching files found"
+        )
 
     def _on_add_files(self):
         if not self._lib.is_open:
