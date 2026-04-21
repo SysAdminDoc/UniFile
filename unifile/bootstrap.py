@@ -195,7 +195,8 @@ try:
     import face_recognition as _face_recognition
     import numpy as _np
     HAS_FACE_RECOGNITION = True
-except ImportError:
+except (ImportError, SystemExit):
+    # face_recognition calls quit() (SystemExit) when face_recognition_models is not installed
     HAS_FACE_RECOGNITION = False
 
 try:

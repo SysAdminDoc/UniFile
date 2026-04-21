@@ -536,6 +536,10 @@ CATEGORIES = [
     ("Affinity - Photo Edits", ["affinity photo", "afphoto", "affinity retouch", "affinity raw edit", "affinity edit"]),
     ("Affinity - Publisher Layouts", ["affinity publisher", "afpub", "affinity layout", "affinity book", "affinity publication"]),
 
+    ("Canva - Templates", ["canva", "canva template", "canva design", "canva graphic", "canva social media", "canva presentation", "canva resume", "canva flyer", "canva business card", "canva post", "canva story", "canva bundle", "canva kit", "canva element", "canva brand kit"]),
+    ("Final Cut Pro - Templates", ["final cut pro", "fcpx", "fcpbundle", "apple fcpx", "final cut template", "final cut effect", "fcp template", "final cut transition", "fcpx transition", "fcp plugin", "fcpx plugin", "final cut title", "fcpx title", "final cut generator", "fcpx generator", "final cut motion", "fcpx motion", "final cut pro template"]),
+    ("3D Printing - STL Files", ["stl file", "3d print", "3d printing", "3d printed", "stl model", "fdm print", "resin print", "fdm", "sla print", "3mf file", "print in place", "functional print", "miniature stl", "tabletop miniature", "warhammer stl", "dungeons dragons stl", "thingiverse"]),
+
     # ══════════════════════════════════════════════════════════════════════════
     # PHOTOGRAPHY & IMAGE EDITING
     # ══════════════════════════════════════════════════════════════════════════
