@@ -168,6 +168,16 @@ EXTENSION_CATEGORY_MAP = [
     ({'.ma', '.mb'},                             "3D",                                82),
     ({'.max'},                                   "3D",                                82),
     ({'.stl', '.3mf'},                           "3D Printing - STL Files",           85),
+    # v8.8.0 additions
+    ({'.glb', '.gltf'},                          "3D - Models & Objects",             82),
+    ({'.otc', '.ttc'},                           "Fonts & Typography",                90),
+    ({'.lottie'},                                "Animated Icons",                    85),
+    ({'.bmpr'},                                  "UI & UX Design",                    88),
+    ({'.rp', '.rplib'},                          "UI & UX Design",                    87),
+    ({'.vsdx', '.vsd'},                          "Forms & Documents",                 80),
+    ({'.sla', '.slaz'},                          "Flyers & Print",                    82),
+    ({'.pxm', '.pxd'},                           "Clipart & Illustrations",           80),
+    ({'.splinecode'},                            "UI & UX Design",                    82),
 ]
 
 def classify_by_extensions(folder_path: str) -> tuple:
@@ -226,118 +236,6 @@ def classify_by_extensions(folder_path: str) -> tuple:
     return best
 
 
-
-# ── Level 1.5: Folder content structure analysis ─────────────────────────────
-# Uses file composition patterns to infer asset type when extensions alone are mixed.
-
-def analyze_folder_composition(folder_path: str) -> dict:
-    """Analyze file composition of a folder for classification signals.
-    Returns dict with extension counts, dominant types, and structural indicators."""
-    ext_counts = Counter()
-    subfolder_names = []
-    total_size = 0
-    file_count = 0
-
-    try:
-        for root, dirs, files in os.walk(folder_path):
-            rel = os.path.relpath(root, folder_path)
-            depth = 0 if rel == '.' else rel.count(os.sep) + 1
-            if depth == 0:
-                subfolder_names = [d.lower() for d in dirs]
-            if depth > 3:
-                dirs.clear(); continue
-            for f in files:
-                ext = os.path.splitext(f)[1].lower()
-                if ext:
-                    ext_counts[ext] += 1
-                    file_count += 1
-                    try:
-                        total_size += os.path.getsize(os.path.join(root, f))
-                    except OSError:
-                        pass
-    except (PermissionError, OSError):
-        pass
-
-    return {
-        'ext_counts': dict(ext_counts),
-        'subfolder_names': subfolder_names,
-        'total_size': total_size,
-        'file_count': file_count,
-        'has_footage': any(d in subfolder_names for d in ['footage', 'video', 'media', 'clips']),
-        'has_audio': any(d in subfolder_names for d in ['audio', 'music', 'sound', 'sfx']),
-        'has_preview': any(d in subfolder_names for d in ['preview', 'previews', 'thumbnail', 'thumbnails']),
-    }
-
-
-
-# ── Level 4: Folder composition heuristics ───────────────────────────────────
-# Uses structural patterns (subfolder names + extension mixtures) for classification.
-
-# Composition patterns: (condition_fn, category, base_confidence, description)
-def _classify_by_composition(comp: dict) -> tuple:
-    """Classify based on folder composition analysis.
-    Returns (category, confidence, detail) or (None, 0, '')."""
-    ext = comp.get('ext_counts', {})
-    subs = comp.get('subfolder_names', [])
-    total = comp.get('file_count', 0)
-
-    if total == 0:
-        return (None, 0, '')
-
-    # Count file types by category
-    video_exts = sum(ext.get(e, 0) for e in ['.mp4', '.mov', '.avi', '.wmv', '.mkv', '.webm'])
-    audio_exts = sum(ext.get(e, 0) for e in ['.mp3', '.wav', '.flac', '.aif', '.ogg', '.aac'])
-    image_exts = sum(ext.get(e, 0) for e in ['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.gif', '.webp'])
-    vector_exts = sum(ext.get(e, 0) for e in ['.svg', '.eps', '.ai'])
-    font_exts = sum(ext.get(e, 0) for e in ['.ttf', '.otf', '.woff', '.woff2'])
-    doc_exts = sum(ext.get(e, 0) for e in ['.pdf', '.pptx', '.docx', '.xlsx', '.indd', '.idml'])
-
-    # ── Subfolder structure heuristics ──
-
-    # AEP + Footage subfolder = After Effects Template with footage
-    if ext.get('.aep', 0) >= 1 and comp.get('has_footage'):
-        return ('After Effects - Templates', 72, f"composition:.aep+/footage/ subfolder")
-
-    # AEP + Audio subfolder = likely a full template pack
-    if ext.get('.aep', 0) >= 1 and comp.get('has_audio'):
-        return ('After Effects - Templates', 68, f"composition:.aep+/audio/ subfolder")
-
-    # Multiple video files without project files = stock footage
-    if video_exts >= 5 and video_exts / total >= 0.5:
-        return ('Stock Footage - General', 75, f"composition:{video_exts} video files ({video_exts/total:.0%})")
-
-    # Multiple audio files = music/sound pack
-    if audio_exts >= 5 and audio_exts / total >= 0.5:
-        return ('Stock Music & Audio', 75, f"composition:{audio_exts} audio files ({audio_exts/total:.0%})")
-
-    # Photo-heavy folder (lots of JPGs/PNGs, few other types)
-    if image_exts >= 10 and image_exts / total >= 0.7:
-        return ('Stock Photos - General', 65, f"composition:{image_exts} images ({image_exts/total:.0%})")
-
-    # Vector-heavy folder
-    if vector_exts >= 3 and vector_exts / total >= 0.3:
-        return ('Vectors & SVG', 65, f"composition:{vector_exts} vectors ({vector_exts/total:.0%})")
-
-    # Font-heavy (lower threshold than Level 1 since this is fallback)
-    if font_exts >= 2 and font_exts / total >= 0.3:
-        return ('Fonts & Typography', 65, f"composition:{font_exts} font files ({font_exts/total:.0%})")
-
-    # Document templates
-    if doc_exts >= 2 and doc_exts / total >= 0.3:
-        if ext.get('.pptx', 0) >= 1:
-            return ('Presentations & PowerPoint', 60, f"composition:{doc_exts} docs (pptx found)")
-        if ext.get('.indd', 0) >= 1 or ext.get('.idml', 0) >= 1:
-            return ('InDesign - Templates & Layouts', 65, f"composition:InDesign files found")
-        return ('Forms & Documents', 55, f"composition:{doc_exts} document files")
-
-    # Texture/pattern folder: many identically-sized images, no project files
-    if image_exts >= 8 and not any(ext.get(e, 0) for e in ['.aep', '.psd', '.prproj', '.ai']):
-        return ('Backgrounds & Textures', 55, f"composition:{image_exts} images, no project files")
-
-    return (None, 0, '')
-
-
-
 # ── Scan file-type filter sets ────────────────────────────────────────────────
 _FILTER_IMAGE_EXTS = {
     '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp',
@@ -366,38 +264,6 @@ _SCAN_FILTERS = {
     'Audio Only': _FILTER_AUDIO_EXTS,
     'Documents Only': _FILTER_DOCUMENT_EXTS,
 }
-
-def find_near_duplicates(folder_path: str, threshold: int = 10, log_cb=None) -> list:
-    """Scan a folder for near-duplicate images using perceptual hashing.
-    Returns list of (file1, file2, distance) tuples for pairs below threshold.
-    Threshold of 10 catches visually similar images (0 = identical, 64 = max different)."""
-    hashes = {}  # {filepath: phash_string}
-
-    try:
-        for root, dirs, files in os.walk(folder_path):
-            for f in files:
-                if os.path.splitext(f)[1].lower() in IMAGE_EXTS:
-                    fpath = os.path.join(root, f)
-                    ph = _compute_phash(fpath)
-                    if ph:
-                        hashes[fpath] = ph
-    except (PermissionError, OSError):
-        pass
-
-    if log_cb:
-        log_cb(f"  Perceptual hashed {len(hashes)} images")
-
-    # Compare all pairs (O(n^2) but fine for typical folder sizes)
-    duplicates = []
-    paths = list(hashes.keys())
-    for i in range(len(paths)):
-        for j in range(i + 1, len(paths)):
-            dist = _hamming_distance(hashes[paths[i]], hashes[paths[j]])
-            if dist <= threshold:
-                duplicates.append((paths[i], paths[j], dist))
-
-    return sorted(duplicates, key=lambda x: x[2])
-
 
 
 # ── Level 2 Enhancement: Fuzzy keyword matching ──────────────────────────────
@@ -717,6 +583,24 @@ FILENAME_ASSET_MAP = [
     (["pond5", "storyblocks", "videoblocks", "epidemic sound", "artlist music", "musicbed"], "Stock Music & Audio", 78),
     (["looperman", "splice sample", "zapsplat", "soundsnap", "freesound"], "Sound Effects & SFX", 78),
     (["aejuice", "motionbro", "mixkit", "envato elements"], "After Effects - Templates", 78),
+    # v8.8.0 additions
+    (["motion array", "motionarray"], "After Effects - Templates", 78),
+    (["envato elements", "envatoelements"], "After Effects - Templates", 75),
+    (["shutterstock", "shutter stock"], "Stock Photos - General", 78),
+    (["getty images", "gettyimages", "istock", "istockphoto"], "Stock Photos - General", 78),
+    (["ui8 kit", "ui8 template", "ui8 resource", "ui8 component"], "UI & UX Design", 87),
+    (["iconscout icon", "craftwork icon", "flaticon", "iconfinder icon"], "Icons & Symbols", 85),
+    (["lottie animation", "lottie file", "bodymovin", "lottie icon", "lottie json"], "Animated Icons", 82),
+    (["balsamiq", "bmpr file", "balsamiq mockup"], "UI & UX Design", 85),
+    (["axure rp", "axure wireframe", "rplib file"], "UI & UX Design", 85),
+    (["visio diagram", "vsdx file", "microsoft visio", "visio template", "flowchart visio"], "Forms & Documents", 80),
+    (["scribus", "scribus layout", "sla file"], "Flyers & Print", 80),
+    (["spline 3d", "spline design", "splinecode"], "UI & UX Design", 82),
+    (["gltf file", "glb file", "webgl model", "gltf model", "3d gltf"], "3D - Models & Objects", 82),
+    (["artstation brush", "artstation texture", "artstation model", "artstation asset"], "3D - Materials & Textures", 80),
+    (["gumroad font", "gumroad brush", "gumroad svg", "gumroad action"], "Clipart & Illustrations", 73),
+    (["premier pro preset", "premiere mogrt", "premiere transition pack", "mogrt template"], "Premiere Pro - Templates", 88),
+    (["handy seamless", "handy seamless transitions"], "Premiere Pro - Transitions", 90),
 ]
 
 # Categories that, when detected as "topic" and design files are also present,
@@ -884,17 +768,20 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
     audio_exts = sum(ext.get(e, 0) for e in ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a', '.aif', '.aiff'])
     image_exts = sum(ext.get(e, 0) for e in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp', '.psd', '.psb'])
     vector_exts = sum(ext.get(e, 0) for e in ['.svg', '.eps', '.ai'])
-    font_exts = sum(ext.get(e, 0) for e in ['.ttf', '.otf', '.woff', '.woff2'])
+    font_exts = sum(ext.get(e, 0) for e in ['.ttf', '.otf', '.woff', '.woff2', '.otc', '.ttc'])
     doc_exts = sum(ext.get(e, 0) for e in ['.pdf', '.pptx', '.docx', '.xlsx', '.indd', '.idml'])
     raw_exts = sum(ext.get(e, 0) for e in ['.nef', '.cr2', '.arw', '.crw', '.orf', '.raf', '.rw2', '.sr2', '.dng'])
-    daw_exts = sum(ext.get(e, 0) for e in ['.als', '.flp', '.logicx', '.ptx', '.cpr'])
+    daw_exts = sum(ext.get(e, 0) for e in ['.als', '.flp', '.logicx', '.ptx', '.cpr', '.rpp'])
     midi_exts = sum(ext.get(e, 0) for e in ['.mid', '.midi'])
     lr_exts = sum(ext.get(e, 0) for e in ['.lrtemplate', '.xmp'])
     archive_exts = sum(ext.get(e, 0) for e in ['.zip', '.rar', '.7z', '.tgz'])
     lut_exts = sum(ext.get(e, 0) for e in ['.cube', '.3dl', '.lut'])
     stl_exts = sum(ext.get(e, 0) for e in ['.stl', '.3mf'])
+    gltf_exts = sum(ext.get(e, 0) for e in ['.glb', '.gltf'])
+    lottie_exts = ext.get('.lottie', 0)
     png_count = ext.get('.png', 0)
     svg_count = ext.get('.svg', 0)
+    jpg_count = ext.get('.jpg', 0) + ext.get('.jpeg', 0)
     subs = scan.get('subfolder_names', [])
 
     # ── Archive-heavy folders: use archive name inference ─────────────────
@@ -914,6 +801,13 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
         return ('Stock Music & Audio', 75, f"composition:{audio_exts} audio files ({audio_exts/total:.0%})")
     if raw_exts >= 3 and raw_exts / total >= 0.4:
         return ('Photography - RAW Files', 75, f"composition:{raw_exts} RAW files ({raw_exts/total:.0%})")
+    # Mixed RAW+JPEG shoot (camera download with both RAW and processed JPEGs)
+    if raw_exts >= 2 and jpg_count >= 1 and (raw_exts + jpg_count) / total >= 0.5:
+        return ('Photography - RAW Files', 73, f"composition:{raw_exts} RAW + {jpg_count} JPEG ({(raw_exts+jpg_count)/total:.0%})")
+    if gltf_exts >= 2 and gltf_exts / total >= 0.4:
+        return ('3D - Models & Objects', 78, f"composition:{gltf_exts} GLB/GLTF files ({gltf_exts/total:.0%})")
+    if lottie_exts >= 2:
+        return ('Animated Icons', 72, f"composition:{lottie_exts} Lottie animation files")
     if daw_exts >= 1:
         return ('Music Production - DAW Projects', 80, f"composition:DAW project file found ({daw_exts})")
     if midi_exts >= 2 and not audio_exts:

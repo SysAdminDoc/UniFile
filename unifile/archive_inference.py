@@ -65,6 +65,20 @@ _PS_SUBCATEGORIES: frozenset = frozenset({
 })
 
 # ---------------------------------------------------------------------------
+# Premiere Pro subcategory collapse set
+# ---------------------------------------------------------------------------
+# When multiple Premiere Pro subcategories each receive votes in aggregate_archive_names(),
+# the folder is a mixed Premiere Pro collection — collapse to the generic parent.
+_PREMIERE_SUBCATEGORIES: frozenset = frozenset({
+    'Premiere Pro - Templates',
+    'Premiere Pro - Transitions',
+    'Premiere Pro - Titles & Text',
+    'Premiere Pro - LUTs & Color',
+    'Premiere Pro - Presets & Effects',
+    'Premiere Pro - Sound Design',
+})
+
+# ---------------------------------------------------------------------------
 # Rule table — ordered, first match wins
 # ---------------------------------------------------------------------------
 # Each entry: (regex_pattern, category, base_confidence)
@@ -134,8 +148,31 @@ _RAW_RULES: list[tuple[str, str, int]] = [
 
     # ── MOTIONELEMENTS / OTHER VIDEO MARKETPLACES ─────────────────────────
     (r'motionelements',                                                       'After Effects - Templates',              72),
-    (r'(motion.?array|motionarray)',                                          'After Effects - Templates',              73),
+    # Motion Array sub-typed rules (must come before the generic catch-all)
+    (r'(motion.?array|motionarray).{0,60}(title|titles|text)',                'After Effects - Titles & Typography',    82),
+    (r'(motion.?array|motionarray).{0,60}transition',                         'After Effects - Transitions',            82),
+    (r'(motion.?array|motionarray).{0,60}(logo|reveal)',                      'After Effects - Logo Reveals',           82),
+    (r'(motion.?array|motionarray).{0,60}slideshow',                          'After Effects - Slideshows',             82),
+    (r'(motion.?array|motionarray).{0,60}lower.{0,5}third',                  'After Effects - Lower Thirds',           83),
+    (r'(motion.?array|motionarray).{0,60}broadcast',                          'After Effects - Broadcast Package',      82),
+    (r'(motion.?array|motionarray).{0,60}(social|instagram|story)',           'After Effects - Social Media Templates', 82),
+    (r'(motion.?array|motionarray).{0,60}(promo|explainer)',                  'After Effects - Explainer & Promo',      82),
+    (r'(motion.?array|motionarray).{0,60}(mogrt|premiere)',                   'Premiere Pro - Templates',               82),
+    (r'(motion.?array|motionarray).{0,60}(lut|color.?grade)',                 'Color Grading & LUTs',                   82),
+    (r'(motion.?array|motionarray)',                                           'After Effects - Templates',              73),
     (r'shareae|ae\.com',                                                      'After Effects - Templates',              72),
+
+    # ── ENVATO ELEMENTS ───────────────────────────────────────────────────────
+    (r'(envato.?elements?|elements.envato).{0,60}(mogrt|premiere)',           'Premiere Pro - Templates',               83),
+    (r'(envato.?elements?|elements.envato).{0,60}transition',                 'After Effects - Transitions',            82),
+    (r'(envato.?elements?|elements.envato).{0,60}(logo|reveal)',              'After Effects - Logo Reveals',           82),
+    (r'(envato.?elements?|elements.envato).{0,60}(title|titles)',             'After Effects - Titles & Typography',    82),
+    (r'(envato.?elements?|elements.envato).{0,60}slideshow',                  'After Effects - Slideshows',             82),
+    (r'(envato.?elements?|elements.envato).{0,60}(font|typeface)',            'Fonts & Typography',                     83),
+    (r'(envato.?elements?|elements.envato).{0,60}mockup',                    'Photoshop - Mockups',                    82),
+    (r'(envato.?elements?|elements.envato).{0,60}(stock|photo|photograph)',   'Stock Photos - General',                 80),
+    (r'(envato.?elements?|elements.envato).{0,60}(music|audio|track)',        'Stock Music & Audio',                    80),
+    (r'envato.?elements?|elements.envato',                                    'After Effects - Templates',              70),
 
     # ── CREATIVE MARKET / CREATIVE FABRICA / DESIGN BUNDLES ───────────────
     (r'creative.?market.{0,60}(font|typeface|typography)',                    'Fonts & Typography',                     85),
@@ -163,6 +200,31 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'(placeit|smartmockups).{0,30}mockup',                                  'Photoshop - Mockups',                    85),
     (r'placeit|smartmockups',                                                 'Photoshop - Mockups',                    78),
     (r'(pixabay|unsplash|pexels)',                                            'Stock Photos - General',                 75),
+
+    # ── SHUTTERSTOCK / GETTY / ISTOCK ─────────────────────────────────────────
+    (r'(shutterstock|shutter.?stock).{0,30}(footage|video|clip)',             'Stock Footage - General',                82),
+    (r'(shutterstock|shutter.?stock).{0,30}(music|audio|track)',              'Stock Music & Audio',                    80),
+    (r'(shutterstock|shutter.?stock).{0,30}(template|graphic)',               'Flyers & Print',                         78),
+    (r'shutterstock|shutter.?stock',                                          'Stock Photos - General',                 75),
+    (r'(gettyimages|getty.?images).{0,30}(footage|video|clip)',               'Stock Footage - General',                82),
+    (r'gettyimages|getty.?images',                                            'Stock Photos - General',                 75),
+    (r'(istock|istockphoto).{0,30}(footage|video|clip)',                      'Stock Footage - General',                82),
+    (r'istock|istockphoto',                                                   'Stock Photos - General',                 75),
+
+    # ── UI8 / GUMROAD / ARTSTATION / ICONSCOUT ────────────────────────────────
+    (r'ui8.{0,40}(kit|template|component|resource)',                          'UI & UX Design',                         87),
+    (r'\bui8\b',                                                              'UI & UX Design',                         80),
+    (r'gumroad.{0,40}(font|typeface)',                                        'Fonts & Typography',                     82),
+    (r'gumroad.{0,40}(brush|brushes)',                                        'Photoshop - Brushes',                    82),
+    (r'gumroad.{0,40}(svg|cut|cricut)',                                       'Cutting Machine - SVG & DXF',            82),
+    (r'gumroad.{0,40}(action|preset)',                                        'Photoshop - Actions',                    82),
+    (r'\bgumroad\b',                                                          'Clipart & Illustrations',                68),
+    (r'(iconscout|craftwork).{0,40}(icon|icons)',                             'Icons & Symbols',                        85),
+    (r'\biconscout\b',                                                        'UI & UX Design',                         75),
+    (r'(artstation|art.?station).{0,40}(brush|brushes)',                     'Photoshop - Brushes',                    82),
+    (r'(artstation|art.?station).{0,40}(texture|material)',                  '3D - Materials & Textures',              82),
+    (r'(artstation|art.?station).{0,40}(model|3d)',                          '3D - Models & Objects',                  82),
+    (r'artstation|art.?station',                                              'Clipart & Illustrations',                70),
 
     # ── NUMERIC ENVATO ITEM ID PREFIX (7-9 digit IDs like 25461234-...) ───
     # Specific sub-types come before the generic catch-all
@@ -199,11 +261,18 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'photoshop.{0,30}action',                                               'Photoshop - Actions',                    90),
     (r'photoshop.{0,30}brush',                                                'Photoshop - Brushes',                    90),
     (r'photoshop.{0,30}(style|effect)',                                       'Photoshop - Styles & Effects',           87),
+    (r'premiere.{0,20}(pro.{0,15})?(template|mogrt)',                         'Premiere Pro - Templates',               87),
+    (r'\bmogrt\b',                                                            'Premiere Pro - Templates',               85),
+    (r'premiere.{0,30}(pro.{0,15})?transition',                              'Premiere Pro - Transitions',             86),
+    (r'handy.?seamless',                                                      'Premiere Pro - Transitions',             87),
+    (r'premiere.{0,30}(pro.{0,15})?(title|text|caption)',                    'Premiere Pro - Titles & Text',           85),
+    (r'premiere.{0,30}(pro.{0,15})?lower.{0,5}third',                       'Premiere Pro - Titles & Text',           86),
+    (r'premiere.{0,30}(pro.{0,15})?(lut|color.?grade|color.?grading)',      'Premiere Pro - LUTs & Color',            87),
+    (r'premiere.{0,30}(pro.{0,15})?(preset|effect|plugin)',                  'Premiere Pro - Presets & Effects',       85),
+    (r'premiere.{0,30}(pro.{0,15})?(sound|sfx)',                             'Premiere Pro - Sound Design',            84),
     (r'(lut|color.?grading).{0,20}(pack|bundle|collection)',                  'Color Grading & LUTs',                   88),
     (r'\blut(s)?\b',                                                          'Color Grading & LUTs',                   82),
     (r'after.?effects?.{0,20}(template|preset|project)',                      'After Effects - Templates',              87),
-    (r'premiere.{0,20}(pro.{0,15})?(template|mogrt)',                         'Premiere Pro - Templates',               87),
-    (r'\bmogrt\b',                                                            'Premiere Pro - Templates',               85),
     (r'davinci.{0,20}(resolve.{0,15})?(template|macro|grade)',                'DaVinci Resolve - Templates',            85),
     (r'\bdrp\b|\bdrfx\b',                                                     'DaVinci Resolve - Templates',            83),
     (r'capcut.{0,20}(template|effect|pack)',                                  'CapCut - Templates',                     85),
@@ -471,6 +540,22 @@ def aggregate_archive_names(archive_stems: list[str]) -> tuple[Optional[str], in
                     f"(PS collapse: {len(ps_cats_voted)} subcategories, {ps_votes/total:.0%} consensus)"
                 )
                 return 'Photoshop - Templates & Composites', collapsed_conf, collapsed_detail
+
+    # PR subcategory collapse: when multiple Premiere Pro subcategories split the vote,
+    # the folder is a mixed Premiere Pro collection — collapse to the generic parent.
+    if top_cat in _PREMIERE_SUBCATEGORIES:
+        pr_cats_voted = [c for c in votes if c in _PREMIERE_SUBCATEGORIES]
+        if len(pr_cats_voted) >= 2:
+            pr_votes = sum(votes[c] for c in pr_cats_voted)
+            non_pr_votes = match_count - pr_votes
+            if pr_votes >= 3 and pr_votes > non_pr_votes * 1.5:
+                pr_conf_avg = sum(conf_sum.get(c, 0) for c in pr_cats_voted) // max(pr_votes, 1)
+                collapsed_conf = min(pr_conf_avg + 3, 88)
+                collapsed_detail = (
+                    f"archive:{pr_votes}/{total} archives\u2192Premiere Pro - Templates "
+                    f"(PR collapse: {len(pr_cats_voted)} subcategories, {pr_votes/total:.0%} consensus)"
+                )
+                return 'Premiere Pro - Templates', collapsed_conf, collapsed_detail
 
     # Base confidence from rule average
     conf = avg_conf
