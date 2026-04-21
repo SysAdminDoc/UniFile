@@ -1,0 +1,30 @@
+  OK   [78] 'infographic-bundle' -> 'Infographic'
+  OK   [78] 'business-infographic-template' -> 'Infographic'
+  OK   [80] 'animated-infographic-pack' -> 'After Effects - Infographics & Data'
+  OK   [80] 'infographic-motion-template' -> 'After Effects - Infographics & Data'
+  OK   [85] 'creative-market-font-pack' -> 'Fonts & Typography'
+  OK   [87] 'creative-fabrica-svg-bundle' -> 'Cutting Machine - SVG & DXF'
+  OK   [87] 'design-bundles-cricut-files' -> 'Cutting Machine - SVG & DXF'
+  OK   [84] 'font-bundles-display-pack' -> 'Fonts & Typography'
+  OK   [82] 'freepik-vector-pack' -> 'Clipart & Illustrations'
+  OK   [80] 'freepik-photo-bundle' -> 'Stock Photos - General'
+  OK   [80] 'artlist-music-pack' -> 'Stock Music & Audio'
+  OK   [80] 'artgrid-drone-footage' -> 'Stock Footage - General'
+  OK   [85] 'placeit-mockup-bundle' -> 'Photoshop - Mockups'
+  OK   [85] 'sketch-ui-kit-template' -> 'Sketch - UI Resources'
+  OK   [85] 'adobe-xd-dashboard-kit' -> 'Adobe XD - Templates'
+Traceback (most recent call last):
+  OK   [85] 'affinity-designer-vector-pack' -> 'Affinity - Designer Files'
+  OK   [85] 'affinity-photo-retouch' -> 'Affinity - Photo Edits'
+  OK   [85] 'affinity-publisher-magazine' -> 'Affinity - Publisher Layouts'
+
+18/18 passed
+
+  File "C:\Users\--\repos\UniFile\tests\smoke_v86.py", line 51, in <module>
+AE collapse test:
+    print(f"  Detail: {detail[:100]}")
+  Result: 'After Effects - Templates' (82)
+  File "C:\Users\--\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 30: character maps to <undefined>

@@ -49,6 +49,22 @@ _AE_SUBCATEGORIES: frozenset = frozenset({
 })
 
 # ---------------------------------------------------------------------------
+# PS subcategory collapse set
+# ---------------------------------------------------------------------------
+# When multiple Photoshop subcategories each receive votes in aggregate_archive_names(),
+# the folder is a mixed Photoshop collection — collapse to the generic parent.
+_PS_SUBCATEGORIES: frozenset = frozenset({
+    'Photoshop - Templates & Composites',
+    'Photoshop - Actions',
+    'Photoshop - Brushes',
+    'Photoshop - Styles & Effects',
+    'Photoshop - Gradients & Swatches',
+    'Photoshop - Patterns',
+    'Photoshop - Mockups',
+    'Photoshop - Overlays',
+})
+
+# ---------------------------------------------------------------------------
 # Rule table — ordered, first match wins
 # ---------------------------------------------------------------------------
 # Each entry: (regex_pattern, category, base_confidence)
@@ -109,6 +125,11 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'(graphicriver|graphicstock).{0,60}banner',                             'Banners',                                83),
     (r'(graphicriver|graphicstock).{0,60}(t.?shirt|apparel)',                 'Clothing & Apparel',                     83),
     (r'(graphicriver|graphicstock).{0,60}(catalog|catalogue)',                'InDesign - Magazine & Editorial',        83),
+    # v8.7.0 — PS-specific graphicriver sub-rules
+    (r'(graphicriver|graphicstock).{0,60}(action|actions)',                   'Photoshop - Actions',                    87),
+    (r'(graphicriver|graphicstock).{0,60}(brush|brushes)',                    'Photoshop - Brushes',                    87),
+    (r'(graphicriver|graphicstock).{0,60}(style|styles|effect|effects)',      'Photoshop - Styles & Effects',           85),
+    (r'(graphicriver|graphicstock).{0,60}(pattern|patterns)',                 'Photoshop - Patterns',                   85),
     (r'graphicriver|graphicstock',                                            'Flyers & Print',                         70),
 
     # ── MOTIONELEMENTS / OTHER VIDEO MARKETPLACES ─────────────────────────
@@ -157,6 +178,19 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'^\d{6,9}[\-_].{0,80}(glitch|distortion)',                              'Glitch & Distortion FX',                 80),
     (r'^\d{6,9}[\-_].{0,80}slideshow',                                        'After Effects - Slideshows',             83),
     (r'^\d{6,9}[\-_].{0,80}(intro|opener)',                                   'After Effects - Intros & Openers',       82),
+    # v8.7.0 — additional numeric-ID subcategory rules
+    (r'^\d{6,9}[\-_].{0,80}(particle|particles|dust|snow|sparkle)',           'After Effects - Particles & FX',         80),
+    (r'^\d{6,9}[\-_].{0,80}character.{0,15}(animation|animator|rig)',        'After Effects - Character Animation',    82),
+    (r'^\d{6,9}[\-_].{0,80}lyric.?video',                                     'After Effects - Lyric Video',            81),
+    (r'^\d{6,9}[\-_].{0,80}(hud|heads.?up.?display)',                         'After Effects - HUD & UI',               80),
+    (r'^\d{6,9}[\-_].{0,80}countdown',                                        'After Effects - Countdown & Timer',      81),
+    (r'^\d{6,9}[\-_].{0,80}mockup',                                           'Photoshop - Mockups',                    80),
+    (r'^\d{6,9}[\-_].{0,80}(font|typeface)',                                   'Fonts & Typography',                     79),
+    (r'^\d{6,9}[\-_].{0,80}flyer',                                             'Flyers & Print',                         79),
+    (r'^\d{6,9}[\-_].{0,80}business.?card',                                   'Business Cards',                         81),
+    (r'^\d{6,9}[\-_].{0,80}(resume|\bcv\b)',                                  'Resume & CV',                            80),
+    (r'^\d{6,9}[\-_].{0,80}(logo)',                                            'Logo & Identity',                        79),
+    (r'^\d{6,9}[\-_].{0,80}(presentation|powerpoint)',                        'Presentations & PowerPoint',             79),
     (r'^\d{6,9}[\-_]',                                                        'After Effects - Templates',              65),
 
     # ── TOOL-SPECIFIC (high-confidence standalone) ────────────────────────
@@ -187,6 +221,14 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     (r'affinity.{0,20}photo',                                                 'Affinity - Photo Edits',                 85),
     (r'affinity.{0,20}publisher',                                             'Affinity - Publisher Layouts',           85),
     (r'(krita|clip.?studio|paint.?tool.?sai)',                               'Clipart & Illustrations',                75),
+    # v8.7.0 — new tool-specific rules (must precede generic AE subcategory rules)
+    (r'(final.?cut|fcpx).{0,40}(title|transition|effect|template|plugin|generator|pack)', 'Final Cut Pro - Templates', 87),
+    (r'final.?cut.?pro',                                                      'Final Cut Pro - Templates',              80),
+    (r'\bfcpx\b',                                                             'Final Cut Pro - Templates',              78),
+    (r'canva.{0,40}(template|design|graphic|social|flyer|resume|presentation|pack|bundle|kit)', 'Canva - Templates', 87),
+    (r'\bcanva\b',                                                            'Canva - Templates',                      75),
+    (r'(filmora|wondershare).{0,30}(template|effect|title|transition|pack)',  'After Effects - Templates',              80),
+    (r'\bfilmora\b',                                                          'After Effects - Templates',              72),
 
     # ── FONTS ──────────────────────────────────────────────────────────────
     (r'(font|typeface|typography).{0,20}(pack|bundle|family|set)',            'Fonts & Typography',                     88),
@@ -314,6 +356,37 @@ _RAW_RULES: list[tuple[str, str, int]] = [
     # ── INFOGRAPHIC (non-motion: static print/web infographic packs) ─────────
     (r'infographic',                                                          'Infographic',                            78),
 
+    # ── POND5 (typed: sfx / music / footage / motion) ────────────────────
+    (r'pond5.{0,30}(sfx|sound.?effect)',                                      'Sound Effects & SFX',                    85),
+    (r'pond5.{0,30}(footage|video|4k|hd)',                                    'Stock Footage - General',                85),
+    (r'pond5.{0,30}(motion|template|after.?effects)',                         'After Effects - Templates',              83),
+    (r'pond5',                                                                'Stock Music & Audio',                    78),
+
+    # ── STORYBLOCKS / VIDEOBLOCKS ─────────────────────────────────────────
+    (r'(storyblocks|videoblocks).{0,30}(footage|video)',                      'Stock Footage - General',                85),
+    (r'(storyblocks|videoblocks).{0,30}(music|audio|sfx)',                    'Stock Music & Audio',                    85),
+    (r'(storyblocks|videoblocks).{0,30}(motion|template)',                    'After Effects - Templates',              83),
+    (r'storyblocks|videoblocks',                                              'Stock Footage - General',                78),
+
+    # ── EPIDEMIC SOUND ────────────────────────────────────────────────────
+    (r'epidemic.?sound',                                                      'Stock Music & Audio',                    82),
+
+    # ── LOOPERMAN / SPLICE / ZAPSPLAT / SOUNDSNAP ─────────────────────────
+    (r'looperman.{0,20}(loop|sample|beat)',                                   'Stock Music & Audio',                    82),
+    (r'looperman',                                                            'Stock Music & Audio',                    75),
+    (r'splice.{0,20}(sample|pack|loop|kit)',                                  'Stock Music & Audio',                    83),
+    (r'(zapsplat|soundsnap).{0,20}(sfx|sound|effect)',                        'Sound Effects & SFX',                    83),
+    (r'zapsplat|soundsnap',                                                   'Sound Effects & SFX',                    75),
+
+    # ── AEJUICE / MOTIONBRO / MIXKIT ──────────────────────────────────────
+    (r'aejuice.{0,30}(pack|bundle|preset|template)',                          'After Effects - Templates',              82),
+    (r'aejuice',                                                              'After Effects - Templates',              75),
+    (r'motionbro',                                                            'After Effects - Templates',              78),
+    (r'mixkit.{0,30}(footage|video)',                                         'Stock Footage - General',                83),
+    (r'mixkit.{0,30}(music|audio)',                                           'Stock Music & Audio',                    83),
+    (r'mixkit.{0,30}(template|motion)',                                       'After Effects - Templates',              82),
+    (r'mixkit',                                                               'Stock Footage - General',                72),
+
     # ── GENERAL MOTION / VIDEO ─────────────────────────────────────────────
     (r'(promo|promotional).{0,20}(video|template)',                           'After Effects - Explainer & Promo',      74),
     (r'motion.{0,15}(graphic|template|pack)',                                 'After Effects - Templates',              72),
@@ -382,6 +455,22 @@ def aggregate_archive_names(archive_stems: list[str]) -> tuple[Optional[str], in
                     f"(AE collapse: {len(ae_cats_voted)} subcategories, {ae_votes/total:.0%} consensus)"
                 )
                 return 'After Effects - Templates', collapsed_conf, collapsed_detail
+
+    # PS subcategory collapse: when multiple Photoshop subcategories split the vote,
+    # the folder is a mixed Photoshop collection — collapse to the generic parent.
+    if top_cat in _PS_SUBCATEGORIES:
+        ps_cats_voted = [c for c in votes if c in _PS_SUBCATEGORIES]
+        if len(ps_cats_voted) >= 2:
+            ps_votes = sum(votes[c] for c in ps_cats_voted)
+            non_ps_votes = match_count - ps_votes
+            if ps_votes >= 3 and ps_votes > non_ps_votes * 1.5:
+                ps_conf_avg = sum(conf_sum.get(c, 0) for c in ps_cats_voted) // max(ps_votes, 1)
+                collapsed_conf = min(ps_conf_avg + 3, 88)
+                collapsed_detail = (
+                    f"archive:{ps_votes}/{total} archives→Photoshop - Templates & Composites "
+                    f"(PS collapse: {len(ps_cats_voted)} subcategories, {ps_votes/total:.0%} consensus)"
+                )
+                return 'Photoshop - Templates & Composites', collapsed_conf, collapsed_detail
 
     # Base confidence from rule average
     conf = avg_conf

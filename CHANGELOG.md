@@ -2,7 +2,21 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v8.6.0]
+## [v8.7.0]
+
+- Fixed: **`SystemExit` swallowed by `except ImportError`** in `bootstrap.py` — `face_recognition` module calls `quit()` when `face_recognition_models` is absent, raising `SystemExit`; changed to `except (ImportError, SystemExit)` so the missing-models case is handled gracefully without killing the process
+- Fixed: **`"Calendars & Planners"`** in `FILENAME_ASSET_MAP` → corrected to `"Calendar"` to match actual category name; also added `monthly planner`, `wall calendar`, `desk calendar`, `editorial calendar` keywords
+- Added: **3 new categories** — `Canva - Templates`, `Final Cut Pro - Templates`, `3D Printing - STL Files` (with rich keyword lists)
+- Added: **11 new extension mappings** — `.rpp` → `Music Production - DAW Projects`, `.band`/`.bandproject` → `Music Production - DAW Projects`, `.fcpbundle`/`.fcpxml` → `Final Cut Pro - Templates`, `.aco` → `Photoshop - Gradients & Swatches`, `.brushset` → `Procreate - Brushes & Stamps`, `.hip`/`.hiplc`/`.hipnc` → `3D` (Houdini), `.ma`/`.mb` → `3D` (Maya), `.max` → `3D` (3ds Max), `.stl`/`.3mf` → `3D Printing - STL Files` (overrides `3D - Models & Objects` when STL-dominant); `.fcpbundle`/`.fcpxml` added to `DESIGN_TEMPLATE_EXTS`
+- Added: **`_PS_SUBCATEGORIES` frozenset + PS collapse logic** in `aggregate_archive_names()` — mirrors the AE collapse pattern; when ≥ 2 PS subcategories (`Photoshop - Actions`, `Brushes`, `Styles & Effects`, `Gradients & Swatches`, `Patterns`, `Mockups`, `Overlays`) each receive votes and PS votes dominate by 1.5× (≥ 3 total PS votes), result collapses to `Photoshop - Templates & Composites`
+- Added: **14 numeric Envato ID subcategory rules** — previously unhandled sub-types now classified instead of falling through to the generic AE catch-all: particle/FX, character animation, lyric video, HUD/UI, countdown/timer, mockup, font/typeface, flyer, business card, resume/CV, logo, presentation/PowerPoint
+- Added: **4 GraphicRiver PS sub-rules** — `graphicriver.*(action|actions)` → `Photoshop - Actions`, `graphicriver.*(brush|brushes)` → `Photoshop - Brushes`, `graphicriver.*(style|styles|effect|effects)` → `Photoshop - Styles & Effects`, `graphicriver.*(pattern|patterns)` → `Photoshop - Patterns`
+- Added: **New marketplace archive rules** — Final Cut Pro/FCPX (typed: title/transition/effect/template/plugin/generator + catch-all), Canva (typed: template/design/graphic/social/flyer/resume/presentation + catch-all), Filmora/Wondershare (typed + catch-all), Pond5 (typed: SFX/footage/motion/music), Storyblocks/Videoblocks (typed: footage/music/motion), Epidemic Sound, Looperman (typed + catch-all), Splice (typed), ZapSplat/SoundSnap (typed + catch-all), AEJuice (typed + catch-all), MotionBro, Mixkit (typed: footage/music/motion + catch-all)
+- Added: **FILENAME_ASSET_MAP entries** — Canva, Final Cut Pro, 3D printing, Filmora, Pond5/Storyblocks/Videoblocks/Epidemic Sound (stock audio), Looperman/Splice/ZapSplat/SoundSnap (SFX/loops), AEJuice/MotionBro/Mixkit/Envato Elements
+- Added: **Composition heuristics improvements** in `_classify_composition_from_scan()` — LUT packs (≥ 2 `.cube`/`.3dl`/`.lut` files at ≥ 30% ratio → `Color Grading & LUTs`), 3D printing packs (≥ 2 `.stl`/`.3mf` at ≥ 40% → `3D Printing - STL Files`), icon packs (≥ 8 PNG/SVG in `/icons/` subfolder → `Icons & Symbols`), texture packs (images in `/textures/` or `/materials/` subfolder → `3D - Materials & Textures`), large icon packs (≥ 20 PNG/SVG at ≥ 70% → `Icons & Symbols`)
+- Rule ordering: FCPX, Canva, and Filmora rules placed in tool-specific section (before generic AE standalone subcategory rules) to prevent false matches on generic title/transition/social-media rules
+
+
 
 - Added: **5 new tool-specific categories** — `Sketch - UI Resources`, `Adobe XD - Templates`, `Affinity - Designer Files`, `Affinity - Photo Edits`, `Affinity - Publisher Layouts`
 - Added: **7 new extension mappings** — `.sketch` → `Sketch - UI Resources`, `.xd` → `Adobe XD - Templates`, `.afdesign` → `Affinity - Designer Files`, `.afphoto` → `Affinity - Photo Edits`, `.afpub` → `Affinity - Publisher Layouts`, `.kra`/`.clip` → `Clipart & Illustrations`; `.xd`, `.kra`, `.clip` added to `DESIGN_TEMPLATE_EXTS`
