@@ -2,7 +2,21 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v8.7.0]
+## [v8.8.0]
+
+- Fixed: **Duplicate `is_generic_aep` and `_score_aep` definitions** in `categories.py` — first copy (lines 26–143) was silently shadowed by an identical second copy (lines 150–267); removed the second (dead) copy; `CATEGORY ENGINE` header now appears once
+- Removed: **Dead code in `classifier.py`** — `analyze_folder_composition()` (superseded by `_scan_folder_once()`), `_classify_by_composition()` (superseded by `_classify_composition_from_scan()`), and `find_near_duplicates()` (referenced undefined `IMAGE_EXTS` and `_compute_phash`; never called) — all three functions deleted
+- Added: **`_PREMIERE_SUBCATEGORIES` frozenset + PR collapse logic** in `aggregate_archive_names()` — mirrors AE/PS collapse; when ≥ 2 Premiere Pro subcategories (`Premiere Pro - Transitions`, `- Titles & Text`, `- LUTs & Color`, `- Presets & Effects`, `- Sound Design`) each receive votes and PR votes dominate by 1.5× (≥ 3 total), result collapses to `Premiere Pro - Templates`
+- Added: **Motion Array sub-typed rules** — 10 sub-type rules before the generic MotionArray catch-all: titles, transitions, logo reveals, slideshows, lower thirds, broadcast, social/Instagram, promo/explainer, mogrt/premiere (→ `Premiere Pro - Templates`), LUT/color grade (→ `Color Grading & LUTs`)
+- Added: **Envato Elements marketplace block** — 10 sub-typed rules for `envato.elements` / `elements.envato`: mogrt/premiere, transitions, logo reveals, titles, slideshows, fonts, mockups, stock photos, stock music, generic catch-all
+- Added: **Shutterstock / Getty Images / iStock archive rules** — footage sub-type (→ `Stock Footage - General`), music sub-type (→ `Stock Music & Audio`), generic (→ `Stock Photos - General`) for each platform
+- Added: **UI8 / Gumroad / ArtStation / Iconscout archive rules** — UI8 (kit/template/component → `UI & UX Design`), Gumroad (font/brush/svg/action sub-typed + catch-all), Iconscout/Craftwork (icons), ArtStation (brush/texture/model sub-typed + catch-all)
+- Added: **Standalone Premiere Pro sub-typed archive rules** — `premiere.*transition`, `handy.seamless`, `premiere.*title`, `premiere.*lower third`, `premiere.*lut`, `premiere.*preset`, `premiere.*sound` — all routed to appropriate `Premiere Pro - *` subcategories for the collapse to work correctly
+- Added: **10 new extension mappings** — `.glb`/`.gltf` → `3D - Models & Objects`, `.otc`/`.ttc` → `Fonts & Typography` (font collections), `.lottie` → `Animated Icons`, `.bmpr` → `UI & UX Design` (Balsamiq), `.rp`/`.rplib` → `UI & UX Design` (Axure RP), `.vsdx`/`.vsd` → `Forms & Documents` (Visio), `.sla`/`.slaz` → `Flyers & Print` (Scribus), `.pxm`/`.pxd` → `Clipart & Illustrations` (Pixelmator), `.splinecode` → `UI & UX Design`
+- Added: **Composition heuristics improvements** — mixed RAW+JPEG detection (≥ 2 RAW + ≥ 1 JPEG at ≥ 50% total → `Photography - RAW Files` 73), glTF/GLB detection (≥ 2 GLB/GLTF at ≥ 40% → `3D - Models & Objects` 78), Lottie animation detection (≥ 2 `.lottie` files → `Animated Icons` 72); `.rpp` added to DAW extensions; `.otc`/`.ttc` added to font extension counts
+- Added: **17 new FILENAME_ASSET_MAP entries** — Motion Array, Envato Elements, Shutterstock, Getty/iStock, UI8, Iconscout/Craftwork/Flaticon, Lottie/Bodymovin, Balsamiq, Axure RP, Visio, Scribus, Spline, glTF/GLB, ArtStation assets, Gumroad, Premiere Pro mogrt/transitions, Handy Seamless Transitions
+
+
 
 - Fixed: **`SystemExit` swallowed by `except ImportError`** in `bootstrap.py` — `face_recognition` module calls `quit()` when `face_recognition_models` is absent, raising `SystemExit`; changed to `except (ImportError, SystemExit)` so the missing-models case is handled gracefully without killing the process
 - Fixed: **`"Calendars & Planners"`** in `FILENAME_ASSET_MAP` → corrected to `"Calendar"` to match actual category name; also added `monthly planner`, `wall calendar`, `desk calendar`, `editorial calendar` keywords
