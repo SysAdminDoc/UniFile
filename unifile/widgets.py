@@ -647,18 +647,28 @@ class FilePreviewPanel(QWidget):
         self.setMaximumWidth(400)
         self.setStyleSheet(f"background: {_t['header_bg']}; border-left: 1px solid {_t['btn_bg']};")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 10, 10, 10)
-        lay.setSpacing(8)
+        lay.setContentsMargins(14, 14, 14, 14)
+        lay.setSpacing(10)
+
+        self.lbl_panel_kicker = QLabel("INSPECTOR")
+        self.lbl_panel_kicker.setStyleSheet(
+            f"color: {_t['sidebar_btn_active_fg']}; font-size: 10px; font-weight: 700; letter-spacing: 1.4px;"
+        )
+        lay.addWidget(self.lbl_panel_kicker)
 
         self.lbl_preview_img = QLabel()
         self.lbl_preview_img.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_preview_img.setFixedHeight(250)
-        self.lbl_preview_img.setStyleSheet(f"background: {_t['header_bg']}; border-radius: 6px; border: 1px solid {_t['btn_bg']};")
+        self.lbl_preview_img.setFixedHeight(220)
+        self.lbl_preview_img.setStyleSheet(
+            f"background: {_t['bg']}; border-radius: 12px; border: 1px solid {_t['border']};"
+        )
         lay.addWidget(self.lbl_preview_img)
 
         self.lbl_preview_name = QLabel("")
         self.lbl_preview_name.setWordWrap(True)
-        self.lbl_preview_name.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 13px; font-weight: bold;")
+        self.lbl_preview_name.setStyleSheet(
+            f"color: {_t['fg_bright']}; font-size: 15px; font-weight: 700;"
+        )
         lay.addWidget(self.lbl_preview_name)
 
         self.lbl_preview_meta = QLabel("")
@@ -670,8 +680,8 @@ class FilePreviewPanel(QWidget):
         self.txt_preview_text.setReadOnly(True)
         self.txt_preview_text.setMaximumHeight(120)
         self.txt_preview_text.setStyleSheet(
-            f"QTextEdit {{ background: {_t['header_bg']}; color: {_t['muted']}; font-size: 11px;"
-            f"border: 1px solid {_t['btn_bg']}; border-radius: 4px; padding: 4px; }}")
+            f"QTextEdit {{ background: {_t['bg']}; color: {_t['fg']}; font-size: 11px;"
+            f"border: 1px solid {_t['border']}; border-radius: 10px; padding: 8px; }}")
         self.txt_preview_text.hide()
         lay.addWidget(self.txt_preview_text)
 
@@ -680,22 +690,23 @@ class FilePreviewPanel(QWidget):
         self.txt_archive.setReadOnly(True)
         self.txt_archive.setMaximumHeight(120)
         self.txt_archive.setStyleSheet(
-            f"QTextEdit {{ background: {_t['header_bg']}; color: {_t['accent']}; font-size: 11px;"
-            f"border: 1px solid {_t['btn_bg']}; border-radius: 4px; padding: 4px; }}")
+            f"QTextEdit {{ background: {_t['bg']}; color: {_t['accent']}; font-size: 11px;"
+            f"border: 1px solid {_t['border']}; border-radius: 10px; padding: 8px; }}")
         self.txt_archive.hide()
         lay.addWidget(self.txt_archive)
 
-        self.btn_preview_open = QPushButton("Open Externally")
-        self.btn_preview_open.setFixedHeight(28)
+        self.btn_preview_open = QPushButton("Open File")
+        self.btn_preview_open.setFixedHeight(32)
         self.btn_preview_open.setStyleSheet(
             f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {_t['btn_bg']};"
-            f"color: {_t['sidebar_btn_active_fg']}; border: 1px solid {_t['border']}; border-radius: 4px; }}"
+            f"color: {_t['sidebar_btn_active_fg']}; border: 1px solid {_t['border']}; border-radius: 10px; }}"
             f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
         self.btn_preview_open.clicked.connect(self._open_file)
         lay.addWidget(self.btn_preview_open)
 
         lay.addStretch()
         self._current_path = ""
+        self.clear()
 
     def show_file(self, filepath: str, metadata: dict = None):
         """Display preview for a file."""
@@ -703,6 +714,7 @@ class FilePreviewPanel(QWidget):
         if not filepath or not os.path.exists(filepath):
             self.clear()
             return
+        self.btn_preview_open.setEnabled(True)
         name = os.path.basename(filepath)
         self.lbl_preview_name.setText(name)
         ext = os.path.splitext(name)[1].lower()
@@ -719,14 +731,16 @@ class FilePreviewPanel(QWidget):
             else:
                 self.lbl_preview_img.setText("Preview unavailable")
                 _t = self._t
-                self.lbl_preview_img.setStyleSheet(f"background: {_t['header_bg']}; color: {_t['muted']}; border-radius: 6px; border: 1px solid {_t['btn_bg']};")
+                self.lbl_preview_img.setStyleSheet(
+                    f"background: {_t['bg']}; color: {_t['muted']}; border-radius: 12px; border: 1px solid {_t['border']};"
+                )
         else:
             self.lbl_preview_img.clear()
             self.lbl_preview_img.setText(ext.upper() if ext else "FILE")
             _t = self._t
             self.lbl_preview_img.setStyleSheet(
-                f"background: {_t['header_bg']}; color: {_t['muted']}; font-size: 28px; font-weight: bold;"
-                f"border-radius: 6px; border: 1px solid {_t['btn_bg']};")
+                f"background: {_t['bg']}; color: {_t['muted']}; font-size: 28px; font-weight: bold;"
+                f"border-radius: 12px; border: 1px solid {_t['border']};")
 
         # Metadata
         meta_parts = []
@@ -790,11 +804,16 @@ class FilePreviewPanel(QWidget):
     def clear(self):
         self._current_path = ""
         self.lbl_preview_img.clear()
-        self.lbl_preview_img.setText("")
-        self.lbl_preview_name.setText("")
-        self.lbl_preview_meta.setText("")
+        self.lbl_preview_img.setText("Select a file")
+        self.lbl_preview_img.setStyleSheet(
+            f"background: {self._t['bg']}; color: {self._t['muted']}; font-size: 20px; font-weight: 700;"
+            f"border-radius: 12px; border: 1px solid {self._t['border']};"
+        )
+        self.lbl_preview_name.setText("No file selected")
+        self.lbl_preview_meta.setText("Choose a result to inspect its preview, metadata, and quick file details.")
         self.txt_preview_text.hide()
         self.txt_archive.hide()
+        self.btn_preview_open.setEnabled(False)
 
     def _open_file(self):
         if self._current_path and os.path.exists(self._current_path):
@@ -809,4 +828,3 @@ class FilePreviewPanel(QWidget):
 # ══════════════════════════════════════════════════════════════════════════════
 # BEFORE/AFTER COMPARISON VIEW — Side-by-side tree diff
 # ══════════════════════════════════════════════════════════════════════════════
-

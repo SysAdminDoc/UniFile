@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, QTableWidgetItem,
     QCheckBox, QHeaderView, QAbstractItemView,
-    QTreeWidget, QTreeWidgetItem, QDialog,
-    QListWidget, QSplitter
+    QTreeWidget, QTreeWidgetItem, QDialog, QFrame,
+    QListWidget, QSplitter, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
@@ -17,9 +17,36 @@ from unifile.config import (
     get_active_theme, get_active_stylesheet,
     load_watch_history, clear_watch_history
 )
-from unifile.cache import _load_undo_stack
+from unifile.cache import _load_undo_stack, _save_undo_stack
 from unifile.engine import ScheduleManager, EventGrouper
 from unifile.plugins import PluginManager, ProfileManager, _PLUGINS_DIR
+
+
+def _build_dialog_header(t: dict, kicker: str, title: str, description: str) -> QFrame:
+    frame = QFrame()
+    frame.setStyleSheet(
+        f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; "
+        f"border-radius: 14px; }}"
+    )
+    layout = QVBoxLayout(frame)
+    layout.setContentsMargins(16, 14, 16, 14)
+    layout.setSpacing(4)
+
+    lbl_kicker = QLabel(kicker.upper())
+    lbl_kicker.setStyleSheet(
+        f"color: {t['accent']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
+    )
+    layout.addWidget(lbl_kicker)
+
+    lbl_title = QLabel(title)
+    lbl_title.setStyleSheet(f"color: {t['fg_bright']}; font-size: 20px; font-weight: 700;")
+    layout.addWidget(lbl_title)
+
+    lbl_desc = QLabel(description)
+    lbl_desc.setWordWrap(True)
+    lbl_desc.setStyleSheet(f"color: {t['muted']}; font-size: 12px; line-height: 1.4;")
+    layout.addWidget(lbl_desc)
+    return frame
 
 
 class UndoBatchDialog(QDialog):
@@ -27,44 +54,74 @@ class UndoBatchDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Undo Operations")
-        self.setMinimumSize(500, 350)
+        self.setMinimumSize(560, 420)
         self.setStyleSheet(get_active_stylesheet())
         self.selected_indices = []
+        self.stack = _load_undo_stack()
+        _t = get_active_theme()
 
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("Select batch(es) to undo (most recent first):"))
+        lay.setSpacing(12)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.addWidget(_build_dialog_header(
+            _t,
+            "Recovery",
+            "Undo Operations",
+            "Review recent organize batches before restoring them. The newest batch appears first so you can reverse the last change quickly."
+        ))
+
+        self.lbl_summary = QLabel("")
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(self.lbl_summary)
 
         self.lst = QListWidget()
+        self.lst.setAlternatingRowColors(True)
         self.lst.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        stack = _load_undo_stack()
-        for i, batch in enumerate(reversed(stack)):
+        self.lst.itemSelectionChanged.connect(self._update_selection_state)
+        for batch in reversed(self.stack):
             ts = batch.get('timestamp', '?')[:19].replace('T', ' ')
             count = batch.get('count', len(batch.get('ops', [])))
-            self.lst.addItem(f"[{ts}]  {count} operations")
+            self.lst.addItem(f"{ts}  -  {count} operation{'s' if count != 1 else ''}")
         lay.addWidget(self.lst, 1)
 
         btn_row = QHBoxLayout()
-        btn_sel = QPushButton("Undo Selected")
-        btn_sel.clicked.connect(self._undo_selected)
-        btn_all = QPushButton("Undo All")
-        btn_all.clicked.connect(self._undo_all)
+        self.btn_sel = QPushButton("Undo Selected Batches")
+        self.btn_sel.clicked.connect(self._undo_selected)
+        self.btn_all = QPushButton("Undo Entire History")
+        self.btn_all.clicked.connect(self._undo_all)
         btn_cancel = QPushButton("Cancel")
         btn_cancel.clicked.connect(self.reject)
-        btn_row.addWidget(btn_sel); btn_row.addWidget(btn_all)
+        btn_row.addWidget(self.btn_sel)
+        btn_row.addWidget(self.btn_all)
         btn_row.addStretch(); btn_row.addWidget(btn_cancel)
         lay.addLayout(btn_row)
+        self._update_selection_state()
+
+    def _update_selection_state(self):
+        total = len(self.stack)
+        selected = len(self.lst.selectedIndexes())
+        if total:
+            self.lbl_summary.setText(
+                f"{total} undo batch{'es' if total != 1 else ''} available. "
+                f"{selected} selected."
+            )
+        else:
+            self.lbl_summary.setText("No undo history is available yet.")
+        self.btn_sel.setEnabled(selected > 0)
+        self.btn_all.setEnabled(total > 0)
 
     def _undo_selected(self):
-        stack = _load_undo_stack()
-        total = len(stack)
+        total = len(self.stack)
         # Map reversed list indices back to stack indices
         self.selected_indices = [total - 1 - r.row() for r in self.lst.selectedIndexes()]
         if self.selected_indices:
             self.accept()
 
     def _undo_all(self):
-        stack = _load_undo_stack()
-        self.selected_indices = list(range(len(stack)))
+        if not self.stack:
+            return
+        self.selected_indices = list(range(len(self.stack)))
         self.accept()
 
 
@@ -76,20 +133,38 @@ class BeforeAfterDialog(QDialog):
         self.setWindowTitle("Before / After Comparison")
         self.setMinimumSize(900, 550)
         self.setStyleSheet(get_active_stylesheet())
+        _t = get_active_theme()
 
         lay = QVBoxLayout(self)
+        lay.setSpacing(12)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.addWidget(_build_dialog_header(
+            _t,
+            "Preview",
+            "Before and After",
+            "Review the proposed folder structure before you apply changes. The left side shows the current source layout and the right side shows the planned destination layout."
+        ))
+
+        summary = QLabel(
+            f"{len(items)} item{'s' if len(items) != 1 else ''} included from {src_root or 'the selected source'}."
+        )
+        summary.setWordWrap(True)
+        summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(summary)
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
 
         # Before tree
         left_w = QWidget()
         left_lay = QVBoxLayout(left_w)
-        left_lay.setContentsMargins(4, 4, 4, 4)
-        lbl_before = QLabel("BEFORE (Current)")
+        left_lay.setContentsMargins(6, 6, 6, 6)
+        left_lay.setSpacing(8)
+        lbl_before = QLabel("CURRENT STRUCTURE")
         lbl_before.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 12px;")  # semantic: before=red
         left_lay.addWidget(lbl_before)
         self.tree_before = QTreeWidget()
         self.tree_before.setHeaderLabels(["Path"])
-        _t = get_active_theme()
         self.tree_before.setStyleSheet(f"QTreeWidget {{ background: {_t['header_bg']}; color: {_t['muted']}; }}")
         left_lay.addWidget(self.tree_before)
         splitter.addWidget(left_w)
@@ -97,8 +172,9 @@ class BeforeAfterDialog(QDialog):
         # After tree
         right_w = QWidget()
         right_lay = QVBoxLayout(right_w)
-        right_lay.setContentsMargins(4, 4, 4, 4)
-        lbl_after = QLabel("AFTER (Proposed)")
+        right_lay.setContentsMargins(6, 6, 6, 6)
+        right_lay.setSpacing(8)
+        lbl_after = QLabel("PROPOSED STRUCTURE")
         lbl_after.setStyleSheet(f"color: {_t['green']}; font-weight: bold; font-size: 12px;")
         right_lay.addWidget(lbl_after)
         self.tree_after = QTreeWidget()
@@ -415,19 +491,28 @@ class ScheduleDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Scheduled Scans")
-        self.setMinimumSize(500, 400)
+        self.setMinimumSize(560, 460)
         self.setStyleSheet(get_active_stylesheet())
 
-        lay = QVBoxLayout(self)
-
-        lbl_h = QLabel("Scheduled Scans (Windows Task Scheduler)")
         _t = get_active_theme()
-        lbl_h.setStyleSheet(f"color: {_t['sidebar_btn_active_fg']}; font-weight: bold; font-size: 13px;")
-        lay.addWidget(lbl_h)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(12)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.addWidget(_build_dialog_header(
+            _t,
+            "Automation",
+            "Scheduled Scans",
+            "Create recurring organizer runs through Windows Task Scheduler. Keep routine cleanup predictable, and only enable auto-apply when you trust the profile."
+        ))
+
+        self.lbl_task_summary = QLabel("")
+        self.lbl_task_summary.setWordWrap(True)
+        self.lbl_task_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(self.lbl_task_summary)
 
         # Profile
         prof_row = QHBoxLayout()
-        prof_row.addWidget(QLabel("Profile:"))
+        prof_row.addWidget(QLabel("Profile"))
         self.cmb_profile = QComboBox()
         for p in ProfileManager.list_profiles():
             self.cmb_profile.addItem(p)
@@ -436,29 +521,35 @@ class ScheduleDialog(QDialog):
 
         # Schedule type
         type_row = QHBoxLayout()
-        type_row.addWidget(QLabel("Schedule:"))
+        type_row.addWidget(QLabel("Schedule"))
         self.cmb_type = QComboBox()
         self.cmb_type.addItems(["Daily", "Weekly", "On Logon"])
+        self.cmb_type.currentIndexChanged.connect(self._on_schedule_type_changed)
         type_row.addWidget(self.cmb_type)
         type_row.addStretch()
         lay.addLayout(type_row)
 
         # Time
         time_row = QHBoxLayout()
-        time_row.addWidget(QLabel("Time:"))
+        time_row.addWidget(QLabel("Time"))
         self.txt_time = QLineEdit("09:00")
         self.txt_time.setFixedWidth(80)
+        self.txt_time.setPlaceholderText("09:00")
         time_row.addWidget(self.txt_time)
         time_row.addStretch()
         lay.addLayout(time_row)
 
+        self.lbl_time_hint = QLabel("")
+        self.lbl_time_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(self.lbl_time_hint)
+
         # Auto-apply
-        self.chk_auto = QCheckBox("Auto-apply (move files without confirmation)")
+        self.chk_auto = QCheckBox("Auto-apply results without an approval step")
         lay.addWidget(self.chk_auto)
 
         # Buttons
         btn_row = QHBoxLayout()
-        btn_create = QPushButton("Create Schedule")
+        btn_create = QPushButton("Create Scheduled Scan")
         btn_create.setStyleSheet(f"QPushButton {{ background: {_t['green_pressed']}; color: {_t['green']}; border: 1px solid {_t['sidebar_profile_border']}; border-radius: 4px; padding: 6px 12px; }} QPushButton:hover {{ background: {_t['green_hover']}; }}")
         btn_create.clicked.connect(self._create)
         btn_row.addWidget(btn_create)
@@ -466,26 +557,47 @@ class ScheduleDialog(QDialog):
         lay.addLayout(btn_row)
 
         # Existing tasks
-        lbl_ex = QLabel("Existing Scheduled Tasks:")
+        lbl_ex = QLabel("Existing Scheduled Tasks")
         lbl_ex.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding-top: 10px;")
         lay.addWidget(lbl_ex)
         self.lst_tasks = QListWidget()
+        self.lst_tasks.itemSelectionChanged.connect(self._update_task_controls)
         lay.addWidget(self.lst_tasks, 1)
 
-        btn_del = QPushButton("Delete Selected")
-        btn_del.clicked.connect(self._delete)
-        lay.addWidget(btn_del)
+        self.btn_del = QPushButton("Delete Selected Task")
+        self.btn_del.clicked.connect(self._delete)
+        lay.addWidget(self.btn_del)
 
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.accept)
         lay.addWidget(btn_close)
 
         self._refresh_tasks()
+        self._on_schedule_type_changed(self.cmb_type.currentIndex())
 
     def _refresh_tasks(self):
         self.lst_tasks.clear()
-        for t in ScheduleManager.list_tasks():
+        tasks = ScheduleManager.list_tasks()
+        for t in tasks:
             self.lst_tasks.addItem(f"{t['name']}  |  Next: {t.get('next_run', '?')}  |  {t.get('status', '?')}")
+        if tasks:
+            self.lbl_task_summary.setText(
+                f"{len(tasks)} scheduled scan{'s' if len(tasks) != 1 else ''} configured."
+            )
+        else:
+            self.lbl_task_summary.setText("No scheduled scans yet. Create one to automate a trusted profile.")
+        self._update_task_controls()
+
+    def _on_schedule_type_changed(self, idx):
+        on_logon = idx == 2
+        self.txt_time.setEnabled(not on_logon)
+        if on_logon:
+            self.lbl_time_hint.setText("On Logon runs when you sign in, so no clock time is needed.")
+        else:
+            self.lbl_time_hint.setText("Use 24-hour time, for example 09:00 or 18:30.")
+
+    def _update_task_controls(self):
+        self.btn_del.setEnabled(self.lst_tasks.currentRow() >= 0)
 
     def _create(self):
         profile = self.cmb_profile.currentText()
@@ -512,37 +624,54 @@ class UndoTimelineDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Undo Timeline")
-        self.setMinimumSize(700, 450)
+        self.setMinimumSize(760, 500)
         self.setStyleSheet(get_active_stylesheet())
         self.selected_indices = []
+        _t = get_active_theme()
+        root = QVBoxLayout(self)
+        root.setSpacing(12)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.addWidget(_build_dialog_header(
+            _t,
+            "History",
+            "Undo Timeline",
+            "Inspect past organize batches before rolling them back. The detail view shows each move so you can restore changes with confidence."
+        ))
 
-        lay = QHBoxLayout(self)
+        self.lbl_timeline_summary = QLabel("")
+        self.lbl_timeline_summary.setWordWrap(True)
+        self.lbl_timeline_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        root.addWidget(self.lbl_timeline_summary)
+
+        lay = QHBoxLayout()
+        lay.setSpacing(12)
 
         # Left: timeline
         left = QVBoxLayout()
         lbl_h = QLabel("Operation History")
-        _t = get_active_theme()
         lbl_h.setStyleSheet(f"color: {_t['sidebar_btn_active_fg']}; font-weight: bold; font-size: 13px;")
         left.addWidget(lbl_h)
         self.lst_timeline = QListWidget()
+        self.lst_timeline.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.lst_timeline.currentRowChanged.connect(self._on_batch_selected)
+        self.lst_timeline.itemSelectionChanged.connect(self._update_selection_state)
         left.addWidget(self.lst_timeline, 1)
 
         btn_row = QHBoxLayout()
-        btn_undo = QPushButton("Undo Selected")
-        btn_undo.setStyleSheet("QPushButton { background: #4a1a1a; color: #ef4444; border: 1px solid #5c2e2e; border-radius: 4px; padding: 6px 12px; } QPushButton:hover { background: #5c2e2e; }")  # semantic: danger
-        btn_undo.clicked.connect(self._undo_selected)
-        btn_row.addWidget(btn_undo)
-        btn_undo_all = QPushButton("Undo All")
-        btn_undo_all.clicked.connect(self._undo_all)
-        btn_row.addWidget(btn_undo_all)
+        self.btn_undo = QPushButton("Undo Selected Batches")
+        self.btn_undo.setStyleSheet("QPushButton { background: #4a1a1a; color: #ef4444; border: 1px solid #5c2e2e; border-radius: 4px; padding: 6px 12px; } QPushButton:hover { background: #5c2e2e; }")  # semantic: danger
+        self.btn_undo.clicked.connect(self._undo_selected)
+        btn_row.addWidget(self.btn_undo)
+        self.btn_undo_all = QPushButton("Undo Entire History")
+        self.btn_undo_all.clicked.connect(self._undo_all)
+        btn_row.addWidget(self.btn_undo_all)
         btn_row.addStretch()
         left.addLayout(btn_row)
         lay.addLayout(left, 1)
 
         # Right: batch details
         right = QVBoxLayout()
-        self.lbl_batch_info = QLabel("")
+        self.lbl_batch_info = QLabel("Select a batch to inspect its moves and affected categories.")
         self.lbl_batch_info.setStyleSheet(f"color: {_t['fg_bright']}; font-weight: bold; font-size: 12px;")
         right.addWidget(self.lbl_batch_info)
         self.tree_ops = QTreeWidget()
@@ -554,17 +683,33 @@ class UndoTimelineDialog(QDialog):
         btn_close.clicked.connect(self.accept)
         right.addWidget(btn_close)
         lay.addLayout(right, 2)
+        root.addLayout(lay, 1)
 
         self.stack = _load_undo_stack()
         self._populate()
 
     def _populate(self):
-        for i, batch in enumerate(reversed(self.stack)):
+        self.lst_timeline.clear()
+        for batch in reversed(self.stack):
             ts = batch.get('timestamp', '?')[:19].replace('T', ' ')
             count = batch.get('count', len(batch.get('ops', [])))
             status = batch.get('status', 'applied')
-            dot = {'applied': '+', 'undone': '-', 'partial': '~'}.get(status, '?')
-            self.lst_timeline.addItem(f"[{dot}] {ts}  ({count} ops)")
+            dot = {'applied': 'Applied', 'undone': 'Undone', 'partial': 'Partial'}.get(status, 'Unknown')
+            mode = batch.get('mode', '')
+            src_dir = batch.get('source_dir', '')
+            meta = ''
+            if mode:
+                meta += f'  [{mode}]'
+            if src_dir:
+                import os as _os
+                meta += f'  {_os.path.basename(src_dir) or src_dir}'
+            self.lst_timeline.addItem(f"{ts}  -  {count} ops  -  {dot}{meta}")
+        self.lbl_timeline_summary.setText(
+            f"{len(self.stack)} batch{'es' if len(self.stack) != 1 else ''} available in history."
+            if self.stack else
+            "No operation history is available yet."
+        )
+        self._update_selection_state()
 
     def _on_batch_selected(self, row):
         self.tree_ops.clear()
@@ -575,22 +720,73 @@ class UndoTimelineDialog(QDialog):
             return
         batch = self.stack[actual_idx]
         ops = batch.get('ops', [])
-        self.lbl_batch_info.setText(f"Batch: {len(ops)} operations  |  {batch.get('timestamp', '?')[:19]}")
+        timestamp = batch.get('timestamp', '?')[:19].replace('T', ' ')
         cats = Counter()
         for op in ops:
             cats[op.get('category', '?')] += 1
-            item = QTreeWidgetItem([op.get('dst', '?'), '->', op.get('src', '?')])
+            item = QTreeWidgetItem([op.get('src', '?'), '->', op.get('dst', '?')])
             self.tree_ops.addTopLevelItem(item)
+        category_summary = ", ".join(
+            f"{name} ({count})" for name, count in cats.most_common(3) if name and name != '?'
+        )
+        self.lbl_batch_info.setText(
+            f"{len(ops)} operation{'s' if len(ops) != 1 else ''} from {timestamp}"
+            + (f"  |  Mode: {batch.get('mode', '?')}" if batch.get('mode') else "")
+            + (f"  |  Src: {batch.get('source_dir', '')}" if batch.get('source_dir') else "")
+            + (f"  -  Top categories: {category_summary}" if category_summary else "")
+        )
+
+    def _update_selection_state(self):
+        selected = len(self.lst_timeline.selectedIndexes())
+        has_history = bool(self.stack)
+        self.btn_undo.setEnabled(selected > 0)
+        self.btn_undo_all.setEnabled(has_history)
 
     def _undo_selected(self):
         rows = [idx.row() for idx in self.lst_timeline.selectedIndexes()]
         total = len(self.stack)
-        self.selected_indices = [total - 1 - r for r in rows]
-        if self.selected_indices:
-            self.accept()
+        indices = sorted([total - 1 - r for r in rows], reverse=True)
+        if not indices:
+            return
+        self._perform_undo(indices)
 
     def _undo_all(self):
-        self.selected_indices = list(range(len(self.stack)))
+        indices = sorted(range(len(self.stack)), reverse=True)
+        self._perform_undo(indices)
+
+    def _perform_undo(self, indices):
+        import shutil as _shutil
+        import os as _os
+        ok = err = skipped = 0
+        for idx in indices:
+            if idx >= len(self.stack):
+                continue
+            batch = self.stack[idx]
+            if batch.get('status') == 'undone':
+                skipped += 1
+                continue
+            for op in reversed(batch.get('ops', [])):
+                src = op.get('src', '')
+                dst = op.get('dst', '')
+                try:
+                    if _os.path.exists(src):
+                        _os.makedirs(_os.path.dirname(dst), exist_ok=True)
+                        _shutil.move(src, dst)
+                        ok += 1
+                    else:
+                        skipped += 1
+                except Exception:
+                    err += 1
+            self.stack[idx]['status'] = 'undone'
+        _save_undo_stack(self.stack)
+        self.selected_indices = indices
+        msg = f"Undo complete: {ok} restored"
+        if err:
+            msg += f", {err} errors"
+        if skipped:
+            msg += f", {skipped} skipped"
+        QMessageBox.information(self, "Undo", msg)
+        self._populate()
         self.accept()
 
 
@@ -600,21 +796,35 @@ class PluginManagerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Plugin Manager")
-        self.setMinimumSize(550, 350)
+        self.setMinimumSize(580, 420)
         self.setStyleSheet(get_active_stylesheet())
 
         lay = QVBoxLayout(self)
-        lbl_h = QLabel("Installed Plugins")
         _t = get_active_theme()
-        lbl_h.setStyleSheet(f"color: {_t['sidebar_btn_active_fg']}; font-weight: bold; font-size: 13px;")
-        lay.addWidget(lbl_h)
+        lay.setSpacing(12)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.addWidget(_build_dialog_header(
+            _t,
+            "Extensions",
+            "Plugin Manager",
+            "Inspect discovered plugins, confirm which hooks they register, and jump straight to the plugin folder when you need to manage files directly."
+        ))
+
+        self.lbl_summary = QLabel("")
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(self.lbl_summary)
 
         self.lst_plugins = QListWidget()
+        self.lst_plugins.setAlternatingRowColors(True)
         lay.addWidget(self.lst_plugins, 1)
 
-        self.lbl_info = QLabel("")
+        self.lbl_info = QLabel("Select a plugin to inspect its hooks, description, and path.")
         self.lbl_info.setWordWrap(True)
-        self.lbl_info.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 6px;")
+        self.lbl_info.setStyleSheet(
+            f"color: {_t['muted']}; font-size: 11px; padding: 10px 12px; "
+            f"background: {_t['bg_alt']}; border: 1px solid {_t['border']}; border-radius: 10px;"
+        )
         lay.addWidget(self.lbl_info)
 
         btn_row = QHBoxLayout()
@@ -639,6 +849,14 @@ class PluginManagerDialog(QDialog):
         for p in self._discovered:
             hooks = ', '.join(p.get('hooks', []))
             self.lst_plugins.addItem(f"{p['name']}  [{hooks}]")
+        count = len(self._discovered)
+        self.lbl_summary.setText(
+            f"{count} plugin{'s' if count != 1 else ''} discovered."
+            if count else
+            "No plugins were discovered. Open the plugins folder to add one."
+        )
+        if not count:
+            self.lbl_info.setText("No plugin metadata is available yet.")
 
     def _on_selected(self, row):
         if 0 <= row < len(self._discovered):
@@ -648,6 +866,8 @@ class PluginManagerDialog(QDialog):
                 f"Hooks: {', '.join(p.get('hooks', []))}\n"
                 f"Description: {p['description']}\n"
                 f"Path: {p['path']}")
+        else:
+            self.lbl_info.setText("Select a plugin to inspect its hooks, description, and path.")
 
     def _open_folder(self):
         if sys.platform == 'win32':
@@ -675,16 +895,20 @@ class WatchHistoryDialog(QDialog):
     def _build_ui(self):
         _t = get_active_theme()
         lay = QVBoxLayout(self)
-        lay.setSpacing(8)
-        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(12)
+        lay.setContentsMargins(18, 18, 18, 18)
 
-        hdr = QLabel("Watch Mode History")
-        hdr.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {_t['fg_bright']};")
-        lay.addWidget(hdr)
+        lay.addWidget(_build_dialog_header(
+            _t,
+            "Monitoring",
+            "Watch Mode History",
+            "Review recent background organize events triggered by Watch Mode. Use this log to confirm what ran, where it ran, and what happened."
+        ))
 
-        desc = QLabel("Recent auto-organize events triggered by Watch Mode.")
-        desc.setStyleSheet(f"color: {_t['muted']}; font-size: 12px; margin-bottom: 4px;")
-        lay.addWidget(desc)
+        self.lbl_summary = QLabel("")
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(self.lbl_summary)
 
         self.tbl = QTableWidget()
         self.tbl.setColumnCount(4)
@@ -699,10 +923,10 @@ class WatchHistoryDialog(QDialog):
         lay.addWidget(self.tbl, 1)
 
         bb = QHBoxLayout()
-        btn_clear = QPushButton("Clear History")
-        btn_clear.setStyleSheet("QPushButton { color: #ef4444; }")
-        btn_clear.clicked.connect(self._clear)
-        bb.addWidget(btn_clear)
+        self.btn_clear = QPushButton("Clear Watch History")
+        self.btn_clear.setStyleSheet("QPushButton { color: #ef4444; }")
+        self.btn_clear.clicked.connect(self._clear)
+        bb.addWidget(self.btn_clear)
         bb.addStretch()
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.accept)
@@ -724,7 +948,162 @@ class WatchHistoryDialog(QDialog):
             self.tbl.setItem(r, 1, QTableWidgetItem(event.get('folder', '')))
             self.tbl.setItem(r, 2, QTableWidgetItem(event.get('action', '')))
             self.tbl.setItem(r, 3, QTableWidgetItem(event.get('details', '')))
+        if history:
+            latest = history[-1].get('timestamp', '').replace('T', ' ')[:19]
+            self.lbl_summary.setText(
+                f"{len(history)} event{'s' if len(history) != 1 else ''} recorded. Latest event: {latest or 'unknown'}."
+            )
+        else:
+            self.lbl_summary.setText("No Watch Mode events have been recorded yet.")
+        self.btn_clear.setEnabled(bool(history))
 
     def _clear(self):
         clear_watch_history()
         self.tbl.setRowCount(0)
+        self.lbl_summary.setText("Watch Mode history cleared.")
+        self.btn_clear.setEnabled(False)
+
+
+class CsvRulesDialog(QDialog):
+    """Edit user-defined CSV sort rules (regex-based folder classification)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Sort Rules Editor")
+        self.setMinimumSize(700, 520)
+        self.setStyleSheet(get_active_stylesheet())
+        self._build_ui()
+        self._load()
+
+    def _build_ui(self):
+        from unifile.csv_rules import get_rules_for_editor, rules_file_exists, get_rules_file
+        self._get_rules_for_editor = get_rules_for_editor
+        self._rules_file_exists = rules_file_exists
+        self._get_rules_file = get_rules_file
+
+        _t = get_active_theme()
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+        lay.setContentsMargins(18, 18, 18, 18)
+
+        lay.addWidget(_build_dialog_header(
+            _t,
+            "Automation",
+            "Sort Rules Editor",
+            "Define regex patterns that map folder names to categories. Rules are matched in order — the first match wins. "
+            "Applied before the AI — zero tokens consumed."
+        ))
+
+        # Table
+        self.tbl = QTableWidget(0, 2)
+        self.tbl.setHorizontalHeaderLabels(["Category", "Pattern (regex)"])
+        self.tbl.horizontalHeader().setStretchLastSection(True)
+        self.tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl.verticalHeader().setVisible(False)
+        self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl.setAlternatingRowColors(True)
+        lay.addWidget(self.tbl, 1)
+
+        # Row controls
+        row_btns = QHBoxLayout()
+        btn_add = QPushButton("+ Add Row")
+        btn_add.clicked.connect(self._add_row)
+        btn_del = QPushButton("Remove Selected")
+        btn_del.setStyleSheet("QPushButton { color: #ef4444; }")
+        btn_del.clicked.connect(self._remove_row)
+        self.btn_open = QPushButton("Open rules.csv")
+        self.btn_open.clicked.connect(self._open_file)
+        row_btns.addWidget(btn_add)
+        row_btns.addWidget(btn_del)
+        row_btns.addStretch()
+        row_btns.addWidget(self.btn_open)
+        lay.addLayout(row_btns)
+
+        # Test section
+        test_row = QHBoxLayout()
+        self.txt_test = QLineEdit()
+        self.txt_test.setPlaceholderText("Test folder name...")
+        btn_test = QPushButton("Test")
+        btn_test.clicked.connect(self._test)
+        self.lbl_test_result = QLabel("")
+        self.lbl_test_result.setStyleSheet(f"color: {_t['accent']}; font-size: 11px;")
+        test_row.addWidget(QLabel("Test:"))
+        test_row.addWidget(self.txt_test, 1)
+        test_row.addWidget(btn_test)
+        test_row.addWidget(self.lbl_test_result, 1)
+        lay.addLayout(test_row)
+
+        # Dialog buttons
+        bb = QHBoxLayout()
+        btn_save = QPushButton("Save Rules")
+        btn_save.setDefault(True)
+        btn_save.clicked.connect(self._save)
+        btn_cancel = QPushButton("Cancel")
+        btn_cancel.clicked.connect(self.reject)
+        bb.addStretch()
+        bb.addWidget(btn_cancel)
+        bb.addWidget(btn_save)
+        lay.addLayout(bb)
+
+    def _load(self):
+        rows = self._get_rules_for_editor()
+        self.tbl.setRowCount(0)
+        for cat, pat in rows:
+            r = self.tbl.rowCount()
+            self.tbl.insertRow(r)
+            self.tbl.setItem(r, 0, QTableWidgetItem(cat))
+            self.tbl.setItem(r, 1, QTableWidgetItem(pat))
+        self.btn_open.setEnabled(self._rules_file_exists())
+
+    def _add_row(self):
+        r = self.tbl.rowCount()
+        self.tbl.insertRow(r)
+        self.tbl.setItem(r, 0, QTableWidgetItem("Category"))
+        self.tbl.setItem(r, 1, QTableWidgetItem(".*pattern.*"))
+        self.tbl.editItem(self.tbl.item(r, 0))
+
+    def _remove_row(self):
+        rows = sorted({i.row() for i in self.tbl.selectedItems()}, reverse=True)
+        for r in rows:
+            self.tbl.removeRow(r)
+
+    def _open_file(self):
+        path = self._get_rules_file()
+        if os.path.exists(path):
+            os.startfile(path)
+        else:
+            QMessageBox.information(self, "Sort Rules", "Save rules first to create the file.")
+
+    def _test(self):
+        from unifile.csv_rules import test_rules
+        name = self.txt_test.text().strip()
+        if not name:
+            return
+        rules = self._collect_rules()
+        result = test_rules(name, rules)
+        if result:
+            self.lbl_test_result.setText(f"Matched: {result[0]}  (pattern: {result[1]})")
+        else:
+            self.lbl_test_result.setText("No match")
+
+    def _collect_rules(self):
+        rules = []
+        for r in range(self.tbl.rowCount()):
+            cat_item = self.tbl.item(r, 0)
+            pat_item = self.tbl.item(r, 1)
+            cat = cat_item.text().strip() if cat_item else ''
+            pat = pat_item.text().strip() if pat_item else ''
+            if cat and pat:
+                rules.append((cat, pat))
+        return rules
+
+    def _save(self):
+        from unifile.csv_rules import save_rules
+        rules = self._collect_rules()
+        try:
+            save_rules(rules)
+            self.btn_open.setEnabled(True)
+            QMessageBox.information(self, "Sort Rules", f"Saved {len(rules)} rule{'s' if len(rules) != 1 else ''}.")
+            self.accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not save rules:\n{e}")

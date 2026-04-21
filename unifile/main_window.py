@@ -57,6 +57,7 @@ from unifile.dialogs import (
     UndoBatchDialog, BeforeAfterDialog, DuplicateCompareDialog,
     EventGroupDialog, RuleEditorDialog, ScheduleDialog,
     UndoTimelineDialog, PluginManagerDialog, CleanupToolsDialog,
+    CsvRulesDialog,
     DuplicateFinderDialog, CleanupPanel, DuplicatePanel,
     ProtectedPathsDialog, ThemePickerDialog, WatchHistoryDialog
 )
@@ -228,6 +229,17 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         color = '#4ade80' if 'ready' in msg.lower() or ':' in msg and 'failed' not in msg.lower() \
                 else '#ef4444' if 'failed' in msg.lower() else '#f59e0b'
         self.lbl_llm_status.setStyleSheet(f"color: {color}; font-size: 11px;")
+        if hasattr(self, 'lbl_workspace_ai'):
+            state = "AI READY" if color == '#4ade80' else "AI UNAVAILABLE" if color == '#ef4444' else "AI CHECKING"
+            bg = get_active_theme()['selection'] if color != '#ef4444' else '#3b1f24'
+            border = get_active_theme()['border'] if color != '#ef4444' else '#6b2737'
+            self.lbl_workspace_ai.setText(state)
+            self.lbl_workspace_ai.setStyleSheet(
+                f"background: {bg}; color: {color}; border: 1px solid {border}; "
+                "border-radius: 999px; padding: 4px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;"
+            )
+        if hasattr(self, 'lbl_workspace_meta'):
+            self._refresh_workspace_copy()
 
     def _on_ollama_ready(self, success):
         self._ollama_ready = success
@@ -247,6 +259,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
             self.lbl_ollama.setStyleSheet("color: #ef4444; font-size: 11px; font-family: monospace;")
             self.lbl_ollama.setToolTip("Ollama not available — rule-based engine will be used")
             self._log("Ollama LLM: not available (rule-based engine will be used)")
+        if hasattr(self, 'lbl_workspace_meta'):
+            self._refresh_workspace_copy()
 
     # ═══ BUILD UI ═════════════════════════════════════════════════════════════
 
@@ -255,14 +269,15 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
 
         # ── Shared inline button styles ─────────────────────────────────
         _SEC_BTN = (
-            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {_t['selection']};"
-            f"color: {_t['sidebar_btn_active_fg']}; border: 1px solid {_t['border']}; border-radius: 4px; }}"
-            f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
-        _TOGGLE_BTN = (
-            f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {_t['selection']};"
-            f"color: {_t['sidebar_btn_active_fg']}; border: 1px solid {_t['border']}; border-radius: 4px; }}"
+            f"QPushButton {{ font-size: 11px; padding: 2px 12px; background: {_t['bg_alt']};"
+            f"color: {_t['sidebar_btn_active_fg']}; border: 1px solid {_t['border']}; border-radius: 10px; }}"
             f"QPushButton:hover {{ background: {_t['btn_hover']}; }}"
-            f"QPushButton:checked {{ background: {_t['sidebar_btn_active_fg']}; color: {_t['sidebar_brand']}; }}")
+            f"QPushButton:disabled {{ color: {_t['muted']}; background: {_t['header_bg']}; border-color: {_t['btn_bg']}; }}")
+        _TOGGLE_BTN = (
+            f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {_t['bg_alt']};"
+            f"color: {_t['sidebar_btn_active_fg']}; border: 1px solid {_t['border']}; border-radius: 10px; }}"
+            f"QPushButton:hover {{ background: {_t['btn_hover']}; }}"
+            f"QPushButton:checked {{ background: {_t['selection']}; color: {_t['fg_bright']}; border-color: {_t['accent']}; }}")
 
         cw = QWidget(); self.setCentralWidget(cw)
         root = QHBoxLayout(cw)
@@ -480,11 +495,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         menu_cleanup.addAction("Find Old Downloads", lambda: self._open_cleanup_tab(5))
         menu_cleanup.addSeparator()
         menu_cleanup.addAction("Watch History...", self._open_watch_history)
+        menu_cleanup.addSeparator()
+        menu_cleanup.addAction("Sort Rules...", self._open_sort_rules)
 
         # ── Top Action Bar ───────────────────────────────────────────────
         action_bar = QWidget()
         self._themed_action_bar = action_bar
-        action_bar.setFixedHeight(52)
+        action_bar.setFixedHeight(58)
         action_bar.setStyleSheet(
             f"QWidget#action_bar {{ background: {_t['header_bg']}; border-bottom: 1px solid {_t['btn_bg']}; }}")
         action_bar.setObjectName("action_bar")
@@ -492,28 +509,28 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         ab_lay.setContentsMargins(16, 0, 16, 0)
         ab_lay.setSpacing(8)
 
-        self.btn_scan = QPushButton("  Scan  ")
+        self.btn_scan = QPushButton("Scan")
         self.btn_scan.setProperty("class", "primary")
-        self.btn_scan.setFixedHeight(34)
+        self.btn_scan.setFixedHeight(38)
         self.btn_scan.setDefault(True)
         self.btn_scan.clicked.connect(self._on_scan)
         ab_lay.addWidget(self.btn_scan)
 
-        self.btn_apply = QPushButton("  Apply  ")
+        self.btn_apply = QPushButton("Apply Changes")
         self.btn_apply.setProperty("class", "apply")
-        self.btn_apply.setFixedHeight(34)
+        self.btn_apply.setFixedHeight(38)
         self.btn_apply.setEnabled(False)
         self.btn_apply.clicked.connect(self._on_apply)
         ab_lay.addWidget(self.btn_apply)
 
-        self.btn_preview = QPushButton("Preview")
-        self.btn_preview.setFixedHeight(34)
+        self.btn_preview = QPushButton("Preview Plan")
+        self.btn_preview.setFixedHeight(38)
         self.btn_preview.clicked.connect(self._show_preview)
         self.btn_preview.setEnabled(False)
         ab_lay.addWidget(self.btn_preview)
 
-        self.btn_undo = QPushButton("Undo")
-        self.btn_undo.setFixedHeight(34)
+        self.btn_undo = QPushButton("Undo History")
+        self.btn_undo.setFixedHeight(38)
         self.btn_undo.clicked.connect(self._show_undo_timeline)
         self.btn_undo.setEnabled(bool(load_undo_log()))
         ab_lay.addWidget(self.btn_undo)
@@ -522,7 +539,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         sep_ab.setStyleSheet(f"QFrame{{background-color:{_t['btn_bg']};}}"); sep_ab.setFixedHeight(22)
         ab_lay.addWidget(sep_ab)
 
-        self.btn_replay = QPushButton("Repeat Last")
+        self.btn_replay = QPushButton("Repeat Last Scan")
         self.btn_replay.setFixedHeight(32)
         self.btn_replay.setToolTip("Replay the last scan configuration")
         self.btn_replay.setStyleSheet(_SEC_BTN)
@@ -530,7 +547,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self.btn_replay.clicked.connect(self._replay_last_config)
         ab_lay.addWidget(self.btn_replay)
 
-        self.btn_export = QPushButton("Export")
+        self.btn_export = QPushButton("Export CSV")
         self.btn_export.setFixedHeight(32); self.btn_export.setEnabled(False)
         self.btn_export.setToolTip("Export the classification plan as CSV")
         self.btn_export.setStyleSheet(_SEC_BTN)
@@ -544,7 +561,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self.btn_export_html.clicked.connect(self._export_html)
         ab_lay.addWidget(self.btn_export_html)
 
-        self.btn_open_dest = QPushButton("Open Dest")
+        self.btn_open_dest = QPushButton("Open Folder")
         self.btn_open_dest.setFixedHeight(32)
         self.btn_open_dest.setToolTip("Open the current destination folder in Explorer")
         self.btn_open_dest.setStyleSheet(_SEC_BTN)
@@ -581,8 +598,55 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         dir_panel.setStyleSheet(
             f"QWidget#dir_panel {{ background: {_t['bg_alt']}; border-bottom: 1px solid {_t['btn_bg']}; }}")
         dp_lay = QVBoxLayout(dir_panel)
-        dp_lay.setContentsMargins(16, 10, 16, 10)
-        dp_lay.setSpacing(6)
+        dp_lay.setContentsMargins(16, 12, 16, 12)
+        dp_lay.setSpacing(8)
+
+        self.workspace_intro = QFrame()
+        self.workspace_intro.setObjectName("workspace_intro")
+        self.workspace_intro.setStyleSheet(
+            f"QFrame#workspace_intro {{ background: {_t['header_bg']}; border: 1px solid {_t['border']}; border-radius: 14px; }}"
+        )
+        intro_lay = QVBoxLayout(self.workspace_intro)
+        intro_lay.setContentsMargins(16, 14, 16, 14)
+        intro_lay.setSpacing(4)
+
+        intro_top = QHBoxLayout()
+        self.lbl_workspace_section = QLabel("CURRENT WORKFLOW")
+        self.lbl_workspace_section.setStyleSheet(
+            f"color: {_t['muted']}; font-size: 10px; font-weight: 700; letter-spacing: 1.4px;"
+        )
+        intro_top.addWidget(self.lbl_workspace_section)
+        intro_top.addStretch()
+        self.lbl_workspace_ai = QLabel("AI CHECKING")
+        self.lbl_workspace_ai.setStyleSheet(
+            f"background: {_t['selection']}; color: #f59e0b; border: 1px solid {_t['border']}; "
+            "border-radius: 999px; padding: 4px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;"
+        )
+        intro_top.addWidget(self.lbl_workspace_ai)
+        intro_lay.addLayout(intro_top)
+
+        self.lbl_workspace_title = QLabel("Rename After Effects Folders")
+        self.lbl_workspace_title.setStyleSheet(
+            f"color: {_t['fg_bright']}; font-size: 20px; font-weight: 700; letter-spacing: -0.3px;"
+        )
+        intro_lay.addWidget(self.lbl_workspace_title)
+
+        self.lbl_workspace_desc = QLabel(
+            "Clean up source folders with clearer names, better structure, and a reviewable plan before anything changes."
+        )
+        self.lbl_workspace_desc.setWordWrap(True)
+        self.lbl_workspace_desc.setStyleSheet(
+            f"color: {_t['fg']}; font-size: 12px; line-height: 1.4em;"
+        )
+        intro_lay.addWidget(self.lbl_workspace_desc)
+
+        self.lbl_workspace_meta = QLabel("")
+        self.lbl_workspace_meta.setWordWrap(True)
+        self.lbl_workspace_meta.setStyleSheet(
+            f"color: {_t['muted']}; font-size: 11px;"
+        )
+        intro_lay.addWidget(self.lbl_workspace_meta)
+        dp_lay.addWidget(self.workspace_intro)
 
         # Hidden mode combo (kept for backward compat — controlled by sidebar)
         self.cmb_op = QComboBox()
@@ -604,7 +668,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         lbl_src.setFixedWidth(55)
         row_src.addWidget(lbl_src)
         self.txt_src = QLineEdit()
-        self.txt_src.setPlaceholderText("Drag a folder here or click Browse...")
+        self.txt_src.setClearButtonEnabled(True)
+        self.txt_src.setPlaceholderText("Drag a source folder here or browse…")
         row_src.addWidget(self.txt_src, 1)
         btn_src = QPushButton("Browse"); btn_src.setFixedWidth(75); btn_src.setFixedHeight(30)
         btn_src.clicked.connect(self._browse_src)
@@ -626,7 +691,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         lbl_dst.setFixedWidth(55)
         row_dst.addWidget(lbl_dst)
         self.txt_dst = QLineEdit()
-        self.txt_dst.setPlaceholderText("Destination root for category folders...")
+        self.txt_dst.setClearButtonEnabled(True)
+        self.txt_dst.setPlaceholderText("Choose the output root for organized folders…")
         row_dst.addWidget(self.txt_dst, 1)
         btn_dst = QPushButton("Browse"); btn_dst.setFixedWidth(75); btn_dst.setFixedHeight(30)
         btn_dst.clicked.connect(self._browse_dst)
@@ -656,7 +722,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self.cmb_pc_src.currentIndexChanged.connect(self._on_pc_src_changed)
         row_pc_src.addWidget(self.cmb_pc_src)
         self.txt_pc_src = QLineEdit()
-        self.txt_pc_src.setPlaceholderText("Custom source path...")
+        self.txt_pc_src.setClearButtonEnabled(True)
+        self.txt_pc_src.setPlaceholderText("Use a custom source path…")
         row_pc_src.addWidget(self.txt_pc_src, 1)
         btn_pc_src = QPushButton("Browse"); btn_pc_src.setFixedWidth(75); btn_pc_src.setFixedHeight(30)
         btn_pc_src.clicked.connect(self._browse_pc_src)
@@ -685,33 +752,33 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         # ── Options row (inline with directory panel) ────────────────────
         opts_row = QHBoxLayout(); opts_row.setSpacing(8)
 
-        self.chk_llm = QCheckBox("LLM")
+        self.chk_llm = QCheckBox("Use AI")
         self.chk_llm.setToolTip("Use Ollama LLM for AI-powered classification")
         self.chk_llm.setStyleSheet(
             f"QCheckBox {{ color: {_t['sidebar_profile_fg']}; font-weight: bold; font-size: 12px;"
             "background: transparent; }")
         opts_row.addWidget(self.chk_llm)
 
-        self.chk_hash = QCheckBox("Dedup")
+        self.chk_hash = QCheckBox("Deduplicate")
         self.chk_hash.setToolTip("Progressive duplicate detection:\nSize > Prefix hash > Suffix hash > Full SHA-256 + image perceptual hash")
         self.chk_hash.setStyleSheet("QCheckBox { background: transparent; }")
         opts_row.addWidget(self.chk_hash)
 
-        self.chk_inc_files = QCheckBox("Files")
+        self.chk_inc_files = QCheckBox("Include Files")
         self.chk_inc_files.setChecked(True)
         self.chk_inc_files.setToolTip("Include individual files")
         self.chk_inc_files.setStyleSheet("QCheckBox { background: transparent; }")
         self.chk_inc_files.setVisible(False)
         opts_row.addWidget(self.chk_inc_files)
 
-        self.chk_inc_folders = QCheckBox("Folders")
+        self.chk_inc_folders = QCheckBox("Include Folders")
         self.chk_inc_folders.setChecked(False)
         self.chk_inc_folders.setToolTip("Include subfolders as items to organize")
         self.chk_inc_folders.setStyleSheet("QCheckBox { background: transparent; }")
         self.chk_inc_folders.setVisible(False)
         opts_row.addWidget(self.chk_inc_folders)
 
-        lbl_depth = QLabel("Depth:")
+        lbl_depth = QLabel("Scan Depth")
         lbl_depth.setStyleSheet(
             f"color: {_t['sidebar_btn_active_fg']}; font-weight: bold; font-size: 11px; background: transparent;")
         opts_row.addWidget(lbl_depth)
@@ -722,7 +789,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self.spn_depth.setSpecialValueText("0")
         opts_row.addWidget(self.spn_depth)
 
-        self.lbl_type_filter = QLabel("Type:")
+        self.lbl_type_filter = QLabel("File Type")
         self.lbl_type_filter.setStyleSheet(
             f"color: {_t['sidebar_btn_active_fg']}; font-weight: bold; font-size: 11px; background: transparent;")
         self.lbl_type_filter.setVisible(False)
@@ -859,12 +926,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
 
         # Filter / search
         self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("Filter results...")
+        self.txt_search.setClearButtonEnabled(True)
+        self.txt_search.setPlaceholderText("Filter names, folders, categories, or methods…")
         self.txt_search.setFixedWidth(220)
         self.txt_search.textChanged.connect(self._apply_filter)
         toolbar.addWidget(self.txt_search)
 
-        lbl_cf = QLabel("Conf:")
+        lbl_cf = QLabel("Confidence")
         self._themed_lbl_cf = lbl_cf
         lbl_cf.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
         toolbar.addWidget(lbl_cf)
@@ -902,7 +970,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self.lbl_dash_summary.setStyleSheet(f"color: {_t['fg']}; font-size: 12px; font-weight: bold;")
         dash_top.addWidget(self.lbl_dash_summary)
         dash_top.addStretch()
-        btn_hide_dash = QPushButton("Hide")
+        btn_hide_dash = QPushButton("Collapse")
         self._themed_btn_hide_dash = btn_hide_dash
         btn_hide_dash.setFixedSize(50, 20)
         btn_hide_dash.setStyleSheet(f"QPushButton{{font-size:10px;color:{_t['muted']};background:{_t['sidebar_brand']};"
@@ -976,20 +1044,48 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self._setup_tray()
 
         # Empty state (overlay on top of table)
-        self.lbl_empty = QLabel("Select a tool from the sidebar, then Scan", self.tbl)
+        self.empty_state = QFrame(self.tbl.viewport())
+        self.empty_state.setObjectName("empty_state")
+        self.empty_state.setStyleSheet(
+            f"QFrame#empty_state {{ background: {_t['header_bg']}; border: 1px solid {_t['border']}; border-radius: 16px; }}"
+        )
+        empty_lay = QVBoxLayout(self.empty_state)
+        empty_lay.setContentsMargins(24, 22, 24, 22)
+        empty_lay.setSpacing(6)
+        self.lbl_empty_kicker = QLabel("READY WHEN YOU ARE")
+        self.lbl_empty_kicker.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_empty_kicker.setStyleSheet(
+            f"color: {_t['sidebar_btn_active_fg']}; font-size: 10px; font-weight: 700; letter-spacing: 1.4px;"
+        )
+        empty_lay.addWidget(self.lbl_empty_kicker)
+        self.lbl_empty = QLabel("Select a source folder and run a scan")
         self.lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_empty.setStyleSheet(f"color: {_t['muted']}; font-size: 13px; padding: 50px; font-weight: 500;")
-        self.lbl_empty.setGeometry(self.tbl.rect())
+        self.lbl_empty.setWordWrap(True)
+        self.lbl_empty.setStyleSheet(
+            f"color: {_t['fg_bright']}; font-size: 18px; font-weight: 700;"
+        )
+        empty_lay.addWidget(self.lbl_empty)
+        self.lbl_empty_detail = QLabel(
+            "UniFile previews changes before it applies them, keeps undo history close by, and protects sensitive paths by default."
+        )
+        self.lbl_empty_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_empty_detail.setWordWrap(True)
+        self.lbl_empty_detail.setStyleSheet(
+            f"color: {_t['muted']}; font-size: 12px; line-height: 1.4em;"
+        )
+        empty_lay.addWidget(self.lbl_empty_detail)
+        self.empty_state.show()
 
         # Scan Summary Toast (overlay banner on table)
         self.lbl_toast = QLabel("", self.tbl)
         self.lbl_toast.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_toast.setWordWrap(True)
         self.lbl_toast.setStyleSheet(
-            f"QLabel {{ background: {_t['selection']};"
-            f"color: {_t['fg']}; font-size: 13px; font-weight: bold;"
-            f"padding: 10px 20px; border-radius: 8px;"
+            f"QLabel {{ background: {_t['header_bg']};"
+            f"color: {_t['fg_bright']}; font-size: 13px; font-weight: bold;"
+            f"padding: 12px 20px; border-radius: 12px;"
             f"border: 1px solid {_t['border']}; }}")
-        self.lbl_toast.setFixedHeight(44)
+        self.lbl_toast.setFixedHeight(50)
         self.lbl_toast.hide()
         self._toast_timer = QTimer(self)
         self._toast_timer.setSingleShot(True)
@@ -1146,6 +1242,122 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self.setTabOrder(self.btn_apply, self.tbl)
 
         self._mode_labels = [self.cmb_op.itemText(i) for i in range(self.cmb_op.count())]
+        self._refresh_workspace_copy()
+
+    def _mode_presentation(self, idx: int) -> dict:
+        return {
+            self.OP_AEP: {
+                "title": "Rename After Effects Folders",
+                "desc": "Use the strongest project file name to clean up archive folders without losing context.",
+                "meta": "Review-first workflow • Great for project dumps, archives, and client handoff folders",
+                "scan": "Scan Folders",
+                "apply": "Rename Folders",
+                "preview": "Preview Changes",
+                "open": "Open Source",
+                "search": "Filter source names, destinations, or statuses…",
+                "empty_title": "Choose a source folder to scan",
+                "empty_detail": "UniFile will inspect folders, propose clearer names, and keep everything reviewable before you rename anything."
+            },
+            self.OP_CAT: {
+                "title": "Categorize Folder Collections",
+                "desc": "Sort folders into clear destinations with rules, metadata, and optional AI assistance.",
+                "meta": "Preview-first workflow • Best for asset packs, vendor drops, and creative libraries",
+                "scan": "Scan & Categorize",
+                "apply": "Apply Folder Moves",
+                "preview": "Preview Destinations",
+                "open": "Open Output",
+                "search": "Filter by folder, category, confidence, or method…",
+                "empty_title": "Select a source and output folder",
+                "empty_detail": "You’ll get a categorized move plan first, then decide what should actually be applied."
+            },
+            self.OP_SMART: {
+                "title": "Categorize & Smart Rename",
+                "desc": "Organize folders and generate cleaner names in the same reviewed pass.",
+                "meta": "Preview-first workflow • Best when noisy source names need cleanup as well as categorization",
+                "scan": "Scan, Categorize & Rename",
+                "apply": "Apply Folder Changes",
+                "preview": "Preview Destinations",
+                "open": "Open Output",
+                "search": "Filter renamed folders, categories, confidence, or methods…",
+                "empty_title": "Select a source and output folder",
+                "empty_detail": "UniFile can categorize folders, clean up awkward names, and show the full move plan before anything changes."
+            },
+            self.OP_FILES: {
+                "title": "Organize Mixed File Collections",
+                "desc": "Triage loose files into category destinations with photo tools, duplicate awareness, and optional AI.",
+                "meta": "Preview-first workflow • Best for desktops, downloads, and mixed working folders",
+                "scan": "Scan Files",
+                "apply": "Organize Files",
+                "preview": "Preview Moves",
+                "open": "Open Output",
+                "search": "Filter names, folders, categories, tags, or methods…",
+                "empty_title": "Choose a file source to scan",
+                "empty_detail": "UniFile will map loose files into category destinations, flag uncertain matches, and keep the plan reviewable."
+            },
+        }.get(idx, {
+            "title": "UniFile",
+            "desc": "Organize files with a calmer, reviewable workflow.",
+            "meta": "Preview-first workflow",
+            "scan": "Scan",
+            "apply": "Apply Changes",
+            "preview": "Preview Plan",
+            "open": "Open Folder",
+            "search": "Filter results…",
+            "empty_title": "Select a source and run a scan",
+            "empty_detail": "Review the proposed plan before you apply it."
+        })
+
+    def _refresh_workspace_copy(self):
+        if not hasattr(self, 'lbl_workspace_title'):
+            return
+        copy = self._mode_presentation(self.cmb_op.currentIndex())
+        profile_name = self.cmb_profile.currentText() if hasattr(self, 'cmb_profile') else get_active_profile_name()
+        ai_status = "AI ready" if getattr(self, '_ollama_ready', False) else "AI optional"
+        self.lbl_workspace_title.setText(copy["title"])
+        self.lbl_workspace_desc.setText(copy["desc"])
+        self.lbl_workspace_meta.setText(
+            f"Profile: {profile_name}  •  {copy['meta']}  •  {ai_status}"
+        )
+        self.btn_scan.setText(copy["scan"])
+        self.btn_apply.setText(copy["apply"])
+        self.btn_preview.setText(copy["preview"])
+        self.btn_open_dest.setText(copy["open"])
+        self.txt_search.setPlaceholderText(copy["search"])
+
+    def _show_empty_state(self, title: str, detail: str = "", kicker: str = "READY WHEN YOU ARE"):
+        if hasattr(self, 'lbl_empty_kicker'):
+            self.lbl_empty_kicker.setText(kicker)
+        if hasattr(self, 'lbl_empty'):
+            self.lbl_empty.setText(title)
+        if hasattr(self, 'lbl_empty_detail'):
+            self.lbl_empty_detail.setText(detail)
+        if hasattr(self, 'empty_state'):
+            self.empty_state.show()
+            self._position_table_overlays()
+        elif hasattr(self, 'lbl_empty'):
+            self.lbl_empty.show()
+
+    def _hide_empty_state(self):
+        if hasattr(self, 'empty_state'):
+            self.empty_state.hide()
+        elif hasattr(self, 'lbl_empty'):
+            self.lbl_empty.hide()
+
+    def _position_table_overlays(self):
+        if not hasattr(self, 'tbl'):
+            return
+        if hasattr(self, 'empty_state'):
+            vp = self.tbl.viewport()
+            max_w = max(320, min(620, vp.width() - 32))
+            self.empty_state.setFixedWidth(max_w)
+            self.empty_state.adjustSize()
+            h = self.empty_state.sizeHint().height()
+            y = max(18, (vp.height() - h) // 2 - 18)
+            self.empty_state.setGeometry((vp.width() - max_w) // 2, y, max_w, h)
+        if hasattr(self, 'lbl_toast') and self.lbl_toast.isVisible():
+            tw = self.tbl.viewport().width()
+            toast_w = self.lbl_toast.width()
+            self.lbl_toast.move((tw - toast_w) // 2, 12)
 
         # Backward compat refs (moved to menu bar)
         self.btn_custom_cats = None
@@ -1578,6 +1790,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
             if idx >= len(stack):
                 continue
             batch = stack[idx]
+            if batch.get('status') == 'undone':
+                self._log(f"  Skipped (already undone): [{batch.get('timestamp', '?')[:19]}]")
+                continue
             ops = batch.get('ops', [])
             self._log(f"Undoing batch [{batch.get('timestamp', '?')[:19]}] ({len(ops)} ops)...")
             for op in reversed(ops):
@@ -1594,14 +1809,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
                 except Exception as e:
                     err += 1
                     self._log(f"  Error: {e}")
-            # Remove processed batch from stack
-            stack.pop(idx)
+            # Mark as undone (archive instead of delete — preserves history)
+            stack[idx]['status'] = 'undone'
 
-        if stack:
-            _save_undo_stack(stack)
-        else:
-            clear_undo_log()
-        self.btn_undo.setEnabled(bool(stack))
+        _save_undo_stack(stack)
+        applied = any(b.get('status', 'applied') == 'applied' for b in stack)
+        self.btn_undo.setEnabled(applied)
         self._log(f"Undo complete: {ok} restored, {err} errors")
 
     # ═══ FILTER / SEARCH ════════════════════════════════════════════════════
@@ -1726,6 +1939,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
     def _on_op_changed(self, idx):
         is_cat_like = idx in (self.OP_CAT, self.OP_SMART)
         is_files    = idx == self.OP_FILES
+        copy = self._mode_presentation(idx)
         # Keep sidebar buttons in sync
         if hasattr(self, '_nav_buttons'):
             for kind, nav_idx, btn in self._nav_buttons:
@@ -1769,7 +1983,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
             self._setup_cat_tbl()
         else:
             self._setup_aep_tbl()
-        self.lbl_empty.setText("Select source folder and click Scan"); self.lbl_empty.show()
+        self._refresh_workspace_copy()
+        self._show_empty_state(copy["empty_title"], copy["empty_detail"])
 
     def _on_profile_changed(self, name):
         """Handle profile selector change."""
@@ -1801,8 +2016,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self.aep_items.clear(); self.cat_items.clear(); self.file_items.clear()
         self.lbl_stats.clear()
         self.btn_apply.setEnabled(False)
-        self.lbl_empty.setText(f"Profile: {name} — select source and click Scan")
-        self.lbl_empty.show()
+        copy = self._mode_presentation(self.cmb_op.currentIndex())
+        self._refresh_workspace_copy()
+        self._show_empty_state(
+            f"{copy['empty_title']}",
+            f"{copy['empty_detail']} Current profile: {name}.",
+            kicker="PROFILE UPDATED"
+        )
         self._log(f"Switched to profile: {name}")
 
     def _setup_aep_tbl(self):
@@ -1836,8 +2056,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        if hasattr(self, 'lbl_empty'):
-            self.lbl_empty.setGeometry(0, 0, self.tbl.width(), self.tbl.height())
+        self._position_table_overlays()
 
     def _update_phase(self, phase_label: str, method_label: str):
         """Called when a worker transitions to a new processing phase."""
@@ -1956,7 +2175,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
             sz /= 1024
         size_str = f"{sz:.1f} {u}"
         self.lbl_dash_summary.setText(
-            f"{len(items)} files  |  {len(cat_counts)} categories  |  {size_str}")
+            f"{len(items):,} items ready  •  {len(cat_counts):,} categories  •  {size_str} in scope")
         self.bar_chart.set_data(segments)
         self.dashboard_panel.show()
 
@@ -1971,9 +2190,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         tw = self.tbl.viewport().width()
         toast_w = min(tw - 40, self.lbl_toast.sizeHint().width() + 40)
         self.lbl_toast.setFixedWidth(toast_w)
-        self.lbl_toast.move((tw - toast_w) // 2, 8)
+        self.lbl_toast.move((tw - toast_w) // 2, 12)
         self.lbl_toast.raise_()
         self.lbl_toast.show()
+        self._position_table_overlays()
         # Flash taskbar if the window isn't focused
         from PyQt6.QtWidgets import QApplication
         if not self.isActiveWindow():
@@ -3352,6 +3572,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
     def _open_watch_history(self):
         """Open the watch history dialog."""
         dlg = WatchHistoryDialog(self)
+        dlg.exec()
+
+    def _open_sort_rules(self):
+        """Open the CSV sort rules editor."""
+        dlg = CsvRulesDialog(self)
         dlg.exec()
 
     def _open_theme_picker(self):
