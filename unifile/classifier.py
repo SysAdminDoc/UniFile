@@ -624,37 +624,39 @@ FILENAME_ASSET_MAP = [
     (["poster", "postertemplate", "a4 poster", "a3 poster"], "Flyers & Print", 80),
     (["business card", "businesscard", "visiting card", "namecard"], "Business Cards", 85),
     (["invoice", "receipt", "quotation", "letterhead", "stationary", "stationery"], "Flyers & Print", 75),
-    (["resume", "cv template", "curriculum vitae", "resume template"], "Resume & CV Templates", 85),
-    (["menu", "restaurant menu", "food menu", "cafe menu"], "Menus & Food Templates", 82),
+    (["resume", "cv template", "curriculum vitae", "resume template"], "Resume & CV", 85),
+    (["menu", "restaurant menu", "food menu", "cafe menu"], "Menu Design", 82),
     # Social media
-    (["instagram", "instagram post", "instagram story", "ig post", "ig story", "ig template"], "Social Media Templates", 88),
-    (["facebook", "fb post", "fb cover", "facebook cover", "facebook banner"], "Social Media Templates", 88),
-    (["twitter", "tweet", "twitter post", "twitter banner", "x post"], "Social Media Templates", 85),
-    (["youtube thumbnail", "yt thumbnail", "youtube banner", "channel art"], "YouTube & Streaming", 88),
-    (["twitch", "stream overlay", "stream alert", "obs overlay", "gaming overlay"], "YouTube & Streaming", 88),
-    (["social media", "social pack", "social template", "social post"], "Social Media Templates", 82),
-    (["story template", "stories template", "instagram stories"], "Social Media Templates", 85),
-    # Mockups
-    (["mockup", "mock-up", "mock up", "psd mockup", "device mockup", "apparel mockup", "packaging mockup"], "Mockups", 90),
-    (["phone mockup", "iphone mockup", "android mockup", "screen mockup"], "Mockups", 90),
-    (["tshirt mockup", "t-shirt mockup", "shirt mockup", "mug mockup", "bag mockup"], "Mockups", 88),
+    (["instagram", "instagram post", "instagram story", "ig post", "ig story", "ig template"], "Social Media", 88),
+    (["facebook", "fb post", "fb cover", "facebook cover", "facebook banner"], "Social Media", 88),
+    (["twitter", "tweet", "twitter post", "twitter banner", "x post"], "Social Media", 85),
+    (["youtube thumbnail", "yt thumbnail", "youtube banner", "channel art"], "YouTube & Video Platform", 88),
+    (["twitch", "stream overlay", "stream alert", "obs overlay", "gaming overlay"], "Twitch & Streaming", 88),
+    (["social media", "social pack", "social template", "social post"], "Social Media", 82),
+    (["story template", "stories template", "instagram stories"], "Social Media", 85),
+    # Mockups (specific before generic)
+    (["device mockup", "phone mockup", "iphone mockup", "android mockup", "screen mockup", "laptop mockup", "monitor mockup"], "Mockups - Devices", 92),
+    (["tshirt mockup", "t-shirt mockup", "shirt mockup", "hoodie mockup", "apparel mockup"], "Mockups - Apparel", 92),
+    (["packaging mockup", "box mockup", "bottle mockup", "bag mockup", "mug mockup"], "Mockups - Packaging", 92),
+    (["branding mockup", "stationery mockup", "identity mockup", "logo mockup"], "Mockups - Branding", 92),
+    (["mockup", "mock-up", "mock up", "psd mockup"], "Photoshop - Mockups", 88),
     # UI/UX
     (["ui kit", "ui template", "app design", "wireframe", "dashboard template", "mobile ui", "web ui", "design system"], "UI & UX Design", 85),
     (["figma ui", "figma kit", "figma component", "sketch ui"], "UI & UX Design", 87),
     # Logo & Branding
-    (["logo template", "logo pack", "logo design", "logotype", "logo kit", "logo bundle"], "Logos & Branding", 88),
-    (["brand identity", "brand guidelines", "brand board", "brand kit", "branding pack"], "Logos & Branding", 87),
+    (["logo template", "logo pack", "logo design", "logotype", "logo kit", "logo bundle"], "Logo & Identity", 88),
+    (["brand identity", "brand guidelines", "brand board", "brand kit", "branding pack"], "Logo & Identity", 87),
     # Presentation
     (["presentation", "powerpoint", "keynote", "google slides", "pptx template", "pitch deck", "slideshow template"], "Presentations & PowerPoint", 88),
     # Infographic
-    (["infographic", "infographics", "chart template", "data visualization"], "Infographics & Data Viz", 85),
+    (["infographic", "infographics", "chart template", "data visualization"], "Infographic", 85),
     # Web
-    (["web template", "website template", "html template", "landing page", "web design", "homepage design"], "Web Templates & HTML", 85),
+    (["web template", "website template", "html template", "landing page", "web design", "homepage design"], "Website Design", 85),
     # Email
-    (["email template", "newsletter template", "email design", "html email", "mailchimp"], "Email Templates", 87),
+    (["email template", "newsletter template", "email design", "html email", "mailchimp"], "Email & Newsletter", 87),
     # Photo frames / overlay
-    (["photo frame", "frame template", "photo overlay", "image overlay"], "Photo Effects & Overlays", 75),
-    (["overlay", "light leak", "film grain", "lens flare overlay", "bokeh overlay"], "Photo Effects & Overlays", 78),
+    (["photo frame", "frame template", "photo overlay", "image overlay"], "Overlays & Effects", 75),
+    (["overlay", "light leak", "film grain", "lens flare overlay", "bokeh overlay"], "Overlays & Effects", 78),
     # Procreate
     (["procreate brush", "procreate stamp", "procreate texture", "procreate swatches", "procreate palette"], "Procreate - Brushes & Stamps", 88),
     # Game assets
@@ -667,13 +669,13 @@ FILENAME_ASSET_MAP = [
     # Calendars & planners
     (["calendar template", "planner template", "daily planner", "weekly planner", "yearly planner"], "Calendars & Planners", 85),
     # General
-    (["icon pack", "icon set", "icon bundle", "web icons", "app icons"], "Icons & Icon Packs", 87),
-    (["pattern design", "seamless pattern", "repeat pattern", "surface pattern"], "Patterns & Seamless", 82),
-    (["watercolor", "watercolour", "hand drawn", "hand lettered", "sketch illustration"], "Illustrations & Clipart", 75),
-    (["certificate", "diploma", "award template", "award certificate"], "Certificates & Awards", 85),
-    (["banner", "web banner", "display banner", "ad banner", "leaderboard banner"], "Banners & Ads", 80),
-    (["voucher", "coupon", "gift card", "gift voucher"], "Coupons & Vouchers", 82),
-    (["wedding", "wedding invitation", "wedding card", "wedding template", "save the date"], "Wedding & Events", 85),
+    (["icon pack", "icon set", "icon bundle", "web icons", "app icons"], "Icons & Symbols", 87),
+    (["pattern design", "seamless pattern", "repeat pattern", "surface pattern"], "Patterns - Seamless", 82),
+    (["watercolor", "watercolour", "hand drawn", "hand lettered", "sketch illustration"], "Clipart & Illustrations", 75),
+    (["certificate", "diploma", "award template", "award certificate"], "Certificate", 85),
+    (["banner", "web banner", "display banner", "ad banner", "leaderboard banner"], "Banners", 80),
+    (["voucher", "coupon", "gift card", "gift voucher"], "Gift Voucher & Coupon", 82),
+    (["wedding", "wedding invitation", "wedding card", "wedding template", "save the date"], "Wedding", 85),
 ]
 
 # Categories that, when detected as "topic" and design files are also present,
@@ -851,7 +853,7 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
 
     # ── Archive-heavy folders: use archive name inference ─────────────────
     archive_stems = scan.get('archive_stems', [])
-    if archive_stems and archive_exts >= 2 and (archive_exts / max(total, 1)) >= 0.25:
+    if archive_stems and archive_exts >= 2 and (archive_exts >= 5 or (archive_exts / max(total, 1)) >= 0.15):
         arc_cat, arc_conf, arc_detail = aggregate_archive_names(archive_stems)
         if arc_cat and arc_conf >= 65:
             return (arc_cat, arc_conf, arc_detail)
@@ -977,6 +979,23 @@ def _apply_context_from_scan(result: dict, scan: dict, folder_path: str,
     # If video template files dominate, don't override
     if clues['has_video_templates'] and clues['video_template_count'] >= clues['design_file_count']:
         return result
+
+    # Archive inference: run before has_design_files gate so archive-heavy topic
+    # folders (e.g. "Christmas" full of Videohive ZIPs) get reclassified correctly
+    archive_stems = scan.get('archive_stems', [])
+    archive_count = sum(scan['ext_counts'].get(e, 0) for e in ['.zip', '.rar', '.7z', '.tgz'])
+    if archive_stems and archive_count >= 2:
+        arc_cat, arc_conf, arc_detail = aggregate_archive_names(archive_stems)
+        if arc_cat and arc_conf >= 68:
+            if log_cb:
+                log_cb(f"    Context+archive: {initial_category} + {arc_detail} → {arc_cat}")
+            result['topic'] = result['category']
+            result['category'] = arc_cat
+            result['confidence'] = arc_conf
+            result['method'] = 'context+archive'
+            result['detail'] = f"context:{initial_category}+{arc_detail}"
+            return result
+
     if not clues['has_design_files']:
         return result
 
