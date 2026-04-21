@@ -4,6 +4,7 @@ from pathlib import Path
 from collections import Counter
 
 from unifile.bootstrap import HAS_RAPIDFUZZ
+from unifile.archive_inference import aggregate_archive_names
 try:
     from rapidfuzz import fuzz as _rfuzz
 except ImportError:
@@ -140,6 +141,15 @@ EXTENSION_CATEGORY_MAP = [
     ({'.safetensors', '.ckpt'},                  "AI Art & Generative",               88),
     ({'.lora'},                                  "AI Art & Generative",               85),
     ({'.capcut'},                                "CapCut - Templates",                88),
+    # v8.4.0 additions
+    ({'.cdr'},                                   "CorelDRAW - Vectors & Assets",      85),
+    ({'.motn'},                                  "Apple Motion - Templates",          90),
+    ({'.dxf'},                                   "Cutting Machine - SVG & DXF",       80),
+    ({'.dds', '.tga'},                           "3D - Materials & Textures",         80),
+    ({'.hdr'},                                   "3D - Materials & Textures",         82),
+    ({'.fon'},                                   "Fonts & Typography",                88),
+    ({'.ait'},                                   "Illustrator - Vectors & Assets",    85),
+    ({'.pub'},                                   "Flyers & Print",                    72),
 ]
 
 def classify_by_extensions(folder_path: str) -> tuple:
@@ -709,6 +719,9 @@ def _scan_folder_once(folder_path: str) -> dict:
     design_count = 0
     video_count = 0
     project_files = []  # Files to extract metadata from
+    archive_stems = []  # Stems of archive files for name-based inference
+
+    _ARCHIVE_EXTS = {'.zip', '.rar', '.7z', '.tgz', '.tar', '.gz', '.bz2'}
 
     try:
         for root, dirs, files in os.walk(folder_path):
@@ -734,6 +747,11 @@ def _scan_folder_once(folder_path: str) -> dict:
                     project_ext_counts[ext] += 1
                     total_project_files += 1
 
+                # Archive stems — collected for name-based inference
+                if ext in _ARCHIVE_EXTS:
+                    stem = os.path.splitext(f)[0]
+                    archive_stems.append(stem)
+
                 # Design/video template tracking
                 if ext in DESIGN_TEMPLATE_EXTS:
                     design_count += 1
@@ -752,6 +770,13 @@ def _scan_folder_once(folder_path: str) -> dict:
                     all_filenames_clean.append(name_clean)
     except (PermissionError, OSError):
         pass
+
+    # Add archive stems to all_filenames_clean so keyword matching sees them too
+    for stem in archive_stems:
+        stem_clean = stem.lower().replace('-', ' ').replace('_', ' ').replace('.', ' ')
+        stem_clean = re.sub(r'\s+', ' ', stem_clean).strip()
+        if len(stem_clean) > 2 and stem_clean not in all_filenames_clean:
+            all_filenames_clean.append(stem_clean)
 
     # Also add subfolder names as search candidates
     for d in subfolder_names:
@@ -775,6 +800,7 @@ def _scan_folder_once(folder_path: str) -> dict:
         'has_audio': any(d in subfolder_names for d in ['audio', 'music', 'sound', 'sfx']),
         'has_preview': any(d in subfolder_names for d in ['preview', 'previews', 'thumbnail', 'thumbnails']),
         'project_files': project_files,
+        'archive_stems': archive_stems,
     }
 
 
@@ -821,6 +847,14 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
     daw_exts = sum(ext.get(e, 0) for e in ['.als', '.flp', '.logicx', '.ptx', '.cpr'])
     midi_exts = sum(ext.get(e, 0) for e in ['.mid', '.midi'])
     lr_exts = sum(ext.get(e, 0) for e in ['.lrtemplate', '.xmp'])
+    archive_exts = sum(ext.get(e, 0) for e in ['.zip', '.rar', '.7z', '.tgz'])
+
+    # ── Archive-heavy folders: use archive name inference ─────────────────
+    archive_stems = scan.get('archive_stems', [])
+    if archive_stems and archive_exts >= 2 and (archive_exts / max(total, 1)) >= 0.25:
+        arc_cat, arc_conf, arc_detail = aggregate_archive_names(archive_stems)
+        if arc_cat and arc_conf >= 65:
+            return (arc_cat, arc_conf, arc_detail)
 
     if ext.get('.aep', 0) >= 1 and scan['has_footage']:
         return ('After Effects - Templates', 72, f"composition:.aep+/footage/ subfolder")

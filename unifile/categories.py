@@ -525,6 +525,11 @@ CATEGORIES = [
     ("Music Production - Presets", ["serum preset", "massive preset", "sylenth preset", "omnisphere patch", "kontakt library", "vst preset", "synth preset", "wavetable preset", "spire preset", "nexus preset", "nks preset", "synthesizer preset", "fm preset", "plugin preset", "audio preset pack"]),
     ("Music Production - DAW Projects", ["ableton", "ableton live", "logic pro", "fl studio", "fruity loops", "pro tools session", "cubase project", "reaper project", "studio one", "daw project", "als project", "flp project", "daw template", "session file"]),
 
+    ("CorelDRAW - Vectors & Assets", ["coreldraw", "corel draw", "corel vector", "cdr file", "cdr template", "corel design", "corel graphic"]),
+    ("Apple Motion - Templates", ["apple motion", "motion template", "motion project", "fcpx motion", "final cut motion", "motn", "motion 5", "apple motion template"]),
+    ("Cutting Machine - SVG & DXF", ["cricut", "silhouette", "cutting machine", "vinyl cut", "cricut svg", "cricut design", "silhouette studio", "cameo", "cricut file", "cricut bundle", "dxf cut", "svg cut file", "cut file", "sublimation", "htv", "heat transfer vinyl"]),
+    ("After Effects - Cinematic & Trailers", ["cinematic trailer", "movie trailer", "film trailer", "epic trailer", "action trailer", "dark trailer", "dramatic trailer", "blockbuster", "cinematic titles", "cinematic opener", "film opener", "cinematic teaser", "trailer titles", "movie opener"]),
+
     # ══════════════════════════════════════════════════════════════════════════
     # PHOTOGRAPHY & IMAGE EDITING
     # ══════════════════════════════════════════════════════════════════════════
