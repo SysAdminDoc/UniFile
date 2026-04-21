@@ -122,6 +122,24 @@ EXTENSION_CATEGORY_MAP = [
     ({'.indd', '.idml'},                         "InDesign - Templates & Layouts",    85),
     ({'.svg'},                                   "Vectors & SVG",                     75),
     ({'.eps'},                                   "Illustrator - Vectors & Assets",    75),
+    # New tool-specific extensions
+    ({'.fig'},                                   "Figma - Templates & UI Kits",       90),
+    ({'.drp', '.drfx'},                          "DaVinci Resolve - Templates",        88),
+    ({'.als'},                                   "Music Production - DAW Projects",   85),
+    ({'.flp'},                                   "Music Production - DAW Projects",   85),
+    ({'.logicx'},                                "Music Production - DAW Projects",   85),
+    ({'.procreate'},                             "Procreate - Brushes & Stamps",      90),
+    ({'.nks', '.nksn'},                          "Music Production - Presets",        85),
+    ({'.vstpreset', '.fxp', '.fxb'},             "Music Production - Presets",        80),
+    ({'.unitypackage'},                          "Game Assets & Sprites",             88),
+    ({'.uproject'},                              "Unreal Engine - Assets",            92),
+    ({'.uasset'},                                "Unreal Engine - Assets",            88),
+    ({'.ase', '.aseprite'},                      "Game Assets & Sprites",             85),
+    ({'.nef', '.cr2', '.arw', '.crw', '.orf', '.raf', '.rw2', '.sr2'}, "Photography - RAW Files", 90),
+    ({'.dng'},                                   "Photography - RAW Files",           80),
+    ({'.safetensors', '.ckpt'},                  "AI Art & Generative",               88),
+    ({'.lora'},                                  "AI Art & Generative",               85),
+    ({'.capcut'},                                "CapCut - Templates",                88),
 ]
 
 def classify_by_extensions(folder_path: str) -> tuple:
@@ -578,6 +596,85 @@ def infer_asset_type(initial_category: str, initial_confidence: float,
 
 # ── Tiered Classification Orchestrator ────────────────────────────────────────
 
+# Design/video template extensions used in single-pass folder scan
+DESIGN_TEMPLATE_EXTS = {
+    '.psd', '.psb', '.ai', '.indd', '.idml', '.eps', '.fig',
+    '.afdesign', '.afphoto', '.afpub', '.sketch',
+}
+VIDEO_TEMPLATE_EXTS = {
+    '.aep', '.aet', '.prproj', '.mogrt', '.drp', '.drfx',
+}
+
+# Keyword→category map for filename/foldername-based asset-type inference.
+# Each entry: ([keywords…], category, priority).  Higher priority wins on conflict.
+FILENAME_ASSET_MAP = [
+    # Print & flyer design
+    (["flyer", "flyerfree", "flyer template"], "Flyers & Print", 80),
+    (["brochure", "trifold", "tri-fold", "bifold", "bi-fold"], "Flyers & Print", 80),
+    (["poster", "postertemplate", "a4 poster", "a3 poster"], "Flyers & Print", 80),
+    (["business card", "businesscard", "visiting card", "namecard"], "Business Cards", 85),
+    (["invoice", "receipt", "quotation", "letterhead", "stationary", "stationery"], "Flyers & Print", 75),
+    (["resume", "cv template", "curriculum vitae", "resume template"], "Resume & CV Templates", 85),
+    (["menu", "restaurant menu", "food menu", "cafe menu"], "Menus & Food Templates", 82),
+    # Social media
+    (["instagram", "instagram post", "instagram story", "ig post", "ig story", "ig template"], "Social Media Templates", 88),
+    (["facebook", "fb post", "fb cover", "facebook cover", "facebook banner"], "Social Media Templates", 88),
+    (["twitter", "tweet", "twitter post", "twitter banner", "x post"], "Social Media Templates", 85),
+    (["youtube thumbnail", "yt thumbnail", "youtube banner", "channel art"], "YouTube & Streaming", 88),
+    (["twitch", "stream overlay", "stream alert", "obs overlay", "gaming overlay"], "YouTube & Streaming", 88),
+    (["social media", "social pack", "social template", "social post"], "Social Media Templates", 82),
+    (["story template", "stories template", "instagram stories"], "Social Media Templates", 85),
+    # Mockups
+    (["mockup", "mock-up", "mock up", "psd mockup", "device mockup", "apparel mockup", "packaging mockup"], "Mockups", 90),
+    (["phone mockup", "iphone mockup", "android mockup", "screen mockup"], "Mockups", 90),
+    (["tshirt mockup", "t-shirt mockup", "shirt mockup", "mug mockup", "bag mockup"], "Mockups", 88),
+    # UI/UX
+    (["ui kit", "ui template", "app design", "wireframe", "dashboard template", "mobile ui", "web ui", "design system"], "UI & UX Design", 85),
+    (["figma ui", "figma kit", "figma component", "sketch ui"], "UI & UX Design", 87),
+    # Logo & Branding
+    (["logo template", "logo pack", "logo design", "logotype", "logo kit", "logo bundle"], "Logos & Branding", 88),
+    (["brand identity", "brand guidelines", "brand board", "brand kit", "branding pack"], "Logos & Branding", 87),
+    # Presentation
+    (["presentation", "powerpoint", "keynote", "google slides", "pptx template", "pitch deck", "slideshow template"], "Presentations & PowerPoint", 88),
+    # Infographic
+    (["infographic", "infographics", "chart template", "data visualization"], "Infographics & Data Viz", 85),
+    # Web
+    (["web template", "website template", "html template", "landing page", "web design", "homepage design"], "Web Templates & HTML", 85),
+    # Email
+    (["email template", "newsletter template", "email design", "html email", "mailchimp"], "Email Templates", 87),
+    # Photo frames / overlay
+    (["photo frame", "frame template", "photo overlay", "image overlay"], "Photo Effects & Overlays", 75),
+    (["overlay", "light leak", "film grain", "lens flare overlay", "bokeh overlay"], "Photo Effects & Overlays", 78),
+    # Procreate
+    (["procreate brush", "procreate stamp", "procreate texture", "procreate swatches", "procreate palette"], "Procreate - Brushes & Stamps", 88),
+    # Game assets
+    (["sprite sheet", "game asset", "pixel art", "tileset", "tilemap", "game ui"], "Game Assets & Sprites", 87),
+    # Music production
+    (["serum preset", "serum bank", "sylenth preset", "massive preset", "wavetable preset", "synth preset"], "Music Production - Presets", 87),
+    (["ableton project", "fl studio project", "logic project", "daw template", "session file"], "Music Production - DAW Projects", 87),
+    # Photography
+    (["raw photo", "raw files", "camera raw", "nef", "cr2", "arw", "raw pack"], "Photography - RAW Files", 82),
+    # Calendars & planners
+    (["calendar template", "planner template", "daily planner", "weekly planner", "yearly planner"], "Calendars & Planners", 85),
+    # General
+    (["icon pack", "icon set", "icon bundle", "web icons", "app icons"], "Icons & Icon Packs", 87),
+    (["pattern design", "seamless pattern", "repeat pattern", "surface pattern"], "Patterns & Seamless", 82),
+    (["watercolor", "watercolour", "hand drawn", "hand lettered", "sketch illustration"], "Illustrations & Clipart", 75),
+    (["certificate", "diploma", "award template", "award certificate"], "Certificates & Awards", 85),
+    (["banner", "web banner", "display banner", "ad banner", "leaderboard banner"], "Banners & Ads", 80),
+    (["voucher", "coupon", "gift card", "gift voucher"], "Coupons & Vouchers", 82),
+    (["wedding", "wedding invitation", "wedding card", "wedding template", "save the date"], "Wedding & Events", 85),
+]
+
+# Categories that, when detected as "topic" and design files are also present,
+# should trigger context-based re-inference of the actual asset type.
+_GENERIC_DESIGN_CATEGORIES = {
+    'Photoshop - Templates & Composites',
+    'Illustrator - Vectors & Assets',
+    'InDesign - Templates & Layouts',
+    'Figma - Templates & UI Kits',
+}
+
 # File extensions to exclude from "project file" counts
 _NOISE_EXTS = {'.txt', '.html', '.htm', '.url', '.ini', '.log',
                '.md', '.json', '.xml', '.csv', '.rtf', '.nfo',
@@ -720,6 +817,10 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
     vector_exts = sum(ext.get(e, 0) for e in ['.svg', '.eps', '.ai'])
     font_exts = sum(ext.get(e, 0) for e in ['.ttf', '.otf', '.woff', '.woff2'])
     doc_exts = sum(ext.get(e, 0) for e in ['.pdf', '.pptx', '.docx', '.xlsx', '.indd', '.idml'])
+    raw_exts = sum(ext.get(e, 0) for e in ['.nef', '.cr2', '.arw', '.crw', '.orf', '.raf', '.rw2', '.sr2', '.dng'])
+    daw_exts = sum(ext.get(e, 0) for e in ['.als', '.flp', '.logicx', '.ptx', '.cpr'])
+    midi_exts = sum(ext.get(e, 0) for e in ['.mid', '.midi'])
+    lr_exts = sum(ext.get(e, 0) for e in ['.lrtemplate', '.xmp'])
 
     if ext.get('.aep', 0) >= 1 and scan['has_footage']:
         return ('After Effects - Templates', 72, f"composition:.aep+/footage/ subfolder")
@@ -729,6 +830,14 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
         return ('Stock Footage - General', 75, f"composition:{video_exts} video files ({video_exts/total:.0%})")
     if audio_exts >= 5 and audio_exts / total >= 0.5:
         return ('Stock Music & Audio', 75, f"composition:{audio_exts} audio files ({audio_exts/total:.0%})")
+    if raw_exts >= 3 and raw_exts / total >= 0.4:
+        return ('Photography - RAW Files', 75, f"composition:{raw_exts} RAW files ({raw_exts/total:.0%})")
+    if daw_exts >= 1:
+        return ('Music Production - DAW Projects', 80, f"composition:DAW project file found ({daw_exts})")
+    if midi_exts >= 2 and not audio_exts:
+        return ('Music Production - DAW Projects', 65, f"composition:{midi_exts} MIDI files")
+    if lr_exts >= 3:
+        return ('Lightroom - Presets & Profiles', 70, f"composition:{lr_exts} LR preset files")
     if image_exts >= 10 and image_exts / total >= 0.7:
         return ('Stock Photos - General', 65, f"composition:{image_exts} images ({image_exts/total:.0%})")
     if vector_exts >= 3 and vector_exts / total >= 0.3:

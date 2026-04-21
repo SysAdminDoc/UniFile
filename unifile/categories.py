@@ -275,7 +275,7 @@ CATEGORIES = [
     # ══════════════════════════════════════════════════════════════════════════
     # ADOBE & DIGITAL DESIGN TOOLS
     # ══════════════════════════════════════════════════════════════════════════
-    ("After Effects - Templates", ["after effects template", "ae template", "aep template", "ae project", "after effects project"]),
+    ("After Effects - Templates", ["after effects template", "ae template", "aep template", "ae project", "after effects project", "videohive", "envato element", "motion array", "ae project file"]),
     ("After Effects - Intros & Openers", ["intro", "opener", "opening", "ae intro", "logo intro", "logo reveal", "logo sting", "logo animation", "intro sequence", "channel intro", "broadcast intro"]),
     ("After Effects - Slideshows", ["slideshow", "slide show", "photo slideshow", "video slideshow", "gallery slideshow", "memory slideshow", "image slideshow"]),
     ("After Effects - Titles & Typography", ["title sequence", "title animation", "kinetic typography", "kinetic type", "text animation", "animated title", "title reveal", "movie title", "film title", "cinematic title", "title pack", "animated text"]),
@@ -326,12 +326,16 @@ CATEGORIES = [
     ("InDesign - Magazine & Editorial", ["magazine template", "magazine layout", "editorial", "editorial layout", "editorial design", "lookbook", "catalog layout"]),
     ("InDesign - Print Templates", ["print template", "print ready", "print design", "press ready", "cmyk", "bleed", "crop marks"]),
 
+    ("Figma - Templates & UI Kits", ["figma", "figma template", "figma ui", "figma design", "figma component", "figma kit", "figma file", "figma resource", "design token", "auto layout", "figma wireframe", "fig file"]),
+
     ("Lightroom - Presets & Profiles", ["lightroom preset", "lr preset", "lightroom profile", "lrtemplate", "xmp preset", "dng preset", "lightroom mobile", "lightroom filter"]),
+    ("DaVinci Resolve - Templates", ["davinci resolve", "davinci", "resolve template", "fusion composition", "fusion comp", "davinci fusion", "resolve project", "drp", "drfx", "color grading project", "resolve macro"]),
+    ("CapCut - Templates", ["capcut", "cap cut", "capcut template", "capcut effect", "capcut text", "capcut transition", "capcut preset"]),
 
     # ══════════════════════════════════════════════════════════════════════════
     # MOTION GRAPHICS & VIDEO PRODUCTION
     # ══════════════════════════════════════════════════════════════════════════
-    ("Motion Graphics", ["motion graphics", "motion design", "mograph", "animated graphic", "motion pack"]),
+    ("Motion Graphics", ["motion graphics", "motion design", "mograph", "animated graphic", "motion pack", "touchdesigner", "resolume avenue", "vjing", "notch project"]),
     ("Animated Backgrounds", ["animated background", "motion background", "video background", "loop background", "loopable background", "vj loop", "vj loops"]),
     ("Animated Icons", ["animated icon", "animated icons", "icon animation", "lottie", "bodymovin", "motion icon"]),
     ("Animated Elements", ["animated element", "animated shape", "shape animation", "geometric animation", "element pack", "motion element"]),
@@ -372,23 +376,31 @@ CATEGORIES = [
     ("Stock Photos - Nature & Outdoors", ["nature photo", "landscape photo", "outdoor photo", "scenery photo"]),
     ("Stock Photos - Flat Lay & Styled", ["flat lay", "flatlay", "styled stock", "styled photo", "desktop photo", "workspace photo", "styled scene"]),
     ("Stock Music & Audio", ["stock music", "royalty free music", "background music", "production music", "music track", "audio track", "music loop", "audio loop"]),
-    ("Sound Effects & SFX", ["sound effect", "sound effects", "sfx", "foley", "ambient sound", "ambiance", "audio sfx", "whoosh", "impact", "riser"]),
+    ("Sound Effects & SFX", ["sound effect", "sound effects", "sfx", "foley", "ambient sound", "ambiance", "audio sfx", "whoosh", "impact", "riser", "sample library", "kontakt library", "wav pack", "one shot", "drum samples", "sample pack sfx"]),
 
     # ══════════════════════════════════════════════════════════════════════════
     # DESIGN ELEMENTS & ASSETS
     # ══════════════════════════════════════════════════════════════════════════
-    ("3D", ["3d", "three dimensional", "3d render", "3d model", "cinema4d", "c4d", "blender3d", "element 3d", "3d object", "3d scene", "3d asset", "3d text", "3d logo"]),
-    ("3D - Models & Objects", ["3d model", "obj", "fbx", "3ds", "stl", "3d object", "3d prop", "3d asset pack"]),
-    ("3D - Materials & Textures", ["3d material", "3d texture", "pbr material", "pbr texture", "substance", "material pack", "shader", "hdri", "hdr environment", "environment map"]),
+    ("3D", ["3d", "three dimensional", "3d render", "3d model", "cinema4d", "c4d", "blender3d", "element 3d", "3d object", "3d scene", "3d asset", "3d text", "3d logo", "octane render", "redshift render", "arnold renderer", "vray", "cycles render", "eevee render", "blender render", "3d pack"]),
+    ("3D - Models & Objects", ["3d model", "obj", "fbx", "3ds", "stl", "3d object", "3d prop", "3d asset pack", "3d mesh", "low poly", "high poly", "lowpoly"]),
+    ("3D - Materials & Textures", ["3d material", "3d texture", "pbr material", "pbr texture", "substance", "material pack", "shader", "hdri", "hdr environment", "environment map", "normal map", "displacement map", "roughness map", "metalness map"]),
     ("3D - Scenes & Environments", ["3d scene", "3d environment", "3d room", "3d stage", "3d studio", "virtual set", "virtual studio"]),
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # GAME DEVELOPMENT & INTERACTIVE
+    # ══════════════════════════════════════════════════════════════════════════
+    ("Game Assets & Sprites", ["sprite", "sprite sheet", "tilemap", "tileset", "game asset", "pixel art", "aseprite", "unity asset", "godot asset", "rpg maker", "game graphics", "sprite atlas", "2d game asset", "platformer asset", "game sprite", "unity2d", "unitypackage"]),
+    ("Unreal Engine - Assets", ["unreal engine", "ue4", "ue5", "unreal asset", "unreal material", "unreal blueprint", "uproject", "uasset", "nanite mesh", "unreal marketplace", "fab asset", "unreal plugin"]),
     ("Abstract", ["abstract", "generative", "procedural", "abstract art", "abstract design"]),
+    ("AI Art & Generative", ["midjourney", "stable diffusion", "comfyui", "lora", "sdxl", "ai art", "generative art", "dreambooth", "controlnet", "safetensors", "flux model", "ai generated", "neural art", "text to image", "diffusion model", "ai image pack"]),
     ("Alpha Channels & Mattes", ["alpha channel", "alpha matte", "matte", "luma matte", "track matte"]),
     ("Animated GIFs & Cinemagraphs", ["gif", "animated gif", "cinemagraph", "living photo"]),
-    ("Backgrounds & Textures", ["background", "backgrounds", "texture", "textures", "wallpaper", "pattern", "backdrop", "studio background"]),
+    ("Backgrounds & Textures", ["background", "backgrounds", "texture", "textures", "wallpaper", "pattern", "backdrop", "studio background", "pbr texture", "normal map", "roughness map", "hdri environment", "seamless texture"]),
     ("Badges & Emblems", ["badge", "badges", "emblem", "crest", "seal", "stamp", "vintage badge"]),
     ("Banners", ["banner", "banners", "web banner", "display banner", "ad banner", "leaderboard", "skyscraper"]),
     ("Borders & Dividers", ["border", "divider", "separator", "line divider", "decorative border", "ornamental border"]),
     ("Brushes & Presets", ["brush", "brushes", "preset", "presets", "procreate brush"]),
+    ("Procreate - Brushes & Stamps", ["procreate", "procreate brush", "procreate stamp", "procreate texture", "procreate swatches", "procreate palette", "procreate file", "ipad brush", "procreate pack", "procreate set"]),
     ("Buttons & UI Elements", ["button", "buttons", "ui element", "web element", "ui component", "gui element"]),
     ("Clipart & Illustrations", ["clipart", "clip art", "illustration", "vector", "svg", "hand drawn", "doodle", "sketch"]),
     ("Color Palettes & Swatches", ["color palette", "color scheme", "swatch", "swatches", "color combination"]),
@@ -422,7 +434,7 @@ CATEGORIES = [
     # ══════════════════════════════════════════════════════════════════════════
     # FONTS, TYPOGRAPHY & TEXT
     # ══════════════════════════════════════════════════════════════════════════
-    ("Fonts & Typography", ["font", "fonts", "typography", "typeface", "lettering", "calligraphy", "handwriting", "otf", "ttf", "woff", "opentype", "truetype"]),
+    ("Fonts & Typography", ["font", "fonts", "typography", "typeface", "lettering", "calligraphy", "handwriting", "otf", "ttf", "woff", "opentype", "truetype", "variable font", "font family", "web font", "font bundle"]),
     ("Fonts - Display & Decorative", ["display font", "decorative font", "fancy font", "ornamental font", "headline font"]),
     ("Fonts - Script & Handwritten", ["script font", "handwritten font", "cursive font", "calligraphy font", "signature font", "brush font"]),
     ("Fonts - Sans Serif", ["sans serif", "sans-serif", "modern font", "clean font", "geometric font"]),
@@ -510,6 +522,8 @@ CATEGORIES = [
     ("Music - Corporate & Upbeat", ["corporate music", "upbeat", "uplifting", "positive music", "happy music", "motivational music"]),
     ("Podcast & Voiceover", ["podcast", "voiceover", "voice over", "narration", "podcast intro", "podcast template"]),
     ("Audio Visualizer", ["audio visualizer", "music visualizer", "spectrum", "equalizer", "audio spectrum", "waveform"]),
+    ("Music Production - Presets", ["serum preset", "massive preset", "sylenth preset", "omnisphere patch", "kontakt library", "vst preset", "synth preset", "wavetable preset", "spire preset", "nexus preset", "nks preset", "synthesizer preset", "fm preset", "plugin preset", "audio preset pack"]),
+    ("Music Production - DAW Projects", ["ableton", "ableton live", "logic pro", "fl studio", "fruity loops", "pro tools session", "cubase project", "reaper project", "studio one", "daw project", "als project", "flp project", "daw template", "session file"]),
 
     # ══════════════════════════════════════════════════════════════════════════
     # PHOTOGRAPHY & IMAGE EDITING
@@ -521,6 +535,7 @@ CATEGORIES = [
     ("Long Exposure", ["long exposure", "light trail", "light painting", "motion blur photo", "smooth water"]),
     ("Macro & Close-Up", ["macro", "close up", "closeup", "micro", "detail shot"]),
     ("Portrait Photography", ["portrait", "headshot", "portrait photography", "portrait lighting", "portrait retouch"]),
+    ("Photography - RAW Files", ["raw photo", "raw files", "camera raw", "nef file", "cr2 file", "arw file", "dng raw", "raw image", "raw format", "raw converter", "raw catalog"]),
     ("Product Photography", ["product photography", "product photo", "product shoot", "ecommerce photo", "catalog photo"]),
     ("Flat Lay & Styled Photography", ["flat lay", "flatlay", "styled stock", "styled photo", "desktop photo", "workspace photo"]),
 
