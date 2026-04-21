@@ -34,6 +34,33 @@ from unifile.nexa_backend import (
 )
 
 
+def _build_dialog_header(t: dict, kicker: str, title: str, description: str) -> QFrame:
+    frame = QFrame()
+    frame.setStyleSheet(
+        f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; "
+        f"border-radius: 14px; }}"
+    )
+    layout = QVBoxLayout(frame)
+    layout.setContentsMargins(16, 14, 16, 14)
+    layout.setSpacing(4)
+
+    lbl_kicker = QLabel(kicker.upper())
+    lbl_kicker.setStyleSheet(
+        f"color: {t['accent']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
+    )
+    layout.addWidget(lbl_kicker)
+
+    lbl_title = QLabel(title)
+    lbl_title.setStyleSheet(f"color: {t['fg_bright']}; font-size: 20px; font-weight: 700;")
+    layout.addWidget(lbl_title)
+
+    lbl_desc = QLabel(description)
+    lbl_desc.setWordWrap(True)
+    lbl_desc.setStyleSheet(f"color: {t['muted']}; font-size: 12px; line-height: 1.4;")
+    layout.addWidget(lbl_desc)
+    return frame
+
+
 class OllamaSettingsDialog(QDialog):
     """Dialog for configuring Ollama LLM integration with model catalog."""
     def __init__(self, parent=None):
@@ -47,21 +74,35 @@ class OllamaSettingsDialog(QDialog):
     def _build_ui(self):
         _t = get_active_theme()
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+
+        layout.addWidget(_build_dialog_header(
+            _t,
+            "AI",
+            "Ollama Settings",
+            "Choose the local model that powers classification, tune how aggressively it reasons, and keep connection checks and downloads in one place."
+        ))
 
         # ── URL ──────────────────────────────────────────────────────────────
         row_url = QHBoxLayout()
-        row_url.addWidget(QLabel("Ollama URL:"))
+        row_url.addWidget(QLabel("Server URL"))
         self.txt_url = QLineEdit(self.settings['url'])
         self.txt_url.setPlaceholderText("http://localhost:11434")
+        self.txt_url.setClearButtonEnabled(True)
         row_url.addWidget(self.txt_url, 1)
         layout.addLayout(row_url)
+
+        lbl_url_hint = QLabel("Use the local Ollama endpoint unless you intentionally run the server elsewhere.")
+        lbl_url_hint.setWordWrap(True)
+        lbl_url_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        layout.addWidget(lbl_url_hint)
 
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet(f"QFrame{{background-color:{_t['border']};max-height:1px;}}"); layout.addWidget(sep)
 
         # ── Model Catalog ─────────────────────────────────────────────────────
-        layout.addWidget(QLabel("Select Model Preset:"))
+        layout.addWidget(QLabel("Model Presets"))
 
         self.lst_models = QListWidget()
         self.lst_models.setAlternatingRowColors(True)
@@ -97,7 +138,7 @@ class OllamaSettingsDialog(QDialog):
         layout.addWidget(self.lst_models)
 
         # Description label under list
-        self.lbl_desc = QLabel("")
+        self.lbl_desc = QLabel("Select a preset to load sensible defaults for local classification.")
         self.lbl_desc.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 2px 4px;")
         self.lbl_desc.setWordWrap(True)
         layout.addWidget(self.lbl_desc)
@@ -124,7 +165,7 @@ class OllamaSettingsDialog(QDialog):
         self.cmb_model.setInsertPolicy(QComboBox.InsertPolicy.InsertAtTop)
         self.cmb_model.setMinimumWidth(180)
         col1.addWidget(self.cmb_model)
-        btn_refresh = QPushButton("↻ Refresh Installed")
+        btn_refresh = QPushButton("Refresh Installed Models")
         btn_refresh.clicked.connect(self._refresh_models)
         col1.addWidget(btn_refresh)
         grid.addLayout(col1)
@@ -222,21 +263,22 @@ class OllamaSettingsDialog(QDialog):
 
         # ── Test / Pull / Status ──────────────────────────────────────────────
         row_test = QHBoxLayout()
-        btn_test = QPushButton("Test Connection")
+        btn_test = QPushButton("Check Connection")
         btn_test.clicked.connect(self._test)
         row_test.addWidget(btn_test)
-        self.btn_pull = QPushButton("Pull Model")
+        self.btn_pull = QPushButton("Download Missing Model")
         self.btn_pull.setVisible(False)
         self.btn_pull.clicked.connect(self._pull_model)
         row_test.addWidget(self.btn_pull)
-        self.lbl_status = QLabel("")
+        self.lbl_status = QLabel("Connection has not been checked yet.")
         self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
         row_test.addWidget(self.lbl_status, 1)
         layout.addLayout(row_test)
 
         # ── Model Manager ─────────────────────────────────────────────────────
         row_mgr = QHBoxLayout()
-        btn_mgr = QPushButton("Model Manager...")
+        btn_mgr = QPushButton("Open Model Manager")
         btn_mgr.setToolTip("Browse, download, and delete Ollama models")
         btn_mgr.setStyleSheet(
             f"QPushButton {{ background: {_t['selection']}; color: {_t['fg_bright']}; border: 1px solid {_t['border']};"
@@ -303,7 +345,7 @@ class OllamaSettingsDialog(QDialog):
 
         # ── Save / Cancel ─────────────────────────────────────────────────────
         row_btns = QHBoxLayout()
-        btn_save = QPushButton("Save")
+        btn_save = QPushButton("Save AI Settings")
         btn_save.clicked.connect(self._save)
         btn_cancel = QPushButton("Cancel")
         btn_cancel.clicked.connect(self.reject)
@@ -358,11 +400,15 @@ class OllamaSettingsDialog(QDialog):
         current = self.cmb_model.currentText().strip()
         self._populate_models(current)
         count = self.cmb_model.count()
-        self.lbl_status.setText(f"{count} model(s) installed." if count else "No models installed.")
+        self.lbl_status.setText(
+            f"{count} installed model{'s' if count != 1 else ''} found."
+            if count else
+            "No installed models found yet."
+        )
         self.lbl_status.setStyleSheet(f"color: {get_active_theme()['muted']};")
 
     def _test(self):
-        self.lbl_status.setText("Testing...")
+        self.lbl_status.setText("Checking Ollama connection...")
         self.lbl_status.setStyleSheet("color: #f59e0b;")  # semantic: warning amber
         self.btn_pull.setVisible(False)
         self.lbl_status.repaint()
@@ -378,7 +424,7 @@ class OllamaSettingsDialog(QDialog):
 
     def _pull_model(self):
         model = self.cmb_model.currentText().strip() or self.settings['model']
-        self.lbl_status.setText(f"Pulling {model}... (this may take several minutes)")
+        self.lbl_status.setText(f"Downloading {model}. This can take several minutes.")
         self.lbl_status.setStyleSheet("color: #f59e0b;")
         self.btn_pull.setEnabled(False)
         self.lbl_status.repaint()
@@ -395,12 +441,12 @@ class OllamaSettingsDialog(QDialog):
     def _on_pull_done(self, success):
         model = self.cmb_model.currentText().strip()
         if success:
-            self.lbl_status.setText(f"✓ {model} pulled successfully.")
+            self.lbl_status.setText(f"{model} downloaded successfully.")
             self.lbl_status.setStyleSheet(f"color: {get_active_theme()['green']};")
             self._populate_models(model)
             self.btn_pull.setVisible(False)
         else:
-            self.lbl_status.setText(f"Pull failed. Run manually: ollama pull {model}")
+            self.lbl_status.setText(f"Download failed. Run manually: ollama pull {model}")
             self.lbl_status.setStyleSheet("color: #ef4444;")
         self.btn_pull.setEnabled(True)
 
@@ -450,10 +496,18 @@ class PhotoSettingsDialog(QDialog):
     def _build_ui(self):
         _t = get_active_theme()
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+
+        layout.addWidget(_build_dialog_header(
+            _t,
+            "Photos",
+            "Photo Organization Settings",
+            "Set how UniFile groups photos, enriches image metadata, and manages people-aware organization. Keep this workflow readable and predictable before you turn it on."
+        ))
 
         # ── Master enable ────────────────────────────────────────────────────
-        self.chk_enabled = QCheckBox("Enable Photo Organization Mode")
+        self.chk_enabled = QCheckBox("Enable photo organization workflow")
         self.chk_enabled.setChecked(self.settings['enabled'])
         self.chk_enabled.setStyleSheet(f"QCheckBox {{ color: {_t['green']}; font-size: 13px; font-weight: bold; }}")
         self.chk_enabled.toggled.connect(self._on_toggle)
@@ -464,7 +518,7 @@ class PhotoSettingsDialog(QDialog):
 
         # ── Folder structure preset ──────────────────────────────────────────
         row_preset = QHBoxLayout()
-        row_preset.addWidget(QLabel("Folder Structure:"))
+        row_preset.addWidget(QLabel("Folder Structure"))
         self.cmb_preset = QComboBox()
         self._preset_keys = list(_PHOTO_FOLDER_PRESETS.keys())
         for key in self._preset_keys:
@@ -476,8 +530,10 @@ class PhotoSettingsDialog(QDialog):
         layout.addLayout(row_preset)
 
         self.lbl_preview = QLabel()
-        self.lbl_preview.setStyleSheet(f"color: {_t['sidebar_btn_active_fg']}; font-size: 11px; padding: 4px 8px; "
-                                       f"background: {_t['input_bg']}; border-radius: 4px;")
+        self.lbl_preview.setStyleSheet(
+            f"color: {_t['sidebar_btn_active_fg']}; font-size: 11px; padding: 8px 10px; "
+            f"background: {_t['bg_alt']}; border: 1px solid {_t['border']}; border-radius: 10px;"
+        )
         layout.addWidget(self.lbl_preview)
         self._update_preview()
 
@@ -489,7 +545,7 @@ class PhotoSettingsDialog(QDialog):
         lbl_feat.setStyleSheet(f"color: {_t['sidebar_profile_fg']}; font-size: 12px; font-weight: bold;")
         layout.addWidget(lbl_feat)
 
-        self.chk_geocoding = QCheckBox("Reverse Geocoding (GPS -> City/Country)")
+        self.chk_geocoding = QCheckBox("Reverse geocoding (GPS to city and country)")
         self.chk_geocoding.setChecked(self.settings['geocoding_enabled'])
         if not HAS_REVERSE_GEOCODER:
             self.chk_geocoding.setToolTip("reverse_geocoder package not installed")
@@ -497,7 +553,7 @@ class PhotoSettingsDialog(QDialog):
             self.chk_geocoding.setChecked(False)
         layout.addWidget(self.chk_geocoding)
 
-        self.chk_blur = QCheckBox("Blur Detection (OpenCV quality scoring)")
+        self.chk_blur = QCheckBox("Blur detection (OpenCV quality scoring)")
         self.chk_blur.setChecked(self.settings['blur_detection_enabled'])
         if not HAS_CV2:
             self.chk_blur.setToolTip("opencv-python-headless package not installed")
@@ -517,11 +573,11 @@ class PhotoSettingsDialog(QDialog):
         row_thresh.addStretch()
         layout.addLayout(row_thresh)
 
-        self.chk_scene = QCheckBox("Scene Tagging (AI labels: portrait, landscape, food...)")
+        self.chk_scene = QCheckBox("Scene tagging (portrait, landscape, food, and more)")
         self.chk_scene.setChecked(self.settings['scene_tagging_enabled'])
         layout.addWidget(self.chk_scene)
 
-        self.chk_face = QCheckBox("Face Recognition (detect & organize by person)")
+        self.chk_face = QCheckBox("Face recognition (detect and organize by person)")
         self.chk_face.setChecked(self.settings.get('face_recognition_enabled', False))
         if not HAS_FACE_RECOGNITION and not HAS_CV2:
             self.chk_face.setToolTip("Requires face_recognition or opencv-python-headless")
@@ -533,7 +589,7 @@ class PhotoSettingsDialog(QDialog):
 
         row_face = QHBoxLayout()
         row_face.addSpacing(24)
-        self.btn_face_mgr = QPushButton("Manage Faces...")
+        self.btn_face_mgr = QPushButton("Open Face Library")
         self.btn_face_mgr.setFixedWidth(140)
         self.btn_face_mgr.setEnabled(HAS_FACE_RECOGNITION)
         if not HAS_FACE_RECOGNITION:
@@ -543,7 +599,7 @@ class PhotoSettingsDialog(QDialog):
         row_face.addStretch()
         layout.addLayout(row_face)
 
-        self.chk_enhanced = QCheckBox("Enhanced AI Descriptions (richer vision prompts)")
+        self.chk_enhanced = QCheckBox("Enhanced AI descriptions (richer vision prompts)")
         self.chk_enhanced.setChecked(self.settings['enhanced_descriptions'])
         layout.addWidget(self.chk_enhanced)
 
@@ -564,6 +620,7 @@ class PhotoSettingsDialog(QDialog):
 
         # ── Buttons ──────────────────────────────────────────────────────────
         btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btn_box.button(QDialogButtonBox.StandardButton.Ok).setText("Save Photo Settings")
         btn_box.accepted.connect(self._save_and_close)
         btn_box.rejected.connect(self.reject)
         layout.addWidget(btn_box)
@@ -596,9 +653,9 @@ class PhotoSettingsDialog(QDialog):
             example = example.replace('{day}', '15').replace('{city}', 'Denver')
             example = example.replace('{scene}', 'landscape')
             example = example.replace('{person}', 'Mom')
-            self.lbl_preview.setText(f"Preview: Photos/ -> {example}photo.jpg")
+            self.lbl_preview.setText(f"Example output: Photos/ -> {example}photo.jpg")
         else:
-            self.lbl_preview.setText("Preview: Photos/ -> photo.jpg")
+            self.lbl_preview.setText("Example output: Photos/ -> photo.jpg")
 
     def _save_and_close(self):
         self.settings['enabled'] = self.chk_enabled.isChecked()
@@ -645,8 +702,17 @@ class FaceManagerDialog(QDialog):
         self._build_ui()
 
     def _build_ui(self):
+        _t = get_active_theme()
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        layout.addWidget(_build_dialog_header(
+            _t,
+            "People",
+            "Face Library",
+            "Review known face clusters, rename people, and adjust the matching tolerance used during recognition."
+        ))
 
         if not HAS_FACE_RECOGNITION:
             warn = QLabel("face_recognition library not installed - face identity management unavailable.\n"
@@ -655,9 +721,14 @@ class FaceManagerDialog(QDialog):
             warn.setWordWrap(True)
             layout.addWidget(warn)
 
+        self.lbl_face_summary = QLabel("")
+        self.lbl_face_summary.setWordWrap(True)
+        self.lbl_face_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        layout.addWidget(self.lbl_face_summary)
+
         # ── Tolerance slider ────────────────────────────────────────────────
         row_tol = QHBoxLayout()
-        row_tol.addWidget(QLabel("Match Tolerance:"))
+        row_tol.addWidget(QLabel("Match Tolerance"))
         self.sld_tolerance = QSlider(Qt.Orientation.Horizontal)
         self.sld_tolerance.setRange(30, 90)
         tol_val = int((self._face_db.tolerance if self._face_db else 0.6) * 100)
@@ -676,28 +747,32 @@ class FaceManagerDialog(QDialog):
         # ── Face list ───────────────────────────────────────────────────────
         self.lst_faces = QListWidget()
         self.lst_faces.setIconSize(QSize(64, 64))
+        self.lst_faces.itemSelectionChanged.connect(self._update_actions)
         layout.addWidget(self.lst_faces, 1)
 
         self._refresh_list()
 
         # ── Buttons ─────────────────────────────────────────────────────────
         row_btns = QHBoxLayout()
-        btn_rename = QPushButton("Rename")
-        btn_rename.clicked.connect(self._rename_face)
-        row_btns.addWidget(btn_rename)
-        btn_delete = QPushButton("Delete")
-        btn_delete.setStyleSheet("QPushButton { color: #f38ba8; }")  # semantic: danger
-        btn_delete.clicked.connect(self._delete_face)
-        row_btns.addWidget(btn_delete)
+        self.btn_rename = QPushButton("Rename Person")
+        self.btn_rename.clicked.connect(self._rename_face)
+        row_btns.addWidget(self.btn_rename)
+        self.btn_delete = QPushButton("Delete Face")
+        self.btn_delete.setStyleSheet("QPushButton { color: #f38ba8; }")  # semantic: danger
+        self.btn_delete.clicked.connect(self._delete_face)
+        row_btns.addWidget(self.btn_delete)
         row_btns.addStretch()
-        btn_close = QPushButton("Close")
+        btn_close = QPushButton("Save and Close")
         btn_close.clicked.connect(self._close_and_save)
         row_btns.addWidget(btn_close)
         layout.addLayout(row_btns)
+        self._update_actions()
 
     def _refresh_list(self):
         self.lst_faces.clear()
         if not self._face_db:
+            self.lbl_face_summary.setText("Face identity management is unavailable until the required library is installed.")
+            self._update_actions()
             return
         for face in self._face_db.get_all_summaries():
             text = f"{face['label']}  ({face['sample_count']} samples)"
@@ -712,11 +787,23 @@ class FaceManagerDialog(QDialog):
                 except Exception:
                     pass
             self.lst_faces.addItem(item)
+        count = self.lst_faces.count()
+        self.lbl_face_summary.setText(
+            f"{count} saved face cluster{'s' if count != 1 else ''} in the library."
+            if count else
+            "No saved face clusters yet."
+        )
+        self._update_actions()
 
     def _on_tolerance_changed(self, val):
         self.lbl_tol.setText(f"{val / 100:.2f}")
         if self._face_db:
             self._face_db.set_tolerance(val / 100)
+
+    def _update_actions(self):
+        has_selection = self.lst_faces.currentItem() is not None and self._face_db is not None
+        self.btn_rename.setEnabled(has_selection)
+        self.btn_delete.setEnabled(has_selection)
 
     def _rename_face(self):
         item = self.lst_faces.currentItem()
@@ -761,13 +848,18 @@ class ModelManagerDialog(QDialog):
     def _build_ui(self):
         _t = get_active_theme()
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
+        layout.setContentsMargins(18, 18, 18, 18)
 
         # ── Header ────────────────────────────────────────────────────────────
+        layout.addWidget(_build_dialog_header(
+            _t,
+            "Models",
+            "Ollama Model Manager",
+            "Review installed models, compare catalog coverage, and download or remove local models without leaving UniFile."
+        ))
+
         hdr = QHBoxLayout()
-        title = QLabel("Ollama Model Manager")
-        title.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {_t['fg_bright']};")
-        hdr.addWidget(title)
         hdr.addStretch()
         self.lbl_server = QLabel("Checking server...")
         self.lbl_server.setStyleSheet("color: #f59e0b; font-size: 11px;")  # semantic: warning amber
@@ -781,7 +873,7 @@ class ModelManagerDialog(QDialog):
 
         # ── Search ────────────────────────────────────────────────────────────
         self.txt_filter = QLineEdit()
-        self.txt_filter.setPlaceholderText("Filter models...")
+        self.txt_filter.setPlaceholderText("Search the catalog or your installed models")
         self.txt_filter.setClearButtonEnabled(True)
         self.txt_filter.textChanged.connect(self._apply_filter)
         layout.addWidget(self.txt_filter)
@@ -846,7 +938,7 @@ class ModelManagerDialog(QDialog):
 
         # ── Bottom Buttons ────────────────────────────────────────────────────
         row_btns = QHBoxLayout()
-        btn_refresh = QPushButton("Refresh")
+        btn_refresh = QPushButton("Refresh Model List")
         btn_refresh.clicked.connect(self._load_models)
         row_btns.addWidget(btn_refresh)
         row_btns.addStretch()
@@ -857,8 +949,8 @@ class ModelManagerDialog(QDialog):
 
     # ── Data Loading ──────────────────────────────────────────────────────────
     def _load_models(self):
-        self.lbl_summary.setText("Loading models...")
-        self.lbl_server.setText("Connecting...")
+        self.lbl_summary.setText("Loading installed models and catalog status...")
+        self.lbl_server.setText("Checking connection...")
         self.lbl_server.setStyleSheet("color: #f59e0b; font-size: 11px;")  # semantic: warning amber
         if hasattr(self, '_list_worker') and self._list_worker is not None:
             try: self._list_worker.finished.disconnect()
@@ -879,8 +971,7 @@ class ModelManagerDialog(QDialog):
 
         total_bytes = sum(m.get('size', 0) for m in models)
         self.lbl_summary.setText(
-            f"{len(models)} model{'s' if len(models) != 1 else ''} installed  --  "
-            f"{format_size(total_bytes)} total disk usage"
+            f"{len(models)} installed model{'s' if len(models) != 1 else ''} using {format_size(total_bytes)} on disk."
         )
         self._populate_tree()
 

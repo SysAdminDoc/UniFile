@@ -47,13 +47,22 @@ from unifile.plugins import PluginManager
 from unifile.models import RenameItem, CategorizeItem, FileItem
 from unifile.ignore import IgnoreFilter
 from unifile.learning import get_learner
+from unifile.csv_rules import preload_csv_rules, check_csv_rules
 
 
 def _get_ai_backend() -> str:
-    """Return 'nexa' if Nexa is enabled and available, else 'ollama'."""
+    """Return 'nexa', 'providers', or 'ollama' based on configuration."""
     nexa_settings = load_nexa_settings()
     if nexa_settings.get('enabled') and is_nexa_available():
         return 'nexa'
+    from unifile.ai_providers import load_providers
+    providers = load_providers()
+    has_non_ollama = any(
+        cfg.get('enabled') and cfg.get('type') != 'ollama'
+        for cfg in providers.values()
+    )
+    if has_non_ollama:
+        return 'providers'
     return 'ollama'
 
 
@@ -65,6 +74,10 @@ def _ai_classify_folder(folder_name: str, folder_path: str = None,
         return nexa_classify_folder(folder_name, folder_path,
                                      settings=load_nexa_settings(),
                                      log_cb=log_cb)
+    elif backend == 'providers':
+        from unifile.ai_providers import classify_folder_via_chain
+        return classify_folder_via_chain(folder_name, folder_path,
+                                         log_cb=log_cb)
     else:
         settings = load_ollama_settings()
         return ollama_classify_folder(folder_name, folder_path,
@@ -483,6 +496,7 @@ class ScanCategoryWorker(QThread):
 
         # ── Pre-load caches for scan performance ──
         _preload_corrections()
+        preload_csv_rules()
         _CategoryIndex.get()  # Build keyword index once
 
         # ── Check Ollama availability for escalation ──
@@ -494,14 +508,14 @@ class ScanCategoryWorker(QThread):
         caps = ["keyword"]
         if HAS_RAPIDFUZZ: caps.append("fuzzy")
         if HAS_PSD_TOOLS: caps.append("psd-metadata")
-        caps.extend(["extension-map", "prproj-metadata", "content-analysis"])
-        self.log.emit(f"  Engine: tiered v5.3 [{', '.join(caps)}, context-inference, cache, corrections, smart-naming]")
+        caps.extend(["extension-map", "prproj-metadata", "content-analysis", "csv-rules"])
+        self.log.emit(f"  Engine: tiered v5.4 [{', '.join(caps)}, context-inference, cache, corrections, smart-naming]")
         if self.scan_depth > 0:
             self.log.emit(f"  Deep scan (depth {self.scan_depth}): processing {len(folders)} subfolders")
 
         total = len(folders)
         self.phase.emit("Categorizing", f"Classifying {total:,} folders with rule engine…")
-        t0 = time.time(); cached_hits = 0; correction_hits = 0
+        t0 = time.time(); cached_hits = 0; correction_hits = 0; csv_rule_hits = 0
         for idx, folder in enumerate(folders):
             if self._cancelled:
                 self.log.emit(f"  Scan cancelled at {idx}/{total}")
@@ -519,6 +533,21 @@ class ScanCategoryWorker(QThread):
                     'category': corr_cat, 'confidence': 100,
                     'cleaned_name': folder.name, 'source_depth': 0,
                     'method': 'learned', 'detail': 'From user correction history',
+                    'topic': None,
+                })
+                continue
+
+            # Check user-defined CSV sort rules (runs after corrections, before cache/AI)
+            csv_cat = check_csv_rules(folder.name)
+            if csv_cat:
+                csv_rule_hits += 1
+                self.log.emit(f"  {folder.name}")
+                self.log.emit(f"    -->  {csv_cat}  (100%) [csv-rule]")
+                self.result_ready.emit({
+                    'folder_name': folder.name, 'folder_path': str(folder),
+                    'category': csv_cat, 'confidence': 100,
+                    'cleaned_name': folder.name, 'source_depth': 0,
+                    'method': 'csv_rule', 'detail': 'Matched sort_rules.csv pattern',
                     'topic': None,
                 })
                 continue
@@ -607,6 +636,7 @@ class ScanCategoryWorker(QThread):
         elapsed = time.time() - t0
         if cached_hits: self.log.emit(f"  Cache hits: {cached_hits}")
         if correction_hits: self.log.emit(f"  Learned corrections applied: {correction_hits}")
+        if csv_rule_hits: self.log.emit(f"  CSV sort rules matched: {csv_rule_hits}")
         if elapsed > 1: self.log.emit(f"  Scan time: {elapsed:.1f}s ({elapsed/max(total,1)*1000:.0f}ms/folder)")
         _close_cache_conn()  # Release persistent DB connection
         self.finished.emit()
@@ -637,6 +667,7 @@ class ScanLLMWorker(QThread):
     def run(self):
         root = Path(self.root_dir)
         settings = load_ollama_settings()
+        backend = _get_ai_backend()
 
         folders = _collect_scan_folders(root, self.scan_depth)
         if not folders:
@@ -645,18 +676,29 @@ class ScanLLMWorker(QThread):
 
         # ── Pre-load caches for scan performance ──
         _preload_corrections()
+        preload_csv_rules()
         _CategoryIndex.get()
 
-        # Verify Ollama connection first
-        ok, msg, _ = ollama_test_connection(settings['url'], settings['model'])
-        if not ok:
-            self.log.emit(f"ERROR: {msg}")
-            self.log.emit("Falling back to rule-based classification...")
-            # Fall back to rule-based scanning
-            self._fallback_scan(folders)
-            return
+        if backend == 'ollama':
+            # Verify Ollama connection first
+            ok, msg, _ = ollama_test_connection(settings['url'], settings['model'])
+            if not ok:
+                self.log.emit(f"ERROR: {msg}")
+                self.log.emit("Falling back to rule-based classification...")
+                self._fallback_scan(folders)
+                return
+            self.log.emit(f"  Engine: LLM via Ollama [{settings['model']}]")
+        elif backend == 'providers':
+            from unifile.ai_providers import load_providers
+            providers_cfg = load_providers()
+            candidates = sorted(
+                [(cfg.get('priority', 99), cfg.get('name', k))
+                 for k, cfg in providers_cfg.items()
+                 if cfg.get('enabled') and cfg.get('type') != 'ollama']
+            )
+            engine_name = candidates[0][1] if candidates else 'AI Provider Chain'
+            self.log.emit(f"  Engine: {engine_name}")
 
-        self.log.emit(f"  Engine: LLM via Ollama [{settings['model']}]")
         self.log.emit(f"  Processing {len(folders)} folders through LLM (batch mode)...")
         total = len(folders)
         self.phase.emit("Cache Sweep", f"Checking cache & corrections for {total:,} folders…")
@@ -666,7 +708,7 @@ class ScanLLMWorker(QThread):
         llm_ok = 0; llm_fail = 0
         BATCH_SIZE = 8  # folders per Ollama request
 
-        t0 = time.time(); cached_hits = 0; correction_hits = 0; name_cache_hits = 0
+        t0 = time.time(); cached_hits = 0; correction_hits = 0; csv_rule_hits = 0; name_cache_hits = 0
 
         # Separate folders needing LLM from those already handled
         pending = []
@@ -685,6 +727,19 @@ class ScanLLMWorker(QThread):
                     'category': corr_cat, 'confidence': 100,
                     'cleaned_name': folder.name, 'source_depth': 0,
                     'method': 'learned', 'detail': 'From correction history',
+                    'topic': None, 'llm_name': None,
+                })
+                continue
+
+            # Check user-defined CSV sort rules
+            csv_cat = check_csv_rules(folder.name)
+            if csv_cat:
+                csv_rule_hits += 1
+                self.result_ready.emit({
+                    'folder_name': folder.name, 'folder_path': str(folder),
+                    'category': csv_cat, 'confidence': 100,
+                    'cleaned_name': folder.name, 'source_depth': 0,
+                    'method': 'csv_rule', 'detail': 'Matched sort_rules.csv pattern',
                     'topic': None, 'llm_name': None,
                 })
                 continue
@@ -798,7 +853,19 @@ class ScanLLMWorker(QThread):
             llm_done = batch_start + len(batch)
             self.progress.emit(llm_done, pending_total)
 
-            if len(batch) == 1:
+            if backend == 'providers':
+                # Paid/remote providers: process individually (no batching)
+                for folder in batch:
+                    if self._cancelled:
+                        break
+                    llm_result = _ai_classify_folder(
+                        folder.name, str(folder), log_cb=self.log.emit)
+                    _emit_llm_result(folder, llm_result)
+                    if llm_result.get('category'):
+                        consecutive_llm_failures = 0
+                    else:
+                        consecutive_llm_failures += 1
+            elif len(batch) == 1:
                 # Single folder — use single classify (better prompt quality)
                 folder = batch[0]
                 llm_result = ollama_classify_folder(
@@ -860,6 +927,7 @@ class ScanLLMWorker(QThread):
         if cached_hits: self.log.emit(f"  Fingerprint cache hits: {cached_hits}")
         if name_cache_hits: self.log.emit(f"  Name cache hits: {name_cache_hits}")
         if correction_hits: self.log.emit(f"  Learned corrections: {correction_hits}")
+        if csv_rule_hits: self.log.emit(f"  CSV sort rules matched: {csv_rule_hits}")
         if elapsed > 1: self.log.emit(f"  Scan time: {elapsed:.1f}s")
         _close_cache_conn()
         self.finished.emit()

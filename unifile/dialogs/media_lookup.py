@@ -127,15 +127,23 @@ class MediaLookupPanel(QWidget):
 
         # ── Header ────────────────────────────────────────────────────────
         header = QWidget()
-        header.setFixedHeight(48)
+        header.setFixedHeight(64)
         header.setStyleSheet(f"background: {_t['bg_alt']}; border-bottom: 1px solid {_t['btn_bg']};")
         h_lay = QHBoxLayout(header)
         h_lay.setContentsMargins(16, 0, 16, 0)
 
+        header_copy = QVBoxLayout()
+        header_copy.setSpacing(1)
         lbl_title = QLabel("Media Lookup")
         lbl_title.setStyleSheet(
             f"color: {_t['fg_bright']}; font-size: 14px; font-weight: 700; background: transparent;")
-        h_lay.addWidget(lbl_title)
+        header_copy.addWidget(lbl_title)
+        lbl_subtitle = QLabel("Search TMDb, OMDb, and TVMaze, then send cleaned metadata straight into your library.")
+        lbl_subtitle.setStyleSheet(
+            f"color: {_t['muted']}; font-size: 11px; background: transparent;"
+        )
+        header_copy.addWidget(lbl_subtitle)
+        h_lay.addLayout(header_copy)
         h_lay.addStretch()
 
         self.lbl_status = QLabel("")
@@ -159,7 +167,7 @@ class MediaLookupPanel(QWidget):
         sb_lay.addWidget(self.cmb_type)
 
         self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("Search movies or TV shows...")
+        self.txt_search.setPlaceholderText("Search movies or TV shows…")
         self.txt_search.setFixedHeight(28)
         self.txt_search.returnPressed.connect(self._on_search)
         sb_lay.addWidget(self.txt_search, 1)
@@ -254,11 +262,11 @@ class MediaLookupPanel(QWidget):
         self.lbl_poster.setStyleSheet(
             f"background: {_t['bg_alt']}; border: 1px solid {_t['border']}; "
             f"border-radius: 6px;")
-        self.lbl_poster.setText("No Poster")
+        self.lbl_poster.setText("Select a result")
         dp_lay.addWidget(self.lbl_poster, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # Title
-        self.lbl_detail_title = QLabel("")
+        self.lbl_detail_title = QLabel("No title selected")
         self.lbl_detail_title.setWordWrap(True)
         self.lbl_detail_title.setStyleSheet(
             f"color: {_t['fg_bright']}; font-size: 16px; font-weight: 700;")
@@ -285,6 +293,7 @@ class MediaLookupPanel(QWidget):
             f"QTextEdit {{ background: {_t['bg_alt']}; color: {_t['fg']}; "
             f"border: 1px solid {_t['border']}; border-radius: 4px; padding: 8px; "
             f"font-size: 12px; }}")
+        self.txt_synopsis.setText("Pick a result to load synopsis, genres, artwork, and external IDs.")
         dp_lay.addWidget(self.txt_synopsis)
 
         # IDs
@@ -332,12 +341,13 @@ class MediaLookupPanel(QWidget):
     def _on_search(self):
         query = self.txt_search.text().strip()
         if not query:
+            self.lbl_status.setText("Enter a title, then search")
             return
 
         media_type = MediaType.MOVIE if self.cmb_type.currentIndex() == 0 else MediaType.EPISODE
         year = self.txt_year.text().strip() or None
 
-        self.lbl_status.setText("Searching...")
+        self.lbl_status.setText("Searching…")
         self.tbl_results.setRowCount(0)
         self.tbl_episodes.setRowCount(0)
         self.tbl_episodes.setVisible(False)
@@ -384,6 +394,8 @@ class MediaLookupPanel(QWidget):
     def _on_search_results(self, results):
         self._results = results
         self.tbl_results.setRowCount(len(results))
+        if not results:
+            self._clear_detail()
 
         for row, result in enumerate(results):
             if isinstance(result, MovieResult):
@@ -399,12 +411,17 @@ class MediaLookupPanel(QWidget):
                 self.tbl_results.setItem(row, 3, QTableWidgetItem(result.id_tvmaze))
 
         count = len(results)
-        self.lbl_status.setText(f"{count} result{'s' if count != 1 else ''}")
+        self.lbl_status.setText(
+            f"{count} result{'s' if count != 1 else ''} found"
+            if count else
+            "No matches found"
+        )
         self.lbl_results_title.setText(f"Results ({count})")
 
     @pyqtSlot(str)
     def _on_search_error(self, error_msg):
-        self.lbl_status.setText(f"Error: {error_msg}")
+        self.lbl_status.setText(f"Search failed: {error_msg}")
+        self._clear_detail()
 
     # ── Result Selection ───────────────────────────────────────────────────
 
@@ -417,7 +434,7 @@ class MediaLookupPanel(QWidget):
             return
 
         result = self._results[idx]
-        self.lbl_status.setText("Loading details...")
+        self.lbl_status.setText("Loading details…")
         self._clear_detail()
 
         is_episode = isinstance(result, EpisodeResult)
@@ -466,7 +483,7 @@ class MediaLookupPanel(QWidget):
                 ids.append(f"IMDb: {detail.id_imdb}")
             self.lbl_ids.setText("  |  ".join(ids))
 
-        self.lbl_status.setText("Ready")
+        self.lbl_status.setText("Metadata ready")
 
     @pyqtSlot(bytes)
     def _on_poster_ready(self, data):
@@ -510,13 +527,13 @@ class MediaLookupPanel(QWidget):
         self.lbl_ids.setText(f"TVMaze: {ep.id_tvmaze}" if ep.id_tvmaze else "")
 
     def _clear_detail(self):
-        self.lbl_detail_title.setText("")
+        self.lbl_detail_title.setText("No title selected")
         self.lbl_detail_meta.setText("")
         self.lbl_genres.setText("")
-        self.txt_synopsis.clear()
+        self.txt_synopsis.setText("Pick a result to load synopsis, genres, artwork, and external IDs.")
         self.lbl_ids.setText("")
         self.lbl_poster.clear()
-        self.lbl_poster.setText("No Poster")
+        self.lbl_poster.setText("Select a result")
         self._current_detail = None
 
     # ── Actions ────────────────────────────────────────────────────────────

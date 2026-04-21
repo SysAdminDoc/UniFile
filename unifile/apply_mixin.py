@@ -70,7 +70,10 @@ class ApplyMixin:
         msg = f"{'Dry run' if dry_run else 'Complete'}: {ok} {verb}, {err} errors"
         self._log(msg); self.lbl_statusbar.setText(msg)
         if undo_ops and not dry_run:
-            save_undo_log(undo_ops); self.undo_ops = undo_ops; self.btn_undo.setEnabled(True)
+            save_undo_log(undo_ops,
+                          source_dir=self.txt_src.text(),
+                          mode='aep')
+            self.undo_ops = undo_ops; self.btn_undo.setEnabled(True)
             append_csv_log(undo_ops)
             self._log(f"Undo log and CSV log saved")
 
@@ -119,7 +122,10 @@ class ApplyMixin:
         msg = f"Complete: {ok} moved, {err} errors"
         self._log(msg); self.lbl_statusbar.setText(msg)
         if undo_ops:
-            save_undo_log(undo_ops); self.undo_ops = undo_ops; self.btn_undo.setEnabled(True)
+            save_undo_log(undo_ops,
+                          source_dir=self.txt_src.text(),
+                          mode='categorize')
+            self.undo_ops = undo_ops; self.btn_undo.setEnabled(True)
             append_csv_log(undo_ops)
             self._log(f"Undo log and CSV log saved")
 
@@ -175,6 +181,9 @@ class ApplyMixin:
         self._log(msg); self.lbl_statusbar.setText(msg)
         self._stats_files()
         if undo_ops and not dry_run:
-            save_undo_log(undo_ops); self.undo_ops = undo_ops; self.btn_undo.setEnabled(True)
+            save_undo_log(undo_ops,
+                          source_dir=self.txt_src.text(),
+                          mode='files')
+            self.undo_ops = undo_ops; self.btn_undo.setEnabled(True)
             append_csv_log(undo_ops)
             self._log("Undo log saved")
