@@ -621,6 +621,12 @@ class CleanupPanel(QWidget):
         self.btn_scan.setProperty("class", "success")
         self.btn_scan.clicked.connect(self._start_scan)
         scan_row.addWidget(self.btn_scan)
+        # Progress label — referenced by every scanner via `self.lbl_progress.setText(...)`.
+        # Prior to v9.3.7 this line was missing, so the widget was simply undefined
+        # and touching CleanupPanel at all raised AttributeError. Now caught by
+        # tests/test_main_window_smoke.py.
+        self.lbl_progress = QLabel("")
+        self.lbl_progress.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
         scan_row.addWidget(self.lbl_progress, 1)
         layout.addLayout(scan_row)
 
