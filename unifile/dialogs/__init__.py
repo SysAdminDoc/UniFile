@@ -23,8 +23,8 @@ from unifile.dialogs.theme import (
 )
 from unifile.dialogs.advanced_settings import (
     AIProviderSettingsDialog, WhisperSettingsDialog,
-    SemanticSearchSettingsDialog, EmbeddingSettingsDialog,
-    LearningStatsDialog
+    SemanticSearchSettingsDialog, SemanticSearchDialog,
+    EmbeddingSettingsDialog, LearningStatsDialog
 )
 
 __all__ = [
@@ -38,6 +38,6 @@ __all__ = [
     'RelationshipGraphWidget', 'WatchHistoryDialog', 'CsvRulesDialog',
     'ThemePickerDialog', 'ProtectedPathsDialog',
     'AIProviderSettingsDialog', 'WhisperSettingsDialog',
-    'SemanticSearchSettingsDialog', 'EmbeddingSettingsDialog',
-    'LearningStatsDialog',
+    'SemanticSearchSettingsDialog', 'SemanticSearchDialog',
+    'EmbeddingSettingsDialog', 'LearningStatsDialog',
 ]

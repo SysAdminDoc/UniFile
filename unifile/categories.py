@@ -1,5 +1,5 @@
 """UniFile — Category definitions, keyword index, and AEP scoring."""
-import os, re, math
+import os, re, math, json
 from pathlib import Path
 from functools import lru_cache
 

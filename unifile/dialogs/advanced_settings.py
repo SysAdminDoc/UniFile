@@ -1,11 +1,14 @@
 """UniFile dialogs -- Advanced settings (AI Providers, Whisper, Semantic, Embedding, Learning)."""
 import os
+import subprocess
+import sys
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QComboBox,
     QCheckBox, QDialog, QDialogButtonBox, QSpinBox,
-    QSlider, QFrame, QGroupBox, QTextEdit
+    QSlider, QFrame, QGroupBox, QTextEdit,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
@@ -305,6 +308,251 @@ class SemanticSearchSettingsDialog(QDialog):
         idx = SemanticIndex()
         idx.clear()
         idx.close()
+
+
+class _SemanticSearchWorker(QThread):
+    """Background worker so the UI stays responsive during embedding + query."""
+
+    finished_ok = pyqtSignal(list)          # list[dict] of results
+    finished_err = pyqtSignal(str)          # error message
+
+    def __init__(self, query: str, limit: int, threshold: float, model: str):
+        super().__init__()
+        self.query = query
+        self.limit = limit
+        self.threshold = threshold
+        self.model = model
+
+    def run(self):
+        try:
+            from unifile.semantic import SemanticIndex
+            idx = SemanticIndex(model=self.model)
+            if not idx.is_available():
+                idx.close()
+                self.finished_err.emit(
+                    "Embedding model not reachable. Make sure Ollama is running "
+                    f"and `ollama pull {self.model}` has completed."
+                )
+                return
+            results = idx.search(self.query, limit=self.limit,
+                                 threshold=self.threshold)
+            idx.close()
+            self.finished_ok.emit(results)
+        except Exception as e:
+            self.finished_err.emit(f"{type(e).__name__}: {e}")
+
+
+class SemanticSearchDialog(QDialog):
+    """Natural-language search across previously-indexed files.
+
+    Lets the user type a free-form query, runs it against the embedding
+    index, and shows matching files sorted by similarity. Double-clicking
+    a result reveals it in the OS file manager.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Semantic Search")
+        self.setMinimumSize(820, 560)
+        self.setStyleSheet(get_active_stylesheet())
+        self._worker: _SemanticSearchWorker | None = None
+        self._build_ui()
+        self._refresh_status()
+
+    # ── UI construction ─────────────────────────────────────────────────────
+
+    def _build_ui(self):
+        _t = get_active_theme()
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(18, 18, 18, 18)
+
+        layout.addWidget(build_dialog_header(
+            _t,
+            "Search",
+            "Semantic Search",
+            "Find files by meaning. Queries like \"photos from last summer\" "
+            "or \"invoices with large totals\" match against the semantic "
+            "index built by previous scans."
+        ))
+
+        self.lbl_status = QLabel("")
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet(
+            f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;"
+        )
+        layout.addWidget(self.lbl_status)
+
+        # ── Query row ──────────────────────────────────────────────────────
+        query_row = QHBoxLayout()
+        self.txt_query = QLineEdit()
+        self.txt_query.setPlaceholderText(
+            "Describe what you're looking for, e.g. \"tax documents from 2023\"…"
+        )
+        self.txt_query.returnPressed.connect(self._on_search)
+        query_row.addWidget(self.txt_query, 1)
+
+        self.btn_search = QPushButton("Search")
+        self.btn_search.setProperty("class", "primary")
+        self.btn_search.clicked.connect(self._on_search)
+        query_row.addWidget(self.btn_search)
+        layout.addLayout(query_row)
+
+        # ── Parameters row ─────────────────────────────────────────────────
+        params = QHBoxLayout()
+        params.addWidget(QLabel("Model"))
+        self.txt_model = QLineEdit("nomic-embed-text")
+        self.txt_model.setMaximumWidth(220)
+        params.addWidget(self.txt_model)
+
+        params.addSpacing(12)
+        params.addWidget(QLabel("Similarity"))
+        self.spn_thresh = QSpinBox()
+        self.spn_thresh.setRange(5, 95)
+        self.spn_thresh.setSuffix("%")
+        self.spn_thresh.setValue(30)
+        self.spn_thresh.setMaximumWidth(90)
+        params.addWidget(self.spn_thresh)
+
+        params.addSpacing(12)
+        params.addWidget(QLabel("Max results"))
+        self.spn_limit = QSpinBox()
+        self.spn_limit.setRange(5, 500)
+        self.spn_limit.setValue(50)
+        self.spn_limit.setMaximumWidth(90)
+        params.addWidget(self.spn_limit)
+        params.addStretch()
+        layout.addLayout(params)
+
+        # ── Results table ──────────────────────────────────────────────────
+        self.tbl = QTableWidget(0, 3)
+        self.tbl.setHorizontalHeaderLabels(["Score", "File", "Description"])
+        self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl.setAlternatingRowColors(True)
+        self.tbl.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Interactive)
+        self.tbl.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch)
+        self.tbl.setColumnWidth(1, 280)
+        self.tbl.itemDoubleClicked.connect(self._on_result_double_clicked)
+        layout.addWidget(self.tbl, 1)
+
+        # ── Footer ─────────────────────────────────────────────────────────
+        footer = QHBoxLayout()
+        self.lbl_hint = QLabel(
+            "Double-click a row to reveal the file in your OS file manager."
+        )
+        self.lbl_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        footer.addWidget(self.lbl_hint)
+        footer.addStretch()
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(self.reject)
+        footer.addWidget(btn_close)
+        layout.addLayout(footer)
+
+    # ── Actions ─────────────────────────────────────────────────────────────
+
+    def _refresh_status(self):
+        from unifile.semantic import SemanticIndex
+        idx = SemanticIndex()
+        try:
+            count = idx.get_indexed_count()
+            avail = idx.is_available()
+        finally:
+            idx.close()
+        parts = [f"{count:,} file{'s' if count != 1 else ''} indexed"]
+        if count == 0:
+            parts.append(
+                "Run a PC File Organizer scan with semantic search enabled "
+                "to populate the index first."
+            )
+        parts.append(
+            "Embedding model reachable."
+            if avail else
+            "Embedding model is not reachable — semantic search will fail "
+            "until Ollama + `nomic-embed-text` are available."
+        )
+        self.lbl_status.setText("  •  ".join(parts))
+
+    def _on_search(self):
+        if self._worker is not None and self._worker.isRunning():
+            return
+        query = self.txt_query.text().strip()
+        if not query:
+            self.lbl_status.setText("Enter a query above and click Search.")
+            return
+        self.tbl.setRowCount(0)
+        self.btn_search.setEnabled(False)
+        self.btn_search.setText("Searching…")
+        self._worker = _SemanticSearchWorker(
+            query=query,
+            limit=self.spn_limit.value(),
+            threshold=self.spn_thresh.value() / 100.0,
+            model=self.txt_model.text().strip() or "nomic-embed-text",
+        )
+        self._worker.finished_ok.connect(self._on_results)
+        self._worker.finished_err.connect(self._on_search_error)
+        self._worker.finished.connect(self._reset_search_button)
+        self._worker.start()
+
+    def _reset_search_button(self):
+        self.btn_search.setEnabled(True)
+        self.btn_search.setText("Search")
+
+    def _on_results(self, results: list):
+        if not results:
+            self.lbl_status.setText(
+                "No matches above the similarity threshold. Try lowering "
+                "it, or rephrase the query."
+            )
+            return
+        for r in results:
+            row = self.tbl.rowCount()
+            self.tbl.insertRow(row)
+            score_item = QTableWidgetItem(f"{r['score']*100:.1f}%")
+            score_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            file_item = QTableWidgetItem(os.path.basename(r.get('filepath', '')))
+            file_item.setToolTip(r.get('filepath', ''))
+            # Store absolute path on the file-cell for the double-click handler
+            file_item.setData(Qt.ItemDataRole.UserRole, r.get('filepath', ''))
+            desc = r.get('description', '') or ''
+            desc_item = QTableWidgetItem(desc[:200] + ('…' if len(desc) > 200 else ''))
+            desc_item.setToolTip(desc)
+            self.tbl.setItem(row, 0, score_item)
+            self.tbl.setItem(row, 1, file_item)
+            self.tbl.setItem(row, 2, desc_item)
+        self.lbl_status.setText(
+            f"{len(results)} match{'es' if len(results) != 1 else ''} "
+            f"(best {results[0]['score']*100:.1f}% similarity)."
+        )
+
+    def _on_search_error(self, message: str):
+        self.lbl_status.setText(f"Search failed: {message}")
+
+    def _on_result_double_clicked(self, item: QTableWidgetItem):
+        row = item.row()
+        path_item = self.tbl.item(row, 1)
+        path = path_item.data(Qt.ItemDataRole.UserRole) if path_item else ''
+        if not path or not os.path.exists(path):
+            self.lbl_status.setText(f"File no longer exists: {path}")
+            return
+        _reveal_in_file_manager(path)
+
+
+def _reveal_in_file_manager(path: str) -> None:
+    """Cross-platform: open the OS file manager with `path` selected."""
+    try:
+        if sys.platform == 'win32':
+            subprocess.Popen(['explorer', '/select,', os.path.normpath(path)])
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', '-R', path])
+        else:
+            subprocess.Popen(['xdg-open', os.path.dirname(path) or path])
+    except (OSError, FileNotFoundError):
+        pass
 
 
 class EmbeddingSettingsDialog(QDialog):

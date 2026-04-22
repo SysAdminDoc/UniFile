@@ -1,5 +1,5 @@
 """UniFile — Photo library: face detection, geocoding, blur analysis, HEIC conversion."""
-import os, re, json, shutil, subprocess, sys
+import os, re, json, shutil, subprocess, sys, io, base64
 from functools import lru_cache
 from pathlib import Path
 

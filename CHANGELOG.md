@@ -2,6 +2,91 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.2.0] — Second hardening pass: latent NameError sweep, Semantic Search UI, CLI inventory
+
+### Correctness — 97 latent undefined-name bugs fixed
+Static analysis (`pyflakes`) surfaced 97 module-level references to names that
+were never imported or defined. Each is a real `NameError` waiting to trigger
+the first time the corresponding code path runs.
+
+- **`unifile/workers.py`** (56 refs) — missing `subprocess`, `sys`,
+  `MetadataExtractor`, `ArchivePeeker`, `_JUNK_SUFFIXES`, `_PHASH_IMAGE_EXTS`,
+  `ModelRouter`, `_ollama_generate`, `_ollama_pull_model`, `_llm_cache_get`,
+  `_llm_cache_set`, `HAS_PILLOW`, `_cv2`, `_face_recognition`,
+  `check_corrections`, `_CategoryIndex`, `_is_id_only_folder`,
+  `_extract_name_hints`, `ollama_test_connection`,
+  `_EVIDENCE_CONFIDENCE_THRESHOLD`, `_escalate_classification`.
+- **`unifile/metadata.py`** (9 refs) — missing `shutil`, `subprocess`,
+  `Counter`, and the `_META_IMAGE_EXTS` / `_META_AUDIO_EXTS` /
+  `_META_VIDEO_EXTS` / `_META_PDF_EXTS` / `_META_DOCX_EXTS` /
+  `_META_XLSX_EXTS` / `_META_PPTX_EXTS` extension sets. The
+  `MetadataExtractor.extract()` dispatcher would `NameError` on *any* file.
+- **`unifile/classifier.py`** — missing `TOPIC_CATEGORIES`,
+  `HAS_PSD_TOOLS`, `extract_psd_metadata`, `_envato_api_classify`.
+- **`unifile/categories.py`** — `load_custom_categories` /
+  `save_custom_categories` used `json` without importing it.
+- **`unifile/photos.py`** — `_detect_faces_full` used `io.BytesIO` and
+  `base64.b64encode` without importing them.
+- **`unifile/plugins.py`** — removed a dead-code duplicate of
+  `append_csv_log` that referenced undefined `_CSV_LOG_FILE` and `csv`.
+- **`unifile/widgets.py`** — missing `QSystemTrayIcon` import.
+- **`unifile/dialogs/virtual_library_panel.py`** — missing `QFrame`.
+- **`unifile/dialogs/media_lookup.py`** + **`tag_library.py`** — `_build_ui`
+  used `_t` but the `get_active_theme()` call was in a sibling function only.
+- **`unifile/main_window.py`** — missing `MetadataExtractor`, `QThreadPool`,
+  `_load_envato_api_key`, `_save_envato_api_key`.
+
+After this pass, `python -m pyflakes unifile/ | grep "undefined name"` returns
+zero results.
+
+### New features
+- **Semantic Search UI** — `SemanticSearchDialog` is a fully wired natural-
+  language search panel accessible from **Tools > AI & Intelligence > Semantic
+  Search…**. Previously the `SemanticIndex` class was API-only. The dialog:
+  - Shows index status + installed file count up-front
+  - Runs queries in a `QThread` so the UI stays responsive
+  - Lets users tune similarity threshold and max-results per-query
+  - Double-click a result to reveal the file in the OS file manager
+    (Explorer on Windows, Finder on macOS, xdg-open on Linux)
+- **`list-profiles` CLI subcommand** — print saved scan profiles (plain or
+  `--json`). Useful for cron + CI scripts that need to know what profiles
+  exist before invoking `--profile`.
+- **`list-models` CLI subcommand** — print installed Ollama models, with
+  `--url` override. Returns cleanly (exit 0, empty list) when Ollama is
+  unreachable, rather than crashing.
+
+### Reliability / hardening
+- **Defensive JSON loader** — new `config.load_json_safe(path, default, *,
+  expected_type=...)` helper handles missing files, corrupt JSON, encoding
+  errors, *and* wrong-type payloads (file contains list when dict expected).
+  Complementary `config.save_json_safe()` writes atomically via
+  tmp-then-`os.replace` so a crash mid-write can't leave a half-written
+  settings file. `load_ollama_settings()` now uses these helpers —
+  corrupt `ollama_settings.json` no longer crashes the app.
+- **Resource leak fixes** — four leaky `urllib.request.urlopen()` calls in
+  `ai_providers.py` (ollama_chat, ollama_vision, openai_chat, openai_vision),
+  one in `ollama.py` (`_ollama_pull_model_streaming`), and one in
+  `semantic.py` (`_get_embedding`) now use context managers. The perceptual-
+  hash function in `duplicates.py` now closes its `PIL.Image` handle inside a
+  `with` block — critical on Windows where lingering file handles block
+  subsequent move/rename operations.
+- **`ApplyAepWorker` rollback** — rollback `shutil.move` failure now logs
+  instead of silently swallowing; users learn when their "undo" also failed.
+
+### Tests
+- **+19 regression tests** in `tests/test_v92_features.py`:
+  - `load_json_safe` / `save_json_safe` behaviour (missing, corrupt,
+    type-mismatch, atomic write, non-serializable rejection).
+  - `list-profiles` / `list-models` CLI (empty, JSON, unreachable).
+  - 6 NameError regression locks that would have caught this pass's bugs:
+    `categories.load_custom_categories`, `categories.save_custom_categories`,
+    `metadata._META_*` extension sets, `photos.io`/`photos.base64`,
+    `classifier.TOPIC_CATEGORIES`, end-to-end `main_window` import,
+    and a spot-check of 20 workers.py imports.
+  - Ollama settings round-trip through the corrupt-JSON recovery path.
+  - `SemanticSearchDialog` export from `unifile.dialogs`.
+- **Total: 118 tests passing** (up from 99).
+
 ## [v9.1.0] — Productization pass: packaging, CI release, CLI, observability
 
 ### New features

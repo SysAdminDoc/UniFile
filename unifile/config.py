@@ -36,6 +36,57 @@ def _close_all_sqlite_connections() -> None:
 
 atexit.register(_close_all_sqlite_connections)
 
+
+# ── Defensive JSON loaders ────────────────────────────────────────────────────
+# Every settings file in _APP_DATA_DIR is JSON. If a user (or a failing write)
+# corrupts one, the app should fall back to defaults instead of crashing.
+
+def load_json_safe(path: str, default, *, expected_type: type | None = None):
+    """Load `path` as JSON, returning `default` on any failure.
+
+    Args:
+        path:           filesystem path to a JSON file
+        default:        value to return if the file is missing / unreadable /
+                        malformed / doesn't match expected_type
+        expected_type:  if set, the loaded value must be an instance of this
+                        type (e.g. dict, list). Otherwise `default` is returned.
+
+    Never raises. Callers that need to distinguish "missing" from "corrupt"
+    should check `os.path.exists(path)` separately.
+    """
+    if not path or not os.path.exists(path):
+        return default
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return default
+    if expected_type is not None and not isinstance(data, expected_type):
+        return default
+    return data
+
+
+def save_json_safe(path: str, data, *, indent: int = 2) -> bool:
+    """Write `data` as JSON atomically (via tmp-then-rename). Returns True on
+    success, False on any failure. Creates the parent directory as needed."""
+    if not path:
+        return False
+    try:
+        os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+        tmp = path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False)
+        # os.replace is atomic on POSIX and NTFS
+        os.replace(tmp, path)
+        return True
+    except (OSError, TypeError, ValueError):
+        # Clean up tmp file if it exists
+        try:
+            os.remove(path + '.tmp')
+        except OSError:
+            pass
+        return False
+
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else os.getcwd()
 
 # ── App Data Directory ────────────────────────────────────────────────────────

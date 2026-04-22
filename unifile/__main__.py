@@ -32,6 +32,43 @@ def _branding_icon_path() -> Path:
 # codex-branding:end
 
 
+def _cmd_list_profiles(args) -> int:
+    """List saved profiles. Prints one name per line, or a JSON array."""
+    from unifile.plugins import ProfileManager
+    names = ProfileManager.list_profiles()
+    if getattr(args, 'json', False):
+        print(json.dumps(names, indent=2))
+        return 0
+    if not names:
+        print("(no saved profiles)")
+        return 0
+    for n in names:
+        print(n)
+    return 0
+
+
+def _cmd_list_models(args) -> int:
+    """List locally-installed Ollama models. Safe when Ollama isn't running."""
+    from unifile.ollama import _ollama_list_models, load_ollama_settings
+    url = getattr(args, 'url', None) or load_ollama_settings().get('url', '')
+    try:
+        models = _ollama_list_models(url)
+    except Exception as e:
+        print(f"error: could not reach Ollama at {url}: {e}", file=sys.stderr)
+        return 1
+    if getattr(args, 'json', False):
+        print(json.dumps(models, indent=2))
+        return 0
+    if not models:
+        print("(no models installed)")
+        print(f"Check that Ollama is running at {url} and run `ollama pull qwen3.5:9b`.",
+              file=sys.stderr)
+        return 0
+    for m in models:
+        print(m)
+    return 0
+
+
 def _cmd_classify(args) -> int:
     """Headless classification of a single file or folder.
 
@@ -200,11 +237,29 @@ def main():
     p_classify.add_argument("--json", action="store_true",
                             help="Emit JSON instead of human-readable output")
 
+    p_list_profiles = subparsers.add_parser(
+        "list-profiles",
+        help="List saved scan profiles (one per line, or --json)",
+    )
+    p_list_profiles.add_argument("--json", action="store_true")
+
+    p_list_models = subparsers.add_parser(
+        "list-models",
+        help="List installed Ollama models",
+    )
+    p_list_models.add_argument("--json", action="store_true")
+    p_list_models.add_argument("--url", type=str, default=None,
+                               help="Ollama server URL (default: saved setting)")
+
     args, qt_args = parser.parse_known_args()
 
-    # Headless subcommand — no GUI at all.
+    # Headless subcommands — no GUI at all.
     if args.subcommand == "classify":
         sys.exit(_cmd_classify(args))
+    if args.subcommand == "list-profiles":
+        sys.exit(_cmd_list_profiles(args))
+    if args.subcommand == "list-models":
+        sys.exit(_cmd_list_models(args))
 
     # GUI path — install crash handler before touching Qt.
     sys.excepthook = _crash_handler

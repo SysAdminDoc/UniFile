@@ -10,15 +10,20 @@ try:
 except ImportError:
     _rfuzz = None
 
+from unifile.bootstrap import HAS_PSD_TOOLS
 from unifile.config import CONF_HIGH, CONF_MEDIUM, CONF_FUZZY_CAP, _APP_DATA_DIR
-from unifile.metadata import detect_envato_item_code, extract_prproj_metadata
+from unifile.metadata import (
+    detect_envato_item_code, extract_prproj_metadata,
+    extract_psd_metadata, _envato_api_classify,
+)
 from unifile.cache import (
     check_corrections, cache_lookup, cache_store, _preload_corrections,
     _close_cache_conn, _init_cache_db
 )
 from unifile.categories import (
     CATEGORIES, BUILTIN_CATEGORIES, get_all_categories, get_all_category_names,
-    _CategoryIndex, GENERIC_AEP_NAMES, is_generic_aep, _score_aep
+    _CategoryIndex, GENERIC_AEP_NAMES, is_generic_aep, _score_aep,
+    TOPIC_CATEGORIES,
 )
 from unifile.naming import (
     _normalize, _beautify_name, _smart_name, _strip_source_name,

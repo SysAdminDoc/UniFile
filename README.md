@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-9.1.0-58A6FF?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-9.2.0-58A6FF?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Python%20GUI-58A6FF?style=for-the-badge">
 </p>
@@ -14,7 +14,7 @@
 
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.1.0-blue)
+![Version](https://img.shields.io/badge/version-9.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -269,6 +269,10 @@ python -m unifile --version                            # Print version
 # Headless classification (no GUI, no Qt)
 python -m unifile classify path/to/file.pdf --json
 python -m unifile classify path/to/folder --json
+
+# Inventory subcommands (no GUI)
+python -m unifile list-profiles --json
+python -m unifile list-models --url http://localhost:11434 --json
 ```
 
 The `classify` subcommand is safe to use in cron jobs and CI — it loads
