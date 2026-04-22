@@ -245,6 +245,8 @@ class ScanMixin:
         self.worker = ScanAepWorker(src, scan_depth=self.spn_depth.value())
         self.worker.log.connect(self._log)
         self.worker.progress.connect(self._update_progress)
+        if hasattr(self.worker, 'current_item'):
+            self.worker.current_item.connect(self._set_current_scan_item)
         self.worker.result_ready.connect(self._on_aep_result)
         self.worker.finished.connect(self._on_aep_scan_done)
         self.worker.start()
@@ -349,6 +351,8 @@ class ScanMixin:
         self.worker.log.connect(self._log)
         self.worker.progress.connect(self._update_progress)
         self.worker.phase.connect(self._update_phase)
+        if hasattr(self.worker, 'current_item'):
+            self.worker.current_item.connect(self._set_current_scan_item)
         self.worker.result_ready.connect(self._on_cat_result)
         self.worker.finished.connect(self._on_cat_scan_done)
         self.worker.start()
@@ -570,6 +574,8 @@ class ScanMixin:
         self.worker.log.connect(self._log)
         self.worker.progress.connect(self._update_progress)
         self.worker.phase.connect(self._update_phase)
+        if hasattr(self.worker, 'current_item'):
+            self.worker.current_item.connect(self._set_current_scan_item)
         self.worker.result_ready.connect(self._on_files_result)
         self.worker.finished.connect(self._on_files_scan_done)
         self.worker.start()

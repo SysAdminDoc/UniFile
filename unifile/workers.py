@@ -370,6 +370,7 @@ class ScanAepWorker(QThread):
     finished = pyqtSignal()
     log = pyqtSignal(str)
     progress = pyqtSignal(int, int)
+    current_item = pyqtSignal(str)
 
     def __init__(self, root_dir, scan_depth=0):
         super().__init__()
@@ -396,6 +397,7 @@ class ScanAepWorker(QThread):
                 self.log.emit(f"  Scan cancelled at {idx}/{total}")
                 break
             self.progress.emit(idx + 1, total)
+            self.current_item.emit(folder.name)
             self.log.emit(f"Scanning: {folder.name}")
             aep_files = []
             try:
@@ -434,6 +436,7 @@ class ScanCategoryWorker(QThread):
     log = pyqtSignal(str)
     progress = pyqtSignal(int, int)
     phase = pyqtSignal(str, str)  # (phase_label, method_label)
+    current_item = pyqtSignal(str)
 
     # Extensions that indicate real project content
     PROJECT_EXTS = {
@@ -598,6 +601,7 @@ class ScanCategoryWorker(QThread):
                 self.log.emit(f"  Scan cancelled at {idx}/{total}")
                 break
             self.progress.emit(idx + 1, total)
+            self.current_item.emit(folder.name)
 
             # Check corrections first (learned from user overrides)
             corr_cat = check_corrections(folder.name)
@@ -1406,6 +1410,7 @@ class ScanFilesWorker(QThread):
     log          = pyqtSignal(str)
     progress     = pyqtSignal(int, int)
     phase        = pyqtSignal(str, str)
+    current_item = pyqtSignal(str)
 
     def __init__(self, src_dir, dst_dir, categories, scan_depth=0,
                  check_hashes=False, include_folders=True, include_files=True,
@@ -1483,6 +1488,7 @@ class ScanFilesWorker(QThread):
             self.progress.emit(idx + 1, total)
 
             name  = item_path.name
+            self.current_item.emit(name)
 
             # ── Auto-convert HEIC/WEBP -> JPG if enabled ────────────────────
             if not is_folder:
