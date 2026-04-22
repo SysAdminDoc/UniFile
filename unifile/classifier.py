@@ -11,6 +11,7 @@ except ImportError:
     _rfuzz = None
 
 from unifile.config import CONF_HIGH, CONF_MEDIUM, CONF_FUZZY_CAP, _APP_DATA_DIR
+from unifile.metadata import detect_envato_item_code, extract_prproj_metadata
 from unifile.cache import (
     check_corrections, cache_lookup, cache_store, _preload_corrections,
     _close_cache_conn, _init_cache_db

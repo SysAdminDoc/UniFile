@@ -18,7 +18,7 @@ try:
 except ImportError:
     _rfuzz = None
 
-from unifile.config import _APP_DATA_DIR, _PC_SCAN_CACHE_DB
+from unifile.config import _APP_DATA_DIR, _PC_SCAN_CACHE_DB, register_sqlite_connection
 
 _PC_CATEGORIES_DB = os.path.join(_APP_DATA_DIR, 'pc_categories.json')
 
@@ -517,6 +517,7 @@ class _ScanCache:
         try:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
             self._conn = sqlite3.connect(self.db_path, timeout=5)
+            register_sqlite_connection(self._conn)
             self._conn.execute('PRAGMA journal_mode=WAL')
             self._conn.execute("""CREATE TABLE IF NOT EXISTS scan_cache (
                 path TEXT PRIMARY KEY,

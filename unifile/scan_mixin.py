@@ -174,6 +174,11 @@ class ScanMixin:
             pending = sum(1 for it in self.aep_items if it.selected and it.status == "Pending")
         self.btn_apply.setEnabled(pending > 0)
 
+    # Throttle for per-file status label updates so we don't spam the UI thread
+    # when scanning tens of thousands of files. 100 ms is the empirical sweet
+    # spot — short enough to feel live, long enough to avoid repaint thrash.
+    _CURRENT_ITEM_UPDATE_MS = 100
+
     def _update_progress(self, current, total):
         """Update premium progress bar with ETA and speed."""
         self.prog_panel.setVisible(True)
@@ -204,6 +209,28 @@ class ScanMixin:
 
         pct = int(current / total * 100)
         self.lbl_statusbar.setText(f"{self.lbl_prog_phase.text()}… {pct}%  ({current:,}/{total:,})")
+
+    def _set_current_scan_item(self, name: str) -> None:
+        """Surface the currently-processed file/folder name on the progress
+        label, throttled so streams of thousands of items don't freeze the UI.
+
+        Safe to call from the main thread only. Workers should emit a signal
+        connected to this slot.
+        """
+        now_ms = int(time.time() * 1000)
+        last = getattr(self, '_last_current_item_ms', 0)
+        if now_ms - last < self._CURRENT_ITEM_UPDATE_MS:
+            return
+        self._last_current_item_ms = now_ms
+        # Only update if the progress panel is visible (i.e. an active scan)
+        if not getattr(self, 'prog_panel', None) or not self.prog_panel.isVisible():
+            return
+        method_lbl = getattr(self, 'lbl_prog_method', None)
+        if method_lbl is None:
+            return
+        # Truncate to avoid layout thrash with very long paths
+        shown = name if len(name) <= 80 else '…' + name[-77:]
+        method_lbl.setText(f"Processing: {shown}")
 
     # ═══ AEP SCAN ════════════════════════════════════════════════════════════
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-from unifile.config import _APP_DATA_DIR
+from unifile.config import _APP_DATA_DIR, register_sqlite_connection
 
 _EMBED_DB = os.path.join(_APP_DATA_DIR, 'semantic_embeddings.db')
 
@@ -48,6 +48,7 @@ class SemanticIndex:
             return
         os.makedirs(os.path.dirname(_EMBED_DB), exist_ok=True)
         self._conn = sqlite3.connect(_EMBED_DB, check_same_thread=False, timeout=10)
+        register_sqlite_connection(self._conn)
         self._conn.execute('PRAGMA journal_mode=WAL')
         self._conn.execute('''CREATE TABLE IF NOT EXISTS embeddings (
             id TEXT PRIMARY KEY,

@@ -1,0 +1,147 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unifile"
+version = "9.1.0"
+description = "Unified AI-powered file organization platform — tag library, 7-level classification, LLM intelligence, cleanup, dedup, photo library."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "SysAdminDoc" }]
+keywords = ["file-organizer", "tag-library", "ollama", "pyqt6", "ai", "classification"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: X11 Applications :: Qt",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: MacOS X",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Desktop Environment :: File Managers",
+    "Topic :: System :: Archiving",
+    "Topic :: Utilities",
+]
+
+dependencies = [
+    "PyQt6>=6.5",
+    "SQLAlchemy>=2.0",
+]
+
+[project.optional-dependencies]
+# Extras kept aligned with unifile/bootstrap.py optional imports.
+full = [
+    "Pillow",
+    "pillow-heif",
+    "exifread",
+    "mutagen",
+    "pypdf",
+    "python-docx",
+    "python-pptx",
+    "openpyxl",
+    "psd-tools",
+    "rapidfuzz",
+    "unidecode",
+    "reverse_geocoder",
+    "opencv-python-headless",
+    "send2trash",
+    "guessit",
+    "requests",
+    "requests-cache",
+    "babelfish",
+    "pydantic",
+    "platformdirs",
+    "PyYAML",
+]
+media = ["mutagen", "acoustid", "musicbrainzngs"]
+ocr = ["pytesseract", "easyocr", "pdfminer.six", "pymupdf", "pdf2image"]
+dev = [
+    "pytest>=7",
+    "pytest-cov>=4",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+unifile = "unifile.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/SysAdminDoc/UniFile"
+Repository = "https://github.com/SysAdminDoc/UniFile"
+Issues = "https://github.com/SysAdminDoc/UniFile/issues"
+Changelog = "https://github.com/SysAdminDoc/UniFile/blob/master/CHANGELOG.md"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["unifile*"]
+exclude = ["tests*", "build*", "dist*"]
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Exclude stale smoke scripts (pre-v9) — they are manual utilities, not tests.
+python_files = ["test_*.py"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "slow: marks tests that take several seconds (deselect with '-m \"not slow\"')",
+    "integration: end-to-end tests that require external services",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:face_recognition.*",
+]
+
+# ── Coverage ──────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["unifile"]
+omit = [
+    "unifile/__main__.py",
+    "unifile/widgets.py",        # Qt widgets — not unit-testable
+    "unifile/main_window.py",    # Monolithic UI entry point
+    "unifile/dialogs/*",         # All Qt dialogs
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+# ── Linting ───────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["build", "dist", "tests/smoke_v*.py", "tests/audit_out.txt"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long — long Qt stylesheets and SQL strings are common
+    "B008",  # function calls in default arg (acceptable for Qt default widgets)
+    "B904",  # raise-from — verbose to retrofit across the codebase
+]
+
+[tool.ruff.lint.per-file-ignores]
+"unifile/__init__.py" = ["F401"]
+"unifile/bootstrap.py" = ["F401", "E402"]  # conditional imports after _bootstrap()
+"unifile/dialogs/__init__.py" = ["F401"]
+"tests/*.py" = ["F401"]

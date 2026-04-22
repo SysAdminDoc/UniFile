@@ -1,7 +1,40 @@
 """UniFile — Configuration, paths, thresholds, themes, and protection."""
+import atexit
 import os, sys, re, json, shutil, time
+import weakref
 from datetime import datetime
 from pathlib import Path
+
+# ── Connection registry ──────────────────────────────────────────────────────
+# Long-lived SQLite connections scattered across the codebase register
+# themselves here so we can close everything cleanly on interpreter exit.
+# A WeakSet means nothing leaks memory if a connection is already collected.
+_sqlite_registry: "weakref.WeakSet" = weakref.WeakSet()
+
+
+def register_sqlite_connection(conn) -> None:
+    """Register a SQLite connection for clean shutdown at interpreter exit.
+
+    Safe to call multiple times for the same connection. Silent no-op if the
+    object cannot be weakly referenced (e.g. wrapped/proxied objects).
+    """
+    try:
+        _sqlite_registry.add(conn)
+    except TypeError:
+        pass
+
+
+def _close_all_sqlite_connections() -> None:
+    """Close every registered SQLite connection. Best-effort."""
+    # Snapshot into a list because closing mutates the set.
+    for conn in list(_sqlite_registry):
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+atexit.register(_close_all_sqlite_connections)
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else os.getcwd()
 

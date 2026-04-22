@@ -2,6 +2,79 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.1.0] — Productization pass: packaging, CI release, CLI, observability
+
+### New features
+- **Headless `classify` subcommand** — classify a single file or folder without
+  loading Qt at all: `python -m unifile classify path/to/file --json`. Useful
+  in cron jobs, CI, and shell pipelines.
+- **`--output-json` scan plan export** — after `--source` or
+  `--profile --auto-apply` scans complete, the scan results can be written to
+  a machine-readable JSON plan (version, timestamp, source, mode, per-item
+  src/dst/category/confidence/size/selected/status).
+- **`--version` flag** — `unifile --version` prints the installed version
+  and exits cleanly.
+- **Undo preview panel** — `UndoBatchDialog` now splits into a batch list +
+  preview tree. Selecting a batch shows up to 10 sample from→to operations
+  (first 5, last 5) so users can see what will be restored before they
+  confirm. Dialog resized from 560×420 to 780×520.
+- **Per-file progress label** — scan progress now shows the current file/
+  folder name on `lbl_prog_method`, throttled to 100 ms (connect from worker
+  `log` or `progress` signal via `_set_current_scan_item`).
+- **Ollama batch chunking** — `ollama_classify_batch()` now splits
+  >25-folder batches into independent chunks. A single chunk timeout or
+  JSON parse error no longer wipes the whole request; failed chunks fall
+  through per-folder so results stream in with partial-success semantics.
+  Per-chunk timeout capped at 10 minutes.
+
+### Correctness
+- **`classifier.py` missing imports** — `detect_envato_item_code` and
+  `extract_prproj_metadata` were referenced in `_extract_metadata_from_scan`
+  but never imported. Any folder scan that reached the metadata phase would
+  raise `NameError`. Caught by the new folder-classify test.
+- **Connection registry / atexit cleanup** — all four long-lived SQLite
+  databases (`classification_cache.db`, `scan_cache.db`,
+  `semantic_embeddings.db`, virtual library `library.sqlite`) now register
+  themselves with a central `weakref.WeakSet` and are closed on interpreter
+  exit. Unclean shutdowns no longer leave WAL files in inconsistent state.
+- **Silent-failure audit** — four `except Exception: pass` blocks in the
+  LLM file-scan hot path (archive peek, rule engine, plugin classifiers,
+  adaptive learning) now log the exception with the filename so users can
+  see which signal failed on which file.
+- **`VirtualLibrary.close()`** — now wraps `self._conn.close()` in try/except
+  so a double-close can't propagate.
+
+### Developer experience
+- **`pyproject.toml`** (PEP 621) — `pip install -e .`, `pip install -e ".[dev]"`,
+  `[project.scripts]` entrypoint (`unifile`), ruff + pytest + coverage config
+  all live here.
+- **`CONTRIBUTING.md`** — dev-loop docs covering setup, testing, linting,
+  commit style, versioning, release process.
+- **`SECURITY.md`** — private vulnerability reporting via GitHub Security
+  Advisories; in-scope / out-of-scope clarification.
+- **`ATTRIBUTION.md`** — explicit credit to the 5 upstream projects
+  UniFile adapts from, with per-project license notes and a warning about
+  TagStudio's GPL-3 license + the PyQt6 redistribution obligation.
+- **`Makefile`** — `make test`, `make cov`, `make lint`, `make format`,
+  `make build`, `make run`, `make clean`.
+- **GitHub templates** — `ISSUE_TEMPLATE/bug_report.md`,
+  `ISSUE_TEMPLATE/feature_request.md`, `ISSUE_TEMPLATE/config.yml`
+  (disables blank issues, routes security to advisories),
+  `PULL_REQUEST_TEMPLATE.md`.
+- **Release workflow** — `.github/workflows/release.yml` builds a Windows
+  PyInstaller exe on `v*` tag push, extracts the matching changelog entry
+  as release notes, and attaches the zip to the GitHub Release.
+- **CI expansion** — `tests.yml` adds macOS coverage (3.12 only to keep
+  runtimes down), Python 3.10 support, `pytest-cov` XML upload, and a
+  separate `lint` job running `ruff check` (report-only until the
+  codebase is ruff-clean).
+- **+23 new tests** (`test_critical.py` covers cache undo-log round-trip,
+  folder fingerprint stability, hash_file, duplicate detection, virtual
+  library lifecycle, profile save/load, classifier categorize_folder,
+  classify_pc_item, broken-file scanner. `test_v91_features.py` covers
+  connection registry, Ollama batch chunking, chunk-failure isolation,
+  scan-plan JSON writer, classify subcommand). Total: 99 tests, all passing.
+
 ## [v9.0.1] — Deep hardening & correctness pass
 
 ### Latent-import NameError bugs (would crash under rarely-hit code paths)
