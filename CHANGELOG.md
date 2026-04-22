@@ -2,6 +2,47 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.5] — Accessible empty states: primary recovery action button
+
+### UX
+The three "nothing here" overlays in `scan_mixin.py` (AEP scan, Category
+scan, PC Files scan) used to tell the user *what* went wrong but gave no
+way to act on it — the user had to hunt through the sidebar for the right
+control. Each path now offers a context-appropriate primary-action button
+on the empty-state overlay itself:
+
+| Scan mode | Empty-state condition | Recovery action |
+|-----------|----------------------|-----------------|
+| AEP Scan  | 0 eligible folders found | `Reset scan depth (N → 0)` — only shown when depth > 0 |
+| Category Scan | 0 folders categorized | `Lower confidence filter (N% → 0%)` if filter > 0; else `Enable AI mode for next scan` |
+| PC Files Scan | 0 files/folders found | `Reset filter (<type> → All Files)` — only shown when a non-default filter is active |
+
+The button is only rendered when a meaningful recovery is available
+(e.g. there's no point showing "Reset scan depth" when depth is already 0).
+Clicking it mutates the relevant UI control; the user re-runs the scan.
+
+### API
+`UniFile._show_empty_state` grew two optional keyword-only arguments,
+`action_label: str | None = None` and `action_callback: Callable | None = None`.
+Passing both surfaces the primary-action button; omitting either keeps
+the button hidden (backward-compatible with the existing
+`tests/test_v91_features.py` etc. callers). Click dispatch goes through
+the new `_on_empty_action_clicked` slot, which swallows exceptions from
+user-supplied callbacks and routes them to `_log` so a broken recovery
+handler can never crash the UI.
+
+### Tests
+- **+6 tests** in `tests/test_empty_state_action.py`:
+  - `_show_empty_state` signature includes the two new kwargs (both optional).
+  - Legacy `title`/`detail`/`kicker` kwargs still exist.
+  - Click with no handler set is a no-op.
+  - Click with a handler invokes it exactly once.
+  - Click where the handler raises is swallowed and logged.
+  - Source-level guard: `scan_mixin.py` keeps at least three
+    `action_callback=` call sites (one per recovery path).
+- **Total: 308 tests passing** (up from 302). pyflakes undefined-name
+  set still empty.
+
 ## [v9.3.4] — Ruff cleanup pass: 942 → 379 violations, modernized annotations
 
 ### Correctness — safe auto-fixes (85 sites across 31 files)
