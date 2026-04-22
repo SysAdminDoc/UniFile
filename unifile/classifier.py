@@ -1200,3 +1200,158 @@ def _apply_context(result: dict, folder_path: str, folder_name: str,
     return result
 
 
+def classify_by_content(path: str, categories: list = None) -> tuple:
+    """Level 8: Classify by extracting and analyzing file text content.
+
+    Reads text from PDF/DOCX/TXT/MD/CSV files and runs keyword classification.
+    Returns (category, confidence, cleaned_name) or (None, 0, cleaned_name).
+    """
+    from pathlib import Path as _Path
+    _path = _Path(path)
+    if not _path.is_file():
+        return (None, 0, _path.stem)
+
+    suffix = _path.suffix.lower()
+    text = ''
+
+    try:
+        if suffix in ('.txt', '.md'):
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                text = f.read(4096)  # First 4KB
+
+        elif suffix == '.csv':
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                text = f.read(2048)
+
+        elif suffix == '.pdf':
+            try:
+                from pdfminer.high_level import extract_text as _pdf_extract
+                text = _pdf_extract(path, maxpages=2) or ''
+                text = text[:4096]
+            except ImportError:
+                try:
+                    from pypdf import PdfReader as _PdfReader
+                    reader = _PdfReader(path)
+                    pages_text = []
+                    for page in reader.pages[:2]:
+                        pages_text.append(page.extract_text() or '')
+                    text = ' '.join(pages_text)[:4096]
+                except (ImportError, Exception):
+                    pass
+
+        elif suffix in ('.docx', '.doc'):
+            try:
+                from docx import Document as _DocxDoc
+                doc = _DocxDoc(path)
+                paras = [p.text for p in doc.paragraphs[:20]]
+                text = ' '.join(paras)[:4096]
+            except (ImportError, Exception):
+                pass
+
+        elif suffix in ('.pptx', '.ppt'):
+            try:
+                from pptx import Presentation as _Pptx
+                prs = _Pptx(path)
+                slide_texts = []
+                for slide in list(prs.slides)[:5]:
+                    for shape in slide.shapes:
+                        if hasattr(shape, 'text'):
+                            slide_texts.append(shape.text)
+                text = ' '.join(slide_texts)[:4096]
+            except (ImportError, Exception):
+                pass
+
+        elif suffix in ('.xlsx', '.xls'):
+            try:
+                from openpyxl import load_workbook as _load_wb
+                wb = _load_wb(path, read_only=True, data_only=True)
+                ws = wb.active
+                cell_texts = []
+                for row in ws.iter_rows(max_row=20, values_only=True):
+                    for cell in row:
+                        if cell and isinstance(cell, str):
+                            cell_texts.append(cell)
+                text = ' '.join(cell_texts)[:4096]
+            except (ImportError, Exception):
+                pass
+
+    except Exception:
+        pass
+
+    if not text or not text.strip():
+        return (None, 0, _path.stem)
+
+    # Use existing keyword classifier on extracted text
+    result = categorize_folder(text)
+    if result and result[0]:
+        # Lower confidence since this is content-based
+        return (result[0], min(result[1], 65), _path.stem)
+
+    return (None, 0, _path.stem)
+
+
+def classify_by_archive(path: str) -> tuple:
+    """Level 9: Classify by inspecting archive contents.
+
+    Peeks inside ZIP/TAR archives and classifies based on majority extension.
+    Returns (category, confidence, cleaned_name) or (None, 0, cleaned_name).
+    """
+    import zipfile, tarfile
+    from pathlib import Path as _Path
+    from collections import Counter as _Counter
+
+    _path = _Path(path)
+    suffix = _path.suffix.lower()
+
+    names = []
+    try:
+        if suffix == '.zip' and zipfile.is_zipfile(path):
+            with zipfile.ZipFile(path, 'r') as zf:
+                names = zf.namelist()[:200]  # Cap at 200 entries
+
+        elif suffix in ('.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz', '.tar.xz', '.txz'):
+            if tarfile.is_tarfile(path):
+                with tarfile.open(path, 'r:*') as tf:
+                    names = [m.name for m in tf.getmembers()[:200] if m.isfile()]
+
+        elif suffix == '.gz' and not path.endswith('.tar.gz'):
+            import gzip
+            try:
+                with gzip.open(path, 'rb') as gf:
+                    inner = _Path(path).stem
+                    names = [inner]
+            except Exception:
+                pass
+    except Exception:
+        return (None, 0, _path.stem)
+
+    if not names:
+        return (None, 0, _path.stem)
+
+    # Count extensions
+    ext_counts = _Counter()
+    for name in names:
+        ext = _Path(name).suffix.lower()
+        if ext:
+            ext_counts[ext] += 1
+
+    if not ext_counts:
+        return (None, 0, _path.stem)
+
+    # Use EXTENSION_CATEGORY_MAP to find best category
+    cat_votes: dict = {}
+    for ext, count in ext_counts.items():
+        for ext_set, cat, _ in EXTENSION_CATEGORY_MAP:
+            if ext in ext_set:
+                cat_votes[cat] = cat_votes.get(cat, 0) + count
+                break
+
+    if not cat_votes:
+        return (None, 0, _path.stem)
+
+    best_cat = max(cat_votes, key=lambda c: cat_votes[c])
+    total = sum(ext_counts.values())
+    best_count = cat_votes[best_cat]
+    confidence = min(70, int(50 + (best_count / total) * 40))
+
+    return (best_cat, confidence, _path.stem)

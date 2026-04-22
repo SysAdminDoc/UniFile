@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QTextEdit, QHeaderView, QFileDialog, QAbstractItemView,
     QSlider, QMenu, QTreeWidget, QTreeWidgetItem, QDialog, QDialogButtonBox, QSpinBox,
     QListWidget, QListWidgetItem, QInputDialog, QSplitter, QMessageBox, QFrame,
-    QProgressBar, QScrollArea, QSystemTrayIcon, QStackedWidget
+    QProgressBar, QScrollArea, QSystemTrayIcon, QStackedWidget, QTabWidget
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QMimeData, QUrl, QTimer, QSize
 from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QAction, QPixmap, QImage, QTextCursor, QIcon
@@ -88,6 +88,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
     OP_TAGS  = 4   # Tag Library (from TagStudio integration)
     OP_MEDIA = 5   # Media Lookup (from mnamer integration)
     OP_VLIB  = 6   # Virtual Library (non-destructive overlay)
+    OP_STATS   = 7   # Statistics dashboard
+    OP_INBOX   = 8   # Inbox / Archive view
+    OP_BROKEN  = 9   # Broken links panel
 
     # Classification method → display color (shared by Categorize + PC Files modes)
     _METHOD_COLORS_CAT = {
@@ -384,6 +387,26 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
             sb_lay.addWidget(btn)
             self._nav_buttons.append(('tool', (tool_type, tab_idx), btn))
 
+        # ── LIBRARY section ──────────────────────────────────────────────────
+        lbl_sec_lib = QLabel("LIBRARY")
+        lbl_sec_lib.setStyleSheet(_NAV_SECTION)
+        sb_lay.addWidget(lbl_sec_lib)
+        self._nav_section_labels.append(lbl_sec_lib)
+
+        _nav_items_library = [
+            ("Statistics",        self.OP_STATS),
+            ("Inbox / Archive",   self.OP_INBOX),
+            ("Broken Links",      self.OP_BROKEN),
+        ]
+        for label, op_idx in _nav_items_library:
+            btn = QPushButton(f"  {label}")
+            btn.setCheckable(True)
+            btn.setStyleSheet(_NAV_BTN)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked, idx=op_idx: self._on_sidebar_nav(idx))
+            sb_lay.addWidget(btn)
+            self._nav_buttons.append(('op', op_idx, btn))
+
         sb_lay.addStretch()
 
         # ── Profile selector (bottom of sidebar) ─────────────────────────
@@ -466,6 +489,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         if sys.platform == 'win32':
             menu_tools.addAction("Scheduled Scans...", self._open_schedule_dialog)
         menu_tools.addAction("Plugins...", self._open_plugin_manager)
+        menu_tools.addSeparator()
+        menu_tools.addAction("Import Rules (YAML)...", self._import_rules_yaml)
+        menu_tools.addAction("Export Rules (YAML)...", self._export_rules_yaml)
+        menu_tools.addSeparator()
+        menu_tools.addAction("MusicBrainz Tagger...", self._open_musicbrainz_tagger)
+        menu_tools.addAction("OCR Indexer...", self._open_ocr_indexer)
         menu_tools.addSeparator()
         menu_tools.addAction("Protected Paths...", self._open_protected_paths)
         menu_tools.addAction("Color Theme...", self._open_theme_picker)
@@ -1267,6 +1296,19 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         self._vlib_panel = VirtualLibraryPanel()
         self._content_stack.addWidget(self._vlib_panel)  # index 5
 
+        # ── Page 6: Statistics Dashboard ─────────────────────────────────
+        from unifile.stats_panel import StatsPanel
+        self._stats_panel = StatsPanel()
+        self._content_stack.addWidget(self._stats_panel)  # index 6
+
+        # ── Page 7: Inbox / Archive View ─────────────────────────────────
+        self._inbox_panel = self._build_inbox_panel()
+        self._content_stack.addWidget(self._inbox_panel)  # index 7
+
+        # ── Page 8: Broken Links Panel ───────────────────────────────────
+        self._broken_panel = self._build_broken_panel()
+        self._content_stack.addWidget(self._broken_panel)  # index 8
+
         self._content_stack.setCurrentIndex(0)
         right_col.addWidget(self._content_stack, 1)
 
@@ -1981,6 +2023,21 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
             return
         if op_idx == self.OP_VLIB:
             self._content_stack.setCurrentIndex(5)
+            return
+
+        if op_idx == self.OP_STATS:
+            self._content_stack.setCurrentIndex(6)
+            # Connect library if available
+            if hasattr(self, '_tag_panel') and self._tag_panel._lib.is_open:
+                self._stats_panel.set_library(self._tag_panel._lib)
+            return
+        if op_idx == self.OP_INBOX:
+            self._content_stack.setCurrentIndex(7)
+            self._refresh_inbox_panel()
+            return
+        if op_idx == self.OP_BROKEN:
+            self._content_stack.setCurrentIndex(8)
+            self._refresh_broken_panel()
             return
 
         # Show organizer page
@@ -3654,6 +3711,263 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         """Open the theme picker dialog."""
         dlg = ThemePickerDialog(self)
         dlg.theme_changed.connect(self._on_theme_changed)
+        dlg.exec()
+
+    # ── Library Panel Builders ────────────────────────────────────────────────
+
+    def _build_inbox_panel(self) -> QWidget:
+        """Build the Inbox/Archive panel."""
+        _t = get_active_theme()
+        panel = QWidget()
+        lay = QVBoxLayout(panel)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(12)
+
+        # Header
+        hdr = QFrame()
+        hdr.setProperty("class", "card")
+        h_lay = QHBoxLayout(hdr)
+        h_lay.setContentsMargins(18, 16, 18, 16)
+        lbl_title = QLabel("Inbox / Archive")
+        lbl_title.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 22px; font-weight: 700;")
+        h_lay.addWidget(lbl_title)
+        h_lay.addStretch()
+        self.btn_inbox_refresh = QPushButton("Refresh")
+        self.btn_inbox_refresh.setProperty("class", "primary")
+        self.btn_inbox_refresh.clicked.connect(self._refresh_inbox_panel)
+        h_lay.addWidget(self.btn_inbox_refresh)
+        lay.addWidget(hdr)
+
+        tabs = QTabWidget()
+        # Inbox tab
+        inbox_w = QWidget()
+        inbox_lay = QVBoxLayout(inbox_w)
+        self.tbl_inbox = QTableWidget()
+        self.tbl_inbox.setColumnCount(4)
+        self.tbl_inbox.setHorizontalHeaderLabels(["Filename", "Type", "Added", "Path"])
+        self.tbl_inbox.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tbl_inbox.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.tbl_inbox.setAlternatingRowColors(True)
+        self.tbl_inbox.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        inbox_lay.addWidget(self.tbl_inbox)
+        row_btns = QHBoxLayout()
+        btn_arch = QPushButton("Archive Selected")
+        btn_arch.setProperty("class", "toolbar")
+        btn_arch.clicked.connect(lambda: self._inbox_move_selected(False))
+        row_btns.addWidget(btn_arch)
+        row_btns.addStretch()
+        inbox_lay.addLayout(row_btns)
+        tabs.addTab(inbox_w, "Inbox")
+
+        # Archive tab
+        arch_w = QWidget()
+        arch_lay = QVBoxLayout(arch_w)
+        self.tbl_archive = QTableWidget()
+        self.tbl_archive.setColumnCount(4)
+        self.tbl_archive.setHorizontalHeaderLabels(["Filename", "Type", "Added", "Path"])
+        self.tbl_archive.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tbl_archive.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.tbl_archive.setAlternatingRowColors(True)
+        self.tbl_archive.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        arch_lay.addWidget(self.tbl_archive)
+        row_btns2 = QHBoxLayout()
+        btn_uninbox = QPushButton("Restore to Inbox")
+        btn_uninbox.setProperty("class", "toolbar")
+        btn_uninbox.clicked.connect(lambda: self._inbox_move_selected(True))
+        row_btns2.addWidget(btn_uninbox)
+        row_btns2.addStretch()
+        arch_lay.addLayout(row_btns2)
+        tabs.addTab(arch_w, "Archive")
+
+        lay.addWidget(tabs, 1)
+        self._inbox_tabs = tabs
+        return panel
+
+    def _build_broken_panel(self) -> QWidget:
+        """Build the Broken Links panel."""
+        _t = get_active_theme()
+        panel = QWidget()
+        lay = QVBoxLayout(panel)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(12)
+
+        # Header
+        hdr = QFrame()
+        hdr.setProperty("class", "card")
+        h_lay = QHBoxLayout(hdr)
+        h_lay.setContentsMargins(18, 16, 18, 16)
+        lbl_title = QLabel("Broken Links")
+        lbl_title.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 22px; font-weight: 700;")
+        h_lay.addWidget(lbl_title)
+        h_lay.addStretch()
+        self.lbl_broken_count = QLabel("Open a library to scan")
+        self.lbl_broken_count.setStyleSheet(f"color: {_t['muted']}; font-size: 12px;")
+        h_lay.addWidget(self.lbl_broken_count)
+        btn_scan = QPushButton("Scan Now")
+        btn_scan.setProperty("class", "primary")
+        btn_scan.clicked.connect(self._refresh_broken_panel)
+        h_lay.addWidget(btn_scan)
+        lay.addWidget(hdr)
+
+        self.tbl_broken = QTableWidget()
+        self.tbl_broken.setColumnCount(4)
+        self.tbl_broken.setHorizontalHeaderLabels(["Filename", "Type", "Was Modified", "Missing Path"])
+        self.tbl_broken.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tbl_broken.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.tbl_broken.setAlternatingRowColors(True)
+        self.tbl_broken.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_broken.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tbl_broken.customContextMenuRequested.connect(self._on_broken_context_menu)
+        lay.addWidget(self.tbl_broken, 1)
+
+        hint = QLabel("Right-click any broken entry to Relink (find the file at its new location) or Remove from Library.")
+        hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        hint.setWordWrap(True)
+        lay.addWidget(hint)
+        return panel
+
+    def _refresh_inbox_panel(self):
+        lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
+        if not lib or not lib.is_open:
+            return
+        inbox = lib.get_inbox_entries(limit=2000)
+        archived = lib.get_archived_entries(limit=2000)
+
+        def _fill(tbl, entries):
+            tbl.setRowCount(len(entries))
+            for row, entry in enumerate(entries):
+                item = QTableWidgetItem(entry.filename)
+                item.setData(Qt.ItemDataRole.UserRole, entry.id)
+                tbl.setItem(row, 0, item)
+                tbl.setItem(row, 1, QTableWidgetItem(entry.suffix.upper()))
+                added = entry.date_added.strftime("%Y-%m-%d") if entry.date_added else ""
+                tbl.setItem(row, 2, QTableWidgetItem(added))
+                tbl.setItem(row, 3, QTableWidgetItem(str(entry.path)))
+
+        _fill(self.tbl_inbox, inbox)
+        _fill(self.tbl_archive, archived)
+
+    def _inbox_move_selected(self, to_inbox: bool):
+        lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
+        if not lib or not lib.is_open:
+            return
+        tbl = self.tbl_inbox if not to_inbox else self.tbl_archive
+        rows = set(idx.row() for idx in tbl.selectedIndexes())
+        for r in rows:
+            item = tbl.item(r, 0)
+            if item:
+                lib.set_entry_inbox(item.data(Qt.ItemDataRole.UserRole), to_inbox)
+        self._refresh_inbox_panel()
+
+    def _refresh_broken_panel(self):
+        lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
+        if not lib or not lib.is_open:
+            self.lbl_broken_count.setText("Open Tag Library first (click Tag Library in the sidebar)")
+            return
+        broken = lib.scan_broken_links()
+        self.tbl_broken.setRowCount(len(broken))
+        for row, entry in enumerate(broken):
+            item = QTableWidgetItem(entry.filename)
+            item.setData(Qt.ItemDataRole.UserRole, entry.id)
+            item.setForeground(QColor("#ef4444"))
+            self.tbl_broken.setItem(row, 0, item)
+            self.tbl_broken.setItem(row, 1, QTableWidgetItem(entry.suffix.upper()))
+            mod = entry.date_modified.strftime("%Y-%m-%d") if entry.date_modified else ""
+            self.tbl_broken.setItem(row, 2, QTableWidgetItem(mod))
+            self.tbl_broken.setItem(row, 3, QTableWidgetItem(str(entry.path)))
+        self.lbl_broken_count.setText(
+            f"{len(broken)} broken link{'s' if len(broken) != 1 else ''} found"
+            if broken else "No broken links — all files present"
+        )
+
+    def _on_broken_context_menu(self, pos):
+        item = self.tbl_broken.itemAt(pos)
+        if not item:
+            return
+        row = item.row()
+        name_item = self.tbl_broken.item(row, 0)
+        if not name_item:
+            return
+        entry_id = name_item.data(Qt.ItemDataRole.UserRole)
+        menu = QMenu(self)
+        menu.addAction("Relink...", lambda: self._relink_broken_entry(entry_id))
+        menu.addAction("Remove from Library", lambda: self._remove_broken_entry(entry_id))
+        menu.exec(self.tbl_broken.mapToGlobal(pos))
+
+    def _relink_broken_entry(self, entry_id: int):
+        lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
+        if not lib:
+            return
+        filepath, _ = QFileDialog.getOpenFileName(self, "Locate File")
+        if filepath:
+            lib.relink_entry(entry_id, filepath)
+            self._refresh_broken_panel()
+
+    def _remove_broken_entry(self, entry_id: int):
+        lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
+        if lib:
+            lib.remove_entry(entry_id)
+            self._refresh_broken_panel()
+
+    def _import_rules_yaml(self):
+        from unifile.engine import RuleEngine
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Import Rules (YAML)", "",
+            "Rule Files (*.yaml *.yml *.json);;All Files (*)")
+        if not filepath:
+            return
+        imported = RuleEngine.import_rules_yaml(filepath)
+        if imported:
+            existing = RuleEngine.load_rules()
+            existing.extend(imported)
+            RuleEngine.save_rules(existing)
+            self._log(f"Imported {len(imported)} rule(s) from {os.path.basename(filepath)}")
+        else:
+            self._log("No rules imported (file empty or invalid)")
+
+    def _export_rules_yaml(self):
+        from unifile.engine import RuleEngine
+        rules = RuleEngine.load_rules()
+        if not rules:
+            self._log("No rules to export")
+            return
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export Rules (YAML)", "unifile_rules.yaml",
+            "YAML (*.yaml *.yml);;JSON (*.json);;All Files (*)")
+        if filepath:
+            ok = RuleEngine.export_rules_yaml(rules, filepath)
+            self._log(f"Exported {len(rules)} rule(s) to {os.path.basename(filepath)}" if ok else "Export failed")
+
+    def _open_musicbrainz_tagger(self):
+        from unifile.musicbrainz_tagger import MusicBrainzTaggerDialog
+        files = []
+        if hasattr(self, '_tag_panel') and self._tag_panel._lib.is_open:
+            rows = set(idx.row() for idx in self._tag_panel.tbl_entries.selectedIndexes())
+            for r in rows:
+                item = self._tag_panel.tbl_entries.item(r, 0)
+                if item:
+                    entry_id = item.data(Qt.ItemDataRole.UserRole)
+                    entry = self._tag_panel._lib.get_entry(entry_id)
+                    if entry and os.path.isfile(str(entry.path)):
+                        files.append(str(entry.path))
+        dlg = MusicBrainzTaggerDialog(files, parent=self)
+        dlg.exec()
+
+    def _open_ocr_indexer(self):
+        from unifile.ocr_indexer import OcrSettingsPanel
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("OCR Indexer")
+        dlg.setMinimumWidth(420)
+        dlg.setStyleSheet(get_active_stylesheet())
+        lay = QVBoxLayout(dlg)
+        panel = OcrSettingsPanel(parent=dlg)
+        if hasattr(self, '_tag_panel') and self._tag_panel._lib.is_open:
+            panel._lib = self._tag_panel._lib
+        lay.addWidget(panel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(dlg.reject)
+        lay.addWidget(bb)
         dlg.exec()
 
     # Theme methods are provided by ThemeMixin (theme_mixin.py)

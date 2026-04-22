@@ -1,6 +1,31 @@
-importlib.util
-mimetypes
+# ── Core (required) ─────────────────────────────────────────────────────────
 PyQt6
+SQLAlchemy
+
+# ── Optional: file operations ────────────────────────────────────────────────
+send2trash        # safe trash instead of permanent delete
+rapidfuzz         # fuzzy category matching
+
+# ── Optional: audio tagging ──────────────────────────────────────────────────
+mutagen           # read/write audio metadata (MP3, FLAC, etc.)
+acoustid          # AcoustID audio fingerprinting
+musicbrainzngs    # MusicBrainz metadata lookups
+
+# ── Optional: document/OCR indexing ─────────────────────────────────────────
+pytesseract       # Tesseract OCR wrapper
+easyocr           # Deep-learning OCR (GPU optional)
+pdfminer.six      # PDF text extraction (pure Python)
+pymupdf           # PyMuPDF / fitz — fast PDF/image rendering
+pdf2image         # PDF → PIL images (requires poppler)
+
+# ── Optional: TOML tag-pack support ─────────────────────────────────────────
+tomli             # TOML reader (Python < 3.11 only; 3.11+ has tomllib built-in)
+tomli-w           # TOML writer
+
+# ── Optional: AI / rule generation ──────────────────────────────────────────
+# Ollama runs locally; no pip package required — install from https://ollama.com
+# PyYAML is used when exporting/importing rules as YAML
+PyYAML
+
+# ── Development / testing ────────────────────────────────────────────────────
 pytest
-unifile
-xml.etree.ElementTree

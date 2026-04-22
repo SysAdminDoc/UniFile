@@ -39,9 +39,32 @@ def make_engine(db_path: str) -> Engine:
     return create_engine(f"sqlite:///{db_path}")
 
 
+def migrate_db(engine: Engine) -> None:
+    """Add missing columns to existing SQLite databases (idempotent)."""
+    migrations = [
+        "ALTER TABLE tags ADD COLUMN namespace TEXT",
+        "ALTER TABLE tags ADD COLUMN description TEXT",
+        "ALTER TABLE entries ADD COLUMN rating INTEGER",
+        "ALTER TABLE entries ADD COLUMN is_inbox INTEGER DEFAULT 1",
+        "ALTER TABLE entries ADD COLUMN source_url TEXT",
+        "ALTER TABLE entries ADD COLUMN media_width INTEGER",
+        "ALTER TABLE entries ADD COLUMN media_height INTEGER",
+        "ALTER TABLE entries ADD COLUMN media_duration REAL",
+        "ALTER TABLE entries ADD COLUMN word_count INTEGER",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+                conn.commit()
+            except OperationalError:
+                conn.rollback()
+
+
 def make_tables(engine: Engine) -> None:
     logger.info("Creating tag library tables...")
     Base.metadata.create_all(engine)
+    migrate_db(engine)
     with engine.connect() as conn:
         result = conn.execute(text("SELECT SEQ FROM sqlite_sequence WHERE name='tags'"))
         autoincrement_val = result.scalar()

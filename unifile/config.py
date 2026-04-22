@@ -6,9 +6,13 @@ from pathlib import Path
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else os.getcwd()
 
 # ── App Data Directory ────────────────────────────────────────────────────────
-# All settings, caches, logs stored in %APPDATA%/UniFile (never beside script)
-_APP_DATA_DIR = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')),
-                              'UniFile')
+# Portable mode: set UNIFILE_PORTABLE=1 env var (or pass --portable to run.py)
+# to store all data in ./unifile-data/ beside the script instead of %APPDATA%.
+if os.environ.get('UNIFILE_PORTABLE', '').strip() == '1':
+    _APP_DATA_DIR = os.path.join(_SCRIPT_DIR, 'unifile-data')
+else:
+    _APP_DATA_DIR = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')),
+                                  'UniFile')
 os.makedirs(_APP_DATA_DIR, exist_ok=True)
 
 # One-time migration: move legacy files from script dir into _APP_DATA_DIR
