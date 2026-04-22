@@ -2,6 +2,36 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.2] — Per-file scan progress: `current_item` signal wired end-to-end
+
+### UX
+- **"Processing: <name>" now actually updates during a scan** — the
+  infrastructure has been in place since v9.0 (`ScanMixin._set_current_scan_item`
+  with a 100 ms throttle), but none of the workers were emitting anything
+  into it. The progress panel's method label therefore stayed frozen on the
+  boilerplate phase text ("Categorizing + extracting names…") for the
+  entire duration of large scans, which looks like a hang.
+- Added a new `current_item = pyqtSignal(str)` to `ScanAepWorker`,
+  `ScanCategoryWorker`, and `ScanFilesWorker`, emitted exactly once per
+  main-loop iteration alongside the existing `progress(idx, total)` tick.
+  `_scan_aep`, `_scan_cat`, and `_scan_files` in `scan_mixin.py` each
+  connect the signal through an `hasattr` guard, so LLM-backed workers
+  that don't define the signal yet stay untouched.
+
+### Tests
+- **+7 tests** in `tests/test_current_item_signal.py` covering:
+  - Signal is declared on each of the three workers (class-level hasattr).
+  - Each worker emits the current folder/file name during its main loop
+    (executed synchronously via `worker.run()` with a tmp-path fixture).
+  - A worker cancelled before `run()` emits nothing.
+  - An autouse monkeypatch disables the `is_protected()` path check for
+    these tests, because pytest's `tmp_path` lives under
+    `%USERPROFILE%\AppData\Local\Temp` on Windows, which the default
+    protected-paths list treats as system-critical and would otherwise
+    cause `_collect_scan_folders()` to filter out every subfolder.
+- **Total: 301 tests passing** (up from 294). pyflakes undefined-name set
+  still empty.
+
 ## [v9.3.1] — Test consolidation: smoke scripts → parameterized pytest
 
 ### Tests
