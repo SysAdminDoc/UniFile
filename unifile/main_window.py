@@ -1164,6 +1164,26 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
             f"color: {_t['sidebar_btn_active_fg']}; font-size: 11px; font-weight: 600;"
         )
         empty_lay.addWidget(self.lbl_empty_actions)
+        # Primary action button for empty-state recovery hints (e.g. "Reset
+        # file-type filter"). Hidden by default; shown only when callers
+        # pass action_label/action_callback to _show_empty_state().
+        self.btn_empty_action = QPushButton("")
+        self.btn_empty_action.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_empty_action.setStyleSheet(
+            f"QPushButton {{ background: {_t['sidebar_btn_active_bg']}; "
+            f"color: {_t['sidebar_btn_active_fg']}; border: 1px solid {_t['border']}; "
+            f"border-radius: 8px; padding: 8px 18px; font-size: 12px; font-weight: 600; }}"
+            f"QPushButton:hover {{ background: {_t['header_bg']}; }}"
+        )
+        self.btn_empty_action.hide()
+        self._empty_action_handler = None
+        self.btn_empty_action.clicked.connect(self._on_empty_action_clicked)
+        _btn_row = QHBoxLayout()
+        _btn_row.setContentsMargins(0, 6, 0, 0)
+        _btn_row.addStretch(1)
+        _btn_row.addWidget(self.btn_empty_action)
+        _btn_row.addStretch(1)
+        empty_lay.addLayout(_btn_row)
         self.empty_state.show()
 
         # Scan Summary Toast (overlay banner on table)
@@ -1441,18 +1461,42 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         if hasattr(self, 'lbl_empty_actions'):
             self.lbl_empty_actions.setText(copy["next"])
 
-    def _show_empty_state(self, title: str, detail: str = "", kicker: str = "READY WHEN YOU ARE"):
+    def _show_empty_state(self, title: str, detail: str = "", kicker: str = "READY WHEN YOU ARE",
+                          action_label: str | None = None, action_callback=None):
+        """Show the full-viewport empty-state overlay.
+
+        When `action_label` and `action_callback` are both provided, a
+        primary button is rendered below the detail copy; clicking it
+        invokes the callback. Pass both as None (the default) to hide it.
+        """
         if hasattr(self, 'lbl_empty_kicker'):
             self.lbl_empty_kicker.setText(kicker)
         if hasattr(self, 'lbl_empty'):
             self.lbl_empty.setText(title)
         if hasattr(self, 'lbl_empty_detail'):
             self.lbl_empty_detail.setText(detail)
+        if hasattr(self, 'btn_empty_action'):
+            if action_label and callable(action_callback):
+                self.btn_empty_action.setText(action_label)
+                self._empty_action_handler = action_callback
+                self.btn_empty_action.show()
+            else:
+                self._empty_action_handler = None
+                self.btn_empty_action.hide()
         if hasattr(self, 'empty_state'):
             self.empty_state.show()
             self._position_table_overlays()
         elif hasattr(self, 'lbl_empty'):
             self.lbl_empty.show()
+
+    def _on_empty_action_clicked(self):
+        """Invoke whatever handler the most recent _show_empty_state provided."""
+        handler = getattr(self, '_empty_action_handler', None)
+        if callable(handler):
+            try:
+                handler()
+            except Exception as exc:
+                self._log(f"Empty-state action failed: {exc}")
 
     def _hide_empty_state(self):
         if hasattr(self, 'empty_state'):

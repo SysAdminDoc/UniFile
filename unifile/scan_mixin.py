@@ -311,10 +311,17 @@ class ScanMixin:
         if shown > 0:
             self._show_scan_toast(f"Scan complete: {shown} folders found")
         if shown == 0:
+            depth = self.spn_depth.value() if hasattr(self, 'spn_depth') else 0
+            action_label = None
+            action_cb = None
+            if depth > 0:
+                action_label = f"Reset scan depth ({depth} → 0)"
+                action_cb = lambda: self.spn_depth.setValue(0)
             self._show_empty_state(
                 "No eligible folders found",
                 "Try a different source folder or lower the scan depth if your projects are nested more deeply.",
-                kicker="NOTHING TO RENAME"
+                kicker="NOTHING TO RENAME",
+                action_label=action_label, action_callback=action_cb,
             )
 
     # ═══ CATEGORY SCAN ═══════════════════════════════════════════════════════
@@ -501,10 +508,23 @@ class ScanMixin:
             # Category balancing — suggest merges/splits for imbalanced categories
             self._run_category_balancer('cat')
         if matched == 0:
+            # Prefer lowering the confidence filter first (cheapest recovery);
+            # fall back to offering AI toggle if the filter was already at 0.
+            conf_threshold = self.sld_conf.value() if hasattr(self, 'sld_conf') else 0
+            llm_on = self.chk_llm.isChecked() if hasattr(self, 'chk_llm') else False
+            action_label = None
+            action_cb = None
+            if conf_threshold > 0:
+                action_label = f"Lower confidence filter ({conf_threshold}% → 0%)"
+                action_cb = lambda: self.sld_conf.setValue(0)
+            elif not llm_on and hasattr(self, 'chk_llm'):
+                action_label = "Enable AI mode for next scan"
+                action_cb = lambda: self.chk_llm.setChecked(True)
             self._show_empty_state(
                 "No folders could be categorized",
                 "Try enabling AI, lowering the confidence filter, or choosing a source with clearer folder contents.",
-                kicker="NO MATCHES FOUND"
+                kicker="NO MATCHES FOUND",
+                action_label=action_label, action_callback=action_cb,
             )
 
     # ═══ PC FILE SCAN ════════════════════════════════════════════════════════
@@ -712,10 +732,23 @@ class ScanMixin:
             # Category balancing — suggest merges/splits for imbalanced categories
             self._run_category_balancer('files')
         if total == 0:
+            action_label = None
+            action_cb = None
+            # If the user narrowed the file-type filter, offer a one-click reset.
+            if hasattr(self, 'cmb_type_filter') and self.cmb_type_filter.currentText() != 'All Files':
+                narrowed = self.cmb_type_filter.currentText()
+                action_label = f"Reset filter ({narrowed} → All Files)"
+                _cmb = self.cmb_type_filter  # capture
+                def _reset_filter():
+                    idx = _cmb.findText('All Files')
+                    if idx >= 0:
+                        _cmb.setCurrentIndex(idx)
+                action_cb = _reset_filter
             self._show_empty_state(
                 "No files or folders were found",
                 "Check the selected source, include more depth, or broaden the current file-type filter.",
-                kicker="SCAN COMPLETE"
+                kicker="SCAN COMPLETE",
+                action_label=action_label, action_callback=action_cb,
             )
 
     def _auto_tag_scan_results(self):
