@@ -194,6 +194,46 @@ def load_directory_config(directory: str) -> list | None:
     return categories if categories else None
 
 
+DIRRULES_FILENAME = '.unifile_rules.json'
+
+
+def load_directory_rules(directory: str) -> dict | None:
+    """Load per-directory rule-override file `.unifile_rules.json`.
+
+    Returns `None` if no local file exists. Otherwise returns a dict with
+    any combination of these keys:
+
+        {
+            "include": [name, name, ...]   # names from the global rule set to keep
+                                           # (if present, acts as an allow-list)
+            "exclude": [name, name, ...]   # names from the global rule set to drop
+            "inline":  [<rule-dict>, ...]  # extra local rules, same schema as rules.json
+        }
+
+    Malformed JSON is treated as "no override" — the caller falls back to the
+    global rule set unchanged. Unknown keys are ignored so callers can grow
+    the schema without breaking old clients.
+    """
+    conf_path = os.path.join(directory, DIRRULES_FILENAME)
+    if not os.path.exists(conf_path):
+        return None
+    try:
+        with open(conf_path, encoding='utf-8') as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    delta: dict = {}
+    if isinstance(raw.get('include'), list):
+        delta['include'] = [str(x) for x in raw['include'] if isinstance(x, str)]
+    if isinstance(raw.get('exclude'), list):
+        delta['exclude'] = [str(x) for x in raw['exclude'] if isinstance(x, str)]
+    if isinstance(raw.get('inline'), list):
+        delta['inline'] = [r for r in raw['inline'] if isinstance(r, dict) and 'name' in r]
+    return delta or None
+
+
 def merge_categories(base: list, override: list) -> list:
     """Merge override categories into base, adding new ones and extending existing."""
     merged = [dict(c) for c in base]

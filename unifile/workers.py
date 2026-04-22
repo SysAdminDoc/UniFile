@@ -46,7 +46,7 @@ from unifile.classifier import tiered_classify
 from unifile.config import is_protected
 from unifile.csv_rules import check_csv_rules, preload_csv_rules
 from unifile.duplicates import _PHASH_IMAGE_EXTS, ProgressiveDuplicateDetector
-from unifile.engine import RuleEngine
+from unifile.engine import RuleEngine, apply_rule_delta
 from unifile.files import (
     _JUNK_PATTERNS,
     _JUNK_SUFFIXES,
@@ -55,6 +55,7 @@ from unifile.files import (
     _extract_filename_date,
     _ScanCache,
     load_directory_config,
+    load_directory_rules,
     merge_categories,
 )
 from unifile.ignore import IgnoreFilter
@@ -1472,6 +1473,18 @@ class ScanFilesWorker(QThread):
         else:
             effective_cats = self.categories
         ext_map = _build_ext_map(effective_cats)
+        # Per-folder rule delta — merged once so the per-item loop can use it.
+        _rule_delta = load_directory_rules(str(src))
+        if _rule_delta:
+            parts = []
+            if 'include' in _rule_delta:
+                parts.append(f"include={len(_rule_delta['include'])}")
+            if 'exclude' in _rule_delta:
+                parts.append(f"exclude={len(_rule_delta['exclude'])}")
+            if 'inline' in _rule_delta:
+                parts.append(f"inline={len(_rule_delta['inline'])}")
+            self.log.emit(f"  Found .unifile_rules.json — {', '.join(parts)}")
+        self._rule_delta = _rule_delta
         items = self._collect(src)
         if not items:
             self.log.emit("No files/folders found.")
@@ -1605,10 +1618,11 @@ class ScanFilesWorker(QThread):
                         except Exception as e:
                             self.log.emit(f"    [ARCHIVE] Peek failed for {name}: {e}")
 
-                # Rule Engine — evaluate user-defined rules
+                # Rule Engine — evaluate user-defined rules (merged with per-folder delta)
                 if not is_folder:
                     try:
-                        rules = RuleEngine.load_rules()
+                        rules = apply_rule_delta(RuleEngine.load_rules(),
+                                                 getattr(self, '_rule_delta', None))
                         if rules:
                             # Build a minimal FileItem-like dict for rule evaluation
                             _rule_item = type('_RI', (), {

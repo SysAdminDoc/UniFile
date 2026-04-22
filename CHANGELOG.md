@@ -2,6 +2,74 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.8] — Per-folder rule overrides
+
+### Feature
+A single user can have opinions that differ per-subtree — work clients
+with their own filing conventions, a scratch folder where only local
+inline rules apply, etc. The existing `.unifile.conf` already handles
+per-folder category *mappings*; v9.3.8 adds the missing piece: per-folder
+overrides for the **rule engine**.
+
+New optional file: `.unifile_rules.json` in the scan root:
+
+```json
+{
+    "include": ["rule-name", "..."],   // optional allow-list; if present,
+                                       // only globals with matching names survive
+    "exclude": ["rule-name", "..."],   // drop globals by name (wins over include)
+    "inline":  [                       // extra rules merged in — same schema as
+        { "name": "local-pdf",         // the global rules.json
+          "priority": 1, "enabled": true,
+          "conditions": [{"field": "extension", "op": "eq", "value": ".pdf"}],
+          "action_category": "Local-Docs", "confidence": 95 }
+    ]
+}
+```
+
+Malformed JSON or non-dict top-level → silently falls back to the
+global rule set. No error. No surprises. Unknown top-level keys are
+ignored so the schema can grow.
+
+### API
+- `unifile/files.py::load_directory_rules(directory) -> dict | None` —
+  file loader with input sanitation. Drops non-string names in
+  `include`/`exclude`, drops dicts without `name` in `inline`.
+- `unifile/engine.py::apply_rule_delta(base, delta) -> list` — pure
+  function that produces a merged rule list. Semantics documented in
+  the docstring and pinned by tests. Never mutates the input.
+
+### Worker integration
+`ScanFilesWorker.run` calls `load_directory_rules()` once at scan
+start, caches the delta on `self._rule_delta`, and logs a summary
+(`"Found .unifile_rules.json — include=…, exclude=…, inline=…"`).
+The per-item RuleEngine evaluation now goes through
+`apply_rule_delta(RuleEngine.load_rules(), self._rule_delta)` so each
+file gets the effective rule set.
+
+### Tests — 15 new (319 → 334 total)
+`tests/test_per_folder_rules.py`:
+- `load_directory_rules` — missing, malformed JSON, non-dict top-level,
+  full schema, invalid-entry strip, empty object.
+- `apply_rule_delta` — no-delta, empty-delta, include-as-allow-list,
+  exclude, exclude-wins-over-include, inline-appended,
+  inline-replaces-global-by-name, non-mutation guarantee.
+- Loader-to-merger integration round trip.
+
+### Deferred
+The continuation prompt called for a "Per-folder rules" tab in the
+Rules editor dialog. That's a dedicated UI pass — the backend is
+in place and fully tested; a future session can wire the editor to
+read/write `.unifile_rules.json` for the currently-selected source.
+
+### Impact
+| Metric | Before | After |
+|--------|--------|-------|
+| Tests | 319 | **334** |
+| Ruff violations | 0 | 0 |
+| Pyflakes undefined-name | 0 | 0 |
+| New modules | — | two new functions in existing modules |
+
 ## [v9.3.7] — pytest-qt smoke suite + first mixin extraction; one real bug caught
 
 ### Architecture — UndoMixin extracted
