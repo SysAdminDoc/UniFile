@@ -67,9 +67,12 @@ def test_mixins_in_mro(unifile_window):
     from unifile.filter_mixin import FilterMixin
     from unifile.scan_mixin import ScanMixin
     from unifile.theme_mixin import ThemeMixin
+    from unifile.tray_mixin import TrayMixin
     from unifile.undo_mixin import UndoMixin
+    from unifile.watch_mixin import WatchMixin
     mro = type(unifile_window).__mro__
-    for mixin in (ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin):
+    for mixin in (ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
+                  TrayMixin, WatchMixin):
         assert mixin in mro, f"{mixin.__name__} dropped from UniFile MRO"
 
 
@@ -80,6 +83,8 @@ def test_mixins_in_mro(unifile_window):
     "_on_scan", "_scan_aep", "_scan_cat", "_scan_files",      # ScanMixin
     "_on_undo",                                                # UndoMixin
     "_apply_filter", "_populate_face_filter", "_on_conf_changed",  # FilterMixin
+    "_setup_tray", "_tray_show", "_tray_exit",                 # TrayMixin
+    "_watch_pause", "_toggle_watch_mode", "_open_watch_history",   # WatchMixin
     "_show_empty_state", "_hide_empty_state",                  # main_window itself
 ])
 def test_method_resolves_on_composed_class(unifile_window, method_name):
