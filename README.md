@@ -2,7 +2,7 @@
 <p align="center"><img src="icon.png" width="128" alt="Uni File"></p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-8.9.0-58A6FF?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-8.9.4-58A6FF?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Python%20GUI-58A6FF?style=for-the-badge">
 </p>
@@ -10,7 +10,7 @@
 
 # UniFile
 
-![Version](https://img.shields.io/badge/version-8.9.0-blue)
+![Version](https://img.shields.io/badge/version-8.9.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -158,6 +158,10 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | Feature | Description |
 |---------|-------------|
 | 6 Color Themes | Steam Dark, Catppuccin Mocha, OLED Black, GitHub Dark, Nord, Dracula |
+| Review-First Workspace | Stronger hierarchy, calmer action layout, richer empty states, and clearer trust/status messaging across the main shell |
+| Premium Secondary Panels | Tag Library, Media Lookup, and Virtual Library now use clearer section hierarchy, calmer states, and theme-aware premium surfaces |
+| Refined Editor Workflows | Category and rule editors now use better summaries, calmer action emphasis, and clearer preview-oriented guidance for power users |
+| Guided Helper Dialogs | Before/After, Event Grouping, and rename-source picking now surface stronger summaries and more intentional review-first guidance |
 | Live Theme Preview | See themes applied instantly before committing |
 | Sidebar Navigation | Left panel with Organizer, Cleanup, Duplicates, Tag Library, Media Lookup |
 | Before/After Preview | Visual directory tree comparison |

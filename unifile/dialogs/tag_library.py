@@ -41,56 +41,57 @@ class TagLibraryPanel(QWidget):
         self._lib.close()
 
     def _build_ui(self):
-        _t = get_active_theme()
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(12)
 
         # ── Header ────────────────────────────────────────────────────────
-        header = QWidget()
-        header.setFixedHeight(64)
-        header.setStyleSheet(f"background: {_t['bg_alt']}; border-bottom: 1px solid {_t['btn_bg']};")
-        h_lay = QHBoxLayout(header)
-        h_lay.setContentsMargins(16, 0, 16, 0)
+        self.header = QFrame()
+        self.header.setProperty("class", "card")
+        h_lay = QHBoxLayout(self.header)
+        h_lay.setContentsMargins(18, 16, 18, 16)
+        h_lay.setSpacing(16)
 
         header_copy = QVBoxLayout()
-        header_copy.setSpacing(1)
-        lbl_title = QLabel("Tag Library")
-        lbl_title.setStyleSheet(
-            f"color: {_t['fg_bright']}; font-size: 14px; font-weight: 700; background: transparent;")
-        header_copy.addWidget(lbl_title)
-        lbl_subtitle = QLabel("Browse tagged files, fields, and metadata in one focused library view.")
-        lbl_subtitle.setStyleSheet(
-            f"color: {_t['muted']}; font-size: 11px; background: transparent;"
+        header_copy.setSpacing(4)
+        self.lbl_header_kicker = QLabel("LIBRARY WORKSPACE")
+        header_copy.addWidget(self.lbl_header_kicker)
+        self.lbl_header_title = QLabel("Tag Library")
+        header_copy.addWidget(self.lbl_header_title)
+        self.lbl_header_subtitle = QLabel(
+            "Browse tagged files, review saved fields, and keep reusable tags organized in one calmer workspace."
         )
-        header_copy.addWidget(lbl_subtitle)
+        self.lbl_header_subtitle.setWordWrap(True)
+        header_copy.addWidget(self.lbl_header_subtitle)
         h_lay.addLayout(header_copy)
         h_lay.addStretch()
 
-        btn_open = QPushButton("Open Library Folder")
-        btn_open.setFixedHeight(28)
-        btn_open.setStyleSheet(
-            f"QPushButton {{ background: {_t['accent']}; color: #fff; border: none; "
-            f"border-radius: 4px; padding: 4px 14px; font-size: 11px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background: {_t['accent_hover']}; }}")
-        btn_open.clicked.connect(self._on_open_library)
-        h_lay.addWidget(btn_open)
-
         self.lbl_stats = QLabel("")
-        self.lbl_stats.setStyleSheet(
-            f"color: {_t['muted']}; font-size: 11px; background: transparent; margin-left: 12px;")
+        self.lbl_stats.setMinimumWidth(260)
+        self.lbl_stats.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         h_lay.addWidget(self.lbl_stats)
+        self.btn_open_library = QPushButton("Open Library Folder")
+        self.btn_open_library.setProperty("class", "primary")
+        self.btn_open_library.clicked.connect(self._on_open_library)
+        h_lay.addWidget(self.btn_open_library)
 
-        lay.addWidget(header)
+        lay.addWidget(self.header)
 
         # ── Main splitter: Tags (left) | Entries (right) ─────────────────
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # ── Left: Tag Management ──────────────────────────────────────────
-        tag_panel = QWidget()
-        tag_lay = QVBoxLayout(tag_panel)
-        tag_lay.setContentsMargins(12, 8, 6, 8)
-        tag_lay.setSpacing(6)
+        self.tag_panel = QFrame()
+        self.tag_panel.setProperty("class", "card")
+        tag_lay = QVBoxLayout(self.tag_panel)
+        tag_lay.setContentsMargins(16, 16, 16, 16)
+        tag_lay.setSpacing(10)
+
+        self.lbl_tag_section = QLabel("Tag structure")
+        tag_lay.addWidget(self.lbl_tag_section)
+        self.lbl_tag_hint = QLabel("Filter reusable tags, create quick presets, and import or export tag packs.")
+        self.lbl_tag_hint.setWordWrap(True)
+        tag_lay.addWidget(self.lbl_tag_hint)
 
         # Tag search
         tag_search_row = QHBoxLayout()
@@ -99,15 +100,11 @@ class TagLibraryPanel(QWidget):
         self.txt_tag_search.setPlaceholderText("Search tags…")
         self.txt_tag_search.textChanged.connect(self._on_tag_search)
         tag_search_row.addWidget(self.txt_tag_search, 1)
-        btn_add_tag = QPushButton("+")
-        btn_add_tag.setFixedSize(28, 28)
-        btn_add_tag.setToolTip("Add new tag")
-        btn_add_tag.setStyleSheet(
-            f"QPushButton {{ background: {_t['green']}; color: #fff; border: none; "
-            f"border-radius: 4px; font-size: 14px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background: {_t['green_hover']}; }}")
-        btn_add_tag.clicked.connect(self._on_add_tag)
-        tag_search_row.addWidget(btn_add_tag)
+        self.btn_add_tag = QPushButton("New Tag")
+        self.btn_add_tag.setProperty("class", "success")
+        self.btn_add_tag.setToolTip("Create a new reusable tag")
+        self.btn_add_tag.clicked.connect(self._on_add_tag)
+        tag_search_row.addWidget(self.btn_add_tag)
         tag_lay.addLayout(tag_search_row)
 
         # Tag tree (hierarchical)
@@ -125,16 +122,11 @@ class TagLibraryPanel(QWidget):
         # Quick tag buttons
         quick_row = QHBoxLayout()
         quick_row.setSpacing(4)
-        lbl_quick = QLabel("Quick:")
-        lbl_quick.setStyleSheet(f"color: {_t['muted']}; font-size: 10px;")
-        quick_row.addWidget(lbl_quick)
+        self.lbl_quick = QLabel("Quick tags")
+        quick_row.addWidget(self.lbl_quick)
         for preset_name in ["Favorite", "Important", "Review", "Archive"]:
             btn = QPushButton(preset_name)
-            btn.setFixedHeight(24)
-            btn.setStyleSheet(
-                f"QPushButton {{ font-size: 10px; padding: 2px 8px; background: {_t['selection']};"
-                f"color: {_t['fg']}; border: 1px solid {_t['border']}; border-radius: 3px; }}"
-                f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
+            btn.setProperty("class", "toolbar")
             btn.clicked.connect(lambda checked, n=preset_name: self._quick_create_tag(n))
             quick_row.addWidget(btn)
         quick_row.addStretch()
@@ -143,39 +135,36 @@ class TagLibraryPanel(QWidget):
         # Tag Pack import/export buttons
         pack_row = QHBoxLayout()
         pack_row.setSpacing(4)
-        btn_import = QPushButton("Import Tag Pack")
-        btn_import.setFixedHeight(24)
-        btn_import.setStyleSheet(
-            f"QPushButton {{ font-size: 10px; padding: 2px 8px; background: {_t['selection']};"
-            f"color: {_t['fg']}; border: 1px solid {_t['border']}; border-radius: 3px; }}"
-            f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
-        btn_import.clicked.connect(self._import_tag_pack)
-        pack_row.addWidget(btn_import)
-        btn_export = QPushButton("Export Tag Pack")
-        btn_export.setFixedHeight(24)
-        btn_export.setStyleSheet(
-            f"QPushButton {{ font-size: 10px; padding: 2px 8px; background: {_t['selection']};"
-            f"color: {_t['fg']}; border: 1px solid {_t['border']}; border-radius: 3px; }}"
-            f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
-        btn_export.clicked.connect(self._export_tag_pack)
-        pack_row.addWidget(btn_export)
+        self.btn_import = QPushButton("Import Tag Pack")
+        self.btn_import.setProperty("class", "toolbar")
+        self.btn_import.clicked.connect(self._import_tag_pack)
+        pack_row.addWidget(self.btn_import)
+        self.btn_export_pack = QPushButton("Export Tag Pack")
+        self.btn_export_pack.setProperty("class", "toolbar")
+        self.btn_export_pack.clicked.connect(self._export_tag_pack)
+        pack_row.addWidget(self.btn_export_pack)
         pack_row.addStretch()
         tag_lay.addLayout(pack_row)
 
-        splitter.addWidget(tag_panel)
+        splitter.addWidget(self.tag_panel)
 
         # ── Right: Entry List + Preview ──────────────────────────────────
-        entry_panel = QWidget()
-        entry_lay = QVBoxLayout(entry_panel)
-        entry_lay.setContentsMargins(6, 8, 12, 8)
-        entry_lay.setSpacing(6)
+        self.entry_panel = QFrame()
+        self.entry_panel.setProperty("class", "card")
+        entry_lay = QVBoxLayout(self.entry_panel)
+        entry_lay.setContentsMargins(16, 16, 16, 16)
+        entry_lay.setSpacing(10)
+
+        self.lbl_entry_section = QLabel("Library files")
+        entry_lay.addWidget(self.lbl_entry_section)
+        self.lbl_entry_hint = QLabel("Review files, search by metadata, and send tags or fields where they belong.")
+        self.lbl_entry_hint.setWordWrap(True)
+        entry_lay.addWidget(self.lbl_entry_hint)
 
         # Entry header
         entry_header = QHBoxLayout()
         entry_header.setSpacing(6)
         self.lbl_entry_title = QLabel("All Files")
-        self.lbl_entry_title.setStyleSheet(
-            f"color: {_t['fg_bright']}; font-size: 12px; font-weight: 600;")
         entry_header.addWidget(self.lbl_entry_title)
         entry_header.addStretch()
 
@@ -192,23 +181,15 @@ class TagLibraryPanel(QWidget):
         self.txt_semantic.returnPressed.connect(self._on_semantic_search)
         entry_header.addWidget(self.txt_semantic)
 
-        btn_add_files = QPushButton("Add Files")
-        btn_add_files.setFixedHeight(28)
-        btn_add_files.setStyleSheet(
-            f"QPushButton {{ background: {_t['accent']}; color: #fff; border: none; "
-            f"border-radius: 4px; padding: 4px 12px; font-size: 11px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background: {_t['accent_hover']}; }}")
-        btn_add_files.clicked.connect(self._on_add_files)
-        entry_header.addWidget(btn_add_files)
+        self.btn_add_files = QPushButton("Add Files")
+        self.btn_add_files.setProperty("class", "primary")
+        self.btn_add_files.clicked.connect(self._on_add_files)
+        entry_header.addWidget(self.btn_add_files)
 
-        btn_scan_dir = QPushButton("Scan Folder")
-        btn_scan_dir.setFixedHeight(28)
-        btn_scan_dir.setStyleSheet(
-            f"QPushButton {{ background: {_t['green']}; color: #fff; border: none; "
-            f"border-radius: 4px; padding: 4px 12px; font-size: 11px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background: {_t['green_hover']}; }}")
-        btn_scan_dir.clicked.connect(self._on_scan_directory)
-        entry_header.addWidget(btn_scan_dir)
+        self.btn_scan_dir = QPushButton("Scan Folder")
+        self.btn_scan_dir.setProperty("class", "success")
+        self.btn_scan_dir.clicked.connect(self._on_scan_directory)
+        entry_header.addWidget(self.btn_scan_dir)
 
         entry_lay.addLayout(entry_header)
 
@@ -241,48 +222,36 @@ class TagLibraryPanel(QWidget):
         entry_lay.addWidget(v_splitter, 1)
 
         # Entry detail / tag assignment bar
-        detail_bar = QWidget()
-        detail_bar.setFixedHeight(36)
-        detail_bar.setStyleSheet(f"background: {_t['bg_alt']}; border-top: 1px solid {_t['btn_bg']};")
-        db_lay = QHBoxLayout(detail_bar)
-        db_lay.setContentsMargins(8, 0, 8, 0)
+        self.detail_bar = QFrame()
+        db_lay = QHBoxLayout(self.detail_bar)
+        db_lay.setContentsMargins(12, 8, 12, 8)
         db_lay.setSpacing(8)
-        lbl_assign = QLabel("Assign tag:")
-        lbl_assign.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; background: transparent;")
-        db_lay.addWidget(lbl_assign)
+        self.lbl_assign = QLabel("Assign tag")
+        db_lay.addWidget(self.lbl_assign)
         self.cmb_assign_tag = QComboBox()
         self.cmb_assign_tag.setMinimumWidth(160)
         self.cmb_assign_tag.setEditable(True)
         self.cmb_assign_tag.setPlaceholderText("Select or type tag...")
         db_lay.addWidget(self.cmb_assign_tag)
-        btn_assign = QPushButton("Apply Tag")
-        btn_assign.setFixedHeight(26)
-        btn_assign.setStyleSheet(
-            f"QPushButton {{ background: {_t['accent']}; color: #fff; border: none; "
-            f"border-radius: 3px; padding: 2px 12px; font-size: 11px; }}"
-            f"QPushButton:hover {{ background: {_t['accent_hover']}; }}")
-        btn_assign.clicked.connect(self._on_apply_tag_to_selected)
-        db_lay.addWidget(btn_assign)
-        btn_remove_tag = QPushButton("Remove Tag")
-        btn_remove_tag.setFixedHeight(26)
-        btn_remove_tag.setStyleSheet(
-            f"QPushButton {{ background: {_t['btn_bg']}; color: {_t['fg']}; "
-            f"border: 1px solid {_t['border']}; border-radius: 3px; padding: 2px 12px; font-size: 11px; }}"
-            f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
-        btn_remove_tag.clicked.connect(self._on_remove_tag_from_selected)
-        db_lay.addWidget(btn_remove_tag)
+        self.btn_assign = QPushButton("Apply Tag")
+        self.btn_assign.setProperty("class", "primary")
+        self.btn_assign.clicked.connect(self._on_apply_tag_to_selected)
+        db_lay.addWidget(self.btn_assign)
+        self.btn_remove_tag = QPushButton("Remove Tag")
+        self.btn_remove_tag.setProperty("class", "danger")
+        self.btn_remove_tag.clicked.connect(self._on_remove_tag_from_selected)
+        db_lay.addWidget(self.btn_remove_tag)
         db_lay.addStretch()
         self.lbl_selection_info = QLabel("")
-        self.lbl_selection_info.setStyleSheet(
-            f"color: {_t['muted']}; font-size: 11px; background: transparent;")
         db_lay.addWidget(self.lbl_selection_info)
-        entry_lay.addWidget(detail_bar)
+        entry_lay.addWidget(self.detail_bar)
 
-        splitter.addWidget(entry_panel)
+        splitter.addWidget(self.entry_panel)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
 
         lay.addWidget(splitter, 1)
+        self.apply_theme()
 
     # ── Preview Panel ────────────────────────────────────────────────────
 
@@ -472,6 +441,59 @@ class TagLibraryPanel(QWidget):
         self._clear_tag_chips()
         self._preview_fields.setHtml("<i style='color: gray;'>Fields and AI metadata will appear here.</i>")
 
+    def apply_theme(self, theme: dict | None = None):
+        t = theme or get_active_theme()
+        self.header.setStyleSheet(
+            f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; border-radius: 18px; }}"
+        )
+        self.lbl_header_kicker.setStyleSheet(
+            f"color: {t['accent']}; font-size: 10px; font-weight: 700; letter-spacing: 1.6px;"
+        )
+        self.lbl_header_title.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 22px; font-weight: 700;"
+        )
+        self.lbl_header_subtitle.setStyleSheet(
+            f"color: {t['muted']}; font-size: 12px; line-height: 1.4em;"
+        )
+        self.lbl_stats.setStyleSheet(
+            f"background: {t['header_bg']}; color: {t['muted']}; border: 1px solid {t['border']}; "
+            "border-radius: 999px; padding: 6px 12px; font-size: 11px; font-weight: 600;"
+        )
+        for panel in (self.tag_panel, self.entry_panel):
+            panel.setStyleSheet(
+                f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; border-radius: 18px; }}"
+            )
+        self.lbl_tag_section.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 15px; font-weight: 700;"
+        )
+        self.lbl_tag_hint.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
+        self.lbl_quick.setStyleSheet(
+            f"color: {t['muted']}; font-size: 10px; font-weight: 700; letter-spacing: 1.2px;"
+        )
+        self.lbl_entry_section.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 15px; font-weight: 700;"
+        )
+        self.lbl_entry_hint.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
+        self.lbl_entry_title.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 13px; font-weight: 700;"
+        )
+        self.detail_bar.setStyleSheet(
+            f"QFrame {{ background: {t['header_bg']}; border: 1px solid {t['border']}; border-radius: 14px; }}"
+        )
+        self.lbl_assign.setStyleSheet(
+            f"color: {t['muted']}; font-size: 11px; font-weight: 600;"
+        )
+        self.lbl_selection_info.setStyleSheet(
+            f"color: {t['muted']}; font-size: 11px;"
+        )
+        self._preview_widget.setStyleSheet(
+            f"QFrame {{ background: {t['header_bg']}; border: 1px solid {t['border']}; border-radius: 16px; }}"
+        )
+        if self.tbl_entries.selectionModel() and self.tbl_entries.selectionModel().selectedRows():
+            self._on_entry_selection_changed()
+        else:
+            self._clear_preview()
+
     def _clear_tag_chips(self):
         while self._preview_tags_flow.count() > 1:
             item = self._preview_tags_flow.takeAt(0)
@@ -576,19 +598,23 @@ class TagLibraryPanel(QWidget):
 
     def _on_add_tag(self):
         if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before creating tags")
             return
         name, ok = QInputDialog.getText(self, "Add Tag", "Tag name:")
         if ok and name.strip():
             self._lib.add_tag(name.strip())
             self._refresh_tags()
             self._update_stats()
+            self.lbl_selection_info.setText(f"Created tag '{name.strip()}'")
 
     def _quick_create_tag(self, name: str):
         if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before creating quick tags")
             return
         self._lib.add_tag(name, is_category=True, color_slug="blue")
         self._refresh_tags()
         self._update_stats()
+        self.lbl_selection_info.setText(f"Created quick tag '{name}'")
 
     def _on_tag_context_menu(self, pos):
         item = self.tag_tree.itemAt(pos)
@@ -699,7 +725,11 @@ class TagLibraryPanel(QWidget):
 
     def _on_semantic_search(self):
         query = self.txt_semantic.text().strip()
-        if not query or not self._lib.is_open:
+        if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before running semantic search")
+            return
+        if not query:
+            self.lbl_selection_info.setText("Enter a natural-language prompt to search semantically")
             return
         try:
             from unifile.semantic import SemanticIndex
@@ -799,15 +829,18 @@ class TagLibraryPanel(QWidget):
 
     def _on_add_files(self):
         if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before adding files")
             return
         files, _ = QFileDialog.getOpenFileNames(self, "Add Files to Library")
         if files:
             count = self._lib.add_entries_bulk(files)
             self._refresh_entries()
             self._update_stats()
+            self.lbl_selection_info.setText(f"Added {count} file{'s' if count != 1 else ''} to the library")
 
     def _on_scan_directory(self):
         if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before scanning a folder")
             return
         path = QFileDialog.getExistingDirectory(self, "Scan Directory")
         if not path:
@@ -823,6 +856,9 @@ class TagLibraryPanel(QWidget):
             count = self._lib.add_entries_bulk(file_paths)
             self._refresh_entries()
             self._update_stats()
+            self.lbl_selection_info.setText(
+                f"Scanned {count} file{'s' if count != 1 else ''} from {os.path.basename(path) or path}"
+            )
 
     def _on_entry_context_menu(self, pos):
         rows = set(idx.row() for idx in self.tbl_entries.selectedIndexes())
@@ -848,9 +884,11 @@ class TagLibraryPanel(QWidget):
 
     def _on_apply_tag_to_selected(self):
         if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before applying tags")
             return
         tag_name = self.cmb_assign_tag.currentText().strip()
         if not tag_name:
+            self.lbl_selection_info.setText("Choose or type a tag name first")
             return
 
         # Get or create the tag
@@ -861,6 +899,9 @@ class TagLibraryPanel(QWidget):
             return
 
         rows = set(idx.row() for idx in self.tbl_entries.selectedIndexes())
+        if not rows:
+            self.lbl_selection_info.setText("Select one or more files before applying a tag")
+            return
         for r in rows:
             item = self.tbl_entries.item(r, 0)
             if item:
@@ -871,18 +912,27 @@ class TagLibraryPanel(QWidget):
         self._refresh_tags()
         self._update_stats()
         self.tag_applied.emit(tag_name)
+        self.lbl_selection_info.setText(
+            f"Applied '{tag_name}' to {len(rows)} file{'s' if len(rows) != 1 else ''}"
+        )
 
     def _on_remove_tag_from_selected(self):
         if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before removing tags")
             return
         tag_name = self.cmb_assign_tag.currentText().strip()
         if not tag_name:
+            self.lbl_selection_info.setText("Choose a tag to remove")
             return
         tag = self._lib.get_tag_by_name(tag_name)
         if not tag:
+            self.lbl_selection_info.setText(f"Tag '{tag_name}' does not exist in this library")
             return
 
         rows = set(idx.row() for idx in self.tbl_entries.selectedIndexes())
+        if not rows:
+            self.lbl_selection_info.setText("Select one or more files before removing a tag")
+            return
         for r in rows:
             item = self.tbl_entries.item(r, 0)
             if item:
@@ -892,6 +942,9 @@ class TagLibraryPanel(QWidget):
         self._refresh_entries(tag_id=self._current_tag_id)
         self._refresh_tags()
         self._update_stats()
+        self.lbl_selection_info.setText(
+            f"Removed '{tag_name}' from {len(rows)} file{'s' if len(rows) != 1 else ''}"
+        )
 
     def _batch_add_tag(self, entry_ids: list[int], tag_id: int):
         for eid in entry_ids:
@@ -905,3 +958,6 @@ class TagLibraryPanel(QWidget):
             self._lib.remove_entry(eid)
         self._refresh_entries(tag_id=self._current_tag_id)
         self._update_stats()
+        self.lbl_selection_info.setText(
+            f"Removed {len(entry_ids)} item{'s' if len(entry_ids) != 1 else ''} from the library"
+        )

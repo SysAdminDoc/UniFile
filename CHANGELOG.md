@@ -2,6 +2,31 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v8.9.4]
+
+- Refined: **Niche helper dialogs now feel more review-first** — Before/After comparison, AI Event Grouping, and the rename-source file picker now provide clearer summaries, better empty/selection guidance, and calmer card-based layout treatment so these smaller decision points feel intentional instead of legacy
+- Refined: **Comparison and rename trust signals** — source-vs-destination previews now explain what each side means more clearly, while rename-source selection now reports candidate counts, filtered results, and the currently selected cleaned filename more explicitly
+- Fixed: **Thin selection feedback in helper flows** — event grouping now makes selection state and apply intent clearer, and the rename picker no longer leaves filtering or candidate availability ambiguous
+
+## [v8.9.3]
+
+- Refined: **Editor and rules workflows feel calmer and more deliberate** — Custom Categories, Destination Preview, Classification Rules, Plugin Manager, Watch History, and CSV Sort Rules now present stronger summaries, clearer helper copy, and better action emphasis so power-user setup screens feel consistent with the premium shell
+- Refined: **Automation dialogs now communicate order and intent better** — rule-driven workflows now explain that first-match-wins logic more clearly, surface better empty states, and reduce silent or ambiguous editor states while creating, cloning, testing, and saving rules
+- Fixed: **Thin utility-screen affordances** — destructive actions in supporting dialogs now read more clearly, list-heavy views provide stronger context before selection, and CSV rule editing now keeps its summary in sync with the current table state
+
+## [v8.9.2]
+
+- Refined: **Secondary workflow panels now match the premium shell** — Tag Library, Media Lookup, and Virtual Library now use stronger section hierarchy, calmer search and empty-state copy, more intentional cards, clearer review-first action emphasis, and better feedback after add/apply/export/search flows
+- Refined: **Theme consistency inside inline content panels** — the remaining heavy inline panels now re-apply their custom header, preview, detail, and status styling when the active theme changes, preventing the shell from feeling cohesive while those panels drift
+- Fixed: **Thin or silent panel states** — Media Lookup now disables metadata actions until detail is ready, Tag Library surfaces clearer no-selection and action feedback, and Virtual Library now reports invalid paths, zero-match searches, empty overlays, and completed scans more clearly
+
+## [v8.9.1]
+
+- Refined: **Premium shell polish across the main workspace** — upgraded the organizer shell with a stronger action hierarchy, richer workflow copy, trust badges, more spacious cards, clearer empty states, calmer progress feedback, and better status-bar defaults so the product feels more intentional at first glance and during long sessions
+- Refined: **Shared dark-theme design system** — improved the global QSS for button emphasis, danger/success semantics, focus/disabled states, input surfaces, tabs, tables, scrollbars, and splitter affordances to make the entire application feel more cohesive and premium
+- Refined: **Settings, cleanup, duplicate, and support dialogs** — introduced a consistent dialog-header pattern, normalized action emphasis, simplified status messaging, and improved review-first affordances across AI settings, advanced settings, cleanup tools, duplicate tools, protected paths, theme picker, and utility dialogs
+- Fixed: **Stale version and trust surfaces** — the app window title, sidebar branding, launch/bootstrap metadata, and docs now all reflect the current release instead of showing outdated `v8.0.0` references
+
 ## [v8.9.0]
 
 - Fixed: **`.cube`/`.3dl`/`.lut` extension mapping** — previously routed to `Premiere Pro - LUTs & Color`; corrected to `Color Grading & LUTs` since LUT files are app-agnostic (work in Resolve, FCPX, Premiere, Photoshop, etc.); confidence adjusted to 90/88
