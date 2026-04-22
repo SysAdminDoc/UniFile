@@ -27,6 +27,45 @@ def _safe_regex_match(pattern: str, value: str) -> bool:
     except re.error:
         return False
 
+def apply_rule_delta(base_rules: list, delta: dict | None) -> list:
+    """Merge a per-folder rule delta into the global rule set.
+
+    `delta` is the structure returned by `unifile.files.load_directory_rules`
+    (or `None` for no override). Semantics:
+
+      * `include` (optional): if present, acts as an allow-list — only
+        globally-defined rules whose `name` is in this list are kept.
+      * `exclude` (optional): drop globally-defined rules whose `name` is
+        in this list. Applied *after* `include`, so `exclude` beats
+        `include` on conflicts.
+      * `inline` (optional): appended to the result. Inline rules with a
+        `name` matching a (surviving) global rule replace it; others are
+        added fresh. Local inline rules always take precedence.
+
+    Returns a new list; never mutates `base_rules`.
+    """
+    if not delta:
+        return list(base_rules)
+
+    include = delta.get('include')
+    exclude = set(delta.get('exclude') or [])
+    inline = list(delta.get('inline') or [])
+
+    if include is not None:
+        allow = set(include)
+        survivors = [r for r in base_rules if r.get('name') in allow]
+    else:
+        survivors = list(base_rules)
+
+    survivors = [r for r in survivors if r.get('name') not in exclude]
+
+    # Inline rules replace globals by name
+    inline_names = {r.get('name') for r in inline if r.get('name')}
+    survivors = [r for r in survivors if r.get('name') not in inline_names]
+    survivors.extend(inline)
+    return survivors
+
+
 class RuleEngine:
     """User-defined classification rules with priority ordering."""
 
