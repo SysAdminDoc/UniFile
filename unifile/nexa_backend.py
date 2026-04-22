@@ -12,8 +12,8 @@ import os
 import re
 from pathlib import Path
 
-from unifile.config import _APP_DATA_DIR
 from unifile.categories import get_all_category_names
+from unifile.config import _APP_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ def is_nexa_available() -> bool:
     global _nexa_available
     if _nexa_available is None:
         try:
-            from nexa.gguf import NexaVLMInference, NexaTextInference
+            from nexa.gguf import NexaTextInference, NexaVLMInference  # noqa: F401  -- availability probe
             _nexa_available = True
         except ImportError:
             _nexa_available = False
@@ -118,7 +118,7 @@ def _init_models(settings: dict | None = None):
     if not is_nexa_available():
         raise RuntimeError("Nexa SDK not installed. Install with: pip install nexaai")
 
-    from nexa.gguf import NexaVLMInference, NexaTextInference
+    from nexa.gguf import NexaTextInference, NexaVLMInference
 
     s = settings or load_nexa_settings()
 

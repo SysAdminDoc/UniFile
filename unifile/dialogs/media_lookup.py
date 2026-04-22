@@ -5,24 +5,40 @@ Parses media filenames with guessit and lets users search, browse results,
 and apply metadata to tag library entries.
 """
 import logging
-import os
 from pathlib import Path
 
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QComboBox, QSplitter, QTextEdit, QFrame, QFileDialog, QMenu,
+    QAbstractItemView,
     QApplication,
+    QComboBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, pyqtSlot
-from PyQt6.QtGui import QPixmap, QImage
 
 from unifile.config import get_active_theme
 from unifile.media.providers import (
-    MediaType, MovieResult, EpisodeResult,
-    parse_media_filename, search_media,
-    tmdb_movie_details, omdb_details,
-    tvmaze_show_episodes, tvmaze_episode_lookup, tvmaze_show_details,
+    EpisodeResult,
+    MediaType,
+    MovieResult,
+    omdb_details,
+    parse_media_filename,
+    search_media,
+    tmdb_movie_details,
+    tvmaze_show_details,
+    tvmaze_show_episodes,
 )
 
 logger = logging.getLogger(__name__)

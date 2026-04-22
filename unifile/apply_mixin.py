@@ -4,9 +4,7 @@ import time
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QColor
 
-from unifile.cache import (
-    create_backup_snapshot, save_undo_log, append_csv_log
-)
+from unifile.cache import append_csv_log, create_backup_snapshot, save_undo_log
 from unifile.workers import ApplyAepWorker, ApplyCatWorker, ApplyFilesWorker
 
 

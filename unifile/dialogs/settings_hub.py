@@ -9,11 +9,16 @@ while giving users a single discoverable entry point for configuration.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QPushButton,
-    QTabWidget, QVBoxLayout, QWidget, QFrame,
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from unifile.config import get_active_stylesheet, get_active_theme

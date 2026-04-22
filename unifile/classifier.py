@@ -1,34 +1,33 @@
 """UniFile — Classification engine: extension, keyword, fuzzy, composition, tiered."""
-import os, re, math
-from pathlib import Path
+import os
+import re
 from collections import Counter
 
-from unifile.bootstrap import HAS_RAPIDFUZZ
 from unifile.archive_inference import aggregate_archive_names
+from unifile.bootstrap import HAS_RAPIDFUZZ
+
 try:
     from rapidfuzz import fuzz as _rfuzz
 except ImportError:
     _rfuzz = None
 
 from unifile.bootstrap import HAS_PSD_TOOLS
-from unifile.config import CONF_HIGH, CONF_MEDIUM, CONF_FUZZY_CAP, _APP_DATA_DIR
-from unifile.metadata import (
-    detect_envato_item_code, extract_prproj_metadata,
-    extract_psd_metadata, _envato_api_classify,
-)
-from unifile.cache import (
-    check_corrections, cache_lookup, cache_store, _preload_corrections,
-    _close_cache_conn, _init_cache_db
-)
 from unifile.categories import (
-    CATEGORIES, BUILTIN_CATEGORIES, get_all_categories, get_all_category_names,
-    _CategoryIndex, GENERIC_AEP_NAMES, is_generic_aep, _score_aep,
     TOPIC_CATEGORIES,
+    _CategoryIndex,
+    get_all_categories,
+)
+from unifile.config import _APP_DATA_DIR, CONF_FUZZY_CAP
+from unifile.metadata import (
+    _envato_api_classify,
+    detect_envato_item_code,
+    extract_prproj_metadata,
+    extract_psd_metadata,
 )
 from unifile.naming import (
-    _normalize, _beautify_name, _smart_name, _strip_source_name,
-    _is_id_only_folder, _has_non_latin, MARKETPLACE_PREFIXES,
-    _NORMALIZED_PREFIX_SET
+    _NORMALIZED_PREFIX_SET,
+    _normalize,
+    _strip_source_name,
 )
 
 # ── Keyword-based folder categorization ───────────────────────────────────────
@@ -1306,9 +1305,10 @@ def classify_by_archive(path: str) -> tuple:
     Peeks inside ZIP/TAR archives and classifies based on majority extension.
     Returns (category, confidence, cleaned_name) or (None, 0, cleaned_name).
     """
-    import zipfile, tarfile
-    from pathlib import Path as _Path
+    import tarfile
+    import zipfile
     from collections import Counter as _Counter
+    from pathlib import Path as _Path
 
     _path = _Path(path)
     suffix = _path.suffix.lower()
@@ -1327,7 +1327,7 @@ def classify_by_archive(path: str) -> tuple:
         elif suffix == '.gz' and not path.endswith('.tar.gz'):
             import gzip
             try:
-                with gzip.open(path, 'rb') as gf:
+                with gzip.open(path, 'rb'):
                     inner = _Path(path).stem
                     names = [inner]
             except Exception:

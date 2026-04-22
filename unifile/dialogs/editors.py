@@ -1,31 +1,44 @@
 """UniFile dialogs — Editor dialogs (Categories, Templates, Rules, File Browser)."""
-import os, re
+import os
+import re
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, QTableWidgetItem,
-    QCheckBox, QTextEdit, QHeaderView, QFileDialog, QAbstractItemView,
-    QDialog, QDialogButtonBox, QSpinBox,
-    QListWidget, QListWidgetItem, QInputDialog, QMessageBox, QFrame,
-    QTreeWidget, QTreeWidgetItem
-)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from unifile.config import (
-    get_active_theme, get_active_stylesheet
-)
-from unifile.categories import (
-    load_custom_categories
-)
-from unifile.files import (
-    _load_pc_categories, _save_pc_categories, _DEFAULT_PC_CATEGORIES,
-    import_classifier_config, export_classifier_config, merge_categories,
-)
-from unifile.engine import RuleEngine, RenameTemplateEngine
-from unifile.config import _APP_DATA_DIR
+from unifile.categories import load_custom_categories
+from unifile.config import _APP_DATA_DIR, get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
-
+from unifile.engine import RenameTemplateEngine, RuleEngine
+from unifile.files import (
+    _DEFAULT_PC_CATEGORIES,
+    _load_pc_categories,
+    _save_pc_categories,
+    export_classifier_config,
+    import_classifier_config,
+    merge_categories,
+)
 
 _PC_CATEGORIES_DB = os.path.join(_APP_DATA_DIR, 'pc_categories.json')
 

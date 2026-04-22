@@ -7,7 +7,10 @@ Usage:
     python -m unifile classify <path> [--json]     Headless classify one path.
     python -m unifile --version                    Print version + exit.
 """
-import os, sys, time, json
+import json
+import os
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -83,7 +86,7 @@ def _cmd_classify(args) -> int:
     # (no LLM) so headless runs are fast and deterministic.
     try:
         if os.path.isfile(target):
-            from unifile.files import _load_pc_categories, _build_ext_map, _classify_pc_item
+            from unifile.files import _build_ext_map, _classify_pc_item, _load_pc_categories
             cats = _load_pc_categories()
             ext_map = _build_ext_map(cats)
             category, confidence, method = _classify_pc_item(
@@ -172,8 +175,8 @@ def _write_scan_json(window, output_path: str) -> None:
 
 def main():
     """Launch the UniFile application or dispatch a CLI subcommand."""
-    from unifile.config import _APP_DATA_DIR
     from unifile import __version__
+    from unifile.config import _APP_DATA_DIR
 
     _CRASH_LOG = os.path.join(_APP_DATA_DIR, 'crash.log')
     _CRASH_LOG_MAX = 512 * 1024  # 500 KB
@@ -264,9 +267,10 @@ def main():
     # GUI path — install crash handler before touching Qt.
     sys.excepthook = _crash_handler
 
-    from PyQt6.QtWidgets import QApplication
-    from PyQt6.QtGui import QIcon
     from PyQt6.QtCore import QTimer
+    from PyQt6.QtGui import QIcon
+    from PyQt6.QtWidgets import QApplication
+
     from unifile.config import get_active_stylesheet
     from unifile.main_window import UniFile
     from unifile.plugins import ProfileManager

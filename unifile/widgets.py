@@ -1,27 +1,47 @@
 """UniFile — Custom Qt widgets: charts, flow layout, thumbnails, map, preview panel."""
-import os, re, json, math
-from pathlib import Path
+import json
+import os
+import subprocess
+import sys
 from datetime import datetime
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox, QCheckBox, QTextEdit,
-    QHeaderView, QFileDialog, QFrame, QScrollArea, QLayout, QLayoutItem,
-    QDialog, QDialogButtonBox, QSpinBox, QListWidget, QListWidgetItem,
-    QSplitter, QWidgetItem, QSystemTrayIcon,
+from PyQt6.QtCore import (
+    QFileSystemWatcher,
+    QObject,
+    QRect,
+    QRunnable,
+    QSize,
+    Qt,
+    QTimer,
+    pyqtSignal,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize, QRunnable, QThreadPool, QObject, QRect, QFileSystemWatcher
-from PyQt6.QtGui import QColor, QPixmap, QImage, QIcon
+from PyQt6.QtGui import QColor, QImage, QPixmap
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QListWidget,
+    QPushButton,
+    QSpinBox,
+    QSystemTrayIcon,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
-import sys, subprocess
-
-from unifile.config import _APP_DATA_DIR, DARK_STYLE, get_active_stylesheet, get_active_theme, append_watch_event
-from unifile.bootstrap import HAS_PILLOW
+from unifile.config import (
+    _APP_DATA_DIR,
+    append_watch_event,
+    get_active_stylesheet,
+    get_active_theme,
+)
 from unifile.metadata import ArchivePeeker
-try:
-    from PIL import Image as _PILImage
-except ImportError:
-    pass
+
+# PIL availability handled via HAS_PILLOW in bootstrap.py; no standalone probe needed here.
 
 class CategoryBarChart(QWidget):
     """Horizontal stacked bar chart showing file count per category."""
@@ -44,7 +64,7 @@ class CategoryBarChart(QWidget):
         self.update()
 
     def paintEvent(self, event):
-        from PyQt6.QtGui import QPainter, QBrush, QPen, QFont
+        from PyQt6.QtGui import QBrush, QFont, QPainter, QPen
         p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
         x = 0
@@ -567,7 +587,6 @@ class WatchModeManager:
         self._snapshots[folder] = new_snap
 
         disappeared = old_snap - new_snap
-        appeared = new_snap - old_snap
 
         if not disappeared:
             return

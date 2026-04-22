@@ -56,8 +56,6 @@ jobs:
           python-version: "3.12"
       - name: Install ruff
         run: pip install ruff
-      - name: Ruff check (report-only)
-        # Allowed to fail for now — the codebase is not yet ruff-clean.
-        # Switch to hard failure once the existing warnings are addressed.
-        continue-on-error: true
+      - name: Ruff check
+        # Hard failure: unifile/ and tests/ became clean in v9.3.6.
         run: ruff check unifile/ tests/

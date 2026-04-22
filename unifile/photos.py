@@ -1,12 +1,12 @@
 """UniFile — Photo library: face detection, geocoding, blur analysis, HEIC conversion."""
-import os, re, json, shutil, subprocess, sys, io, base64
+import base64
+import io
+import json
+import os
 from functools import lru_cache
-from pathlib import Path
 
-from unifile.bootstrap import (
-    HAS_PILLOW, HAS_PILLOW_HEIF, HAS_CV2, HAS_FACE_RECOGNITION,
-    HAS_REVERSE_GEOCODER
-)
+from unifile.bootstrap import HAS_CV2, HAS_FACE_RECOGNITION, HAS_PILLOW, HAS_PILLOW_HEIF, HAS_REVERSE_GEOCODER
+
 try:
     from PIL import Image as _PILImage
 except ImportError:
@@ -230,7 +230,7 @@ def _detect_faces_full(filepath: str, face_db: 'FaceDB') -> dict:
         persons = []
         pil_full = _PILImage.fromarray(img)
 
-        for loc, enc in zip(locations, encodings):
+        for loc, enc in zip(locations, encodings, strict=True):
             # Crop face thumbnail (96x96 JPEG, base64)
             top, right, bottom, left = loc
             pad = int((bottom - top) * 0.2)

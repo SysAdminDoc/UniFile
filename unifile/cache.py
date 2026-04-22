@@ -1,15 +1,23 @@
 """UniFile — Caching, corrections, undo log, and backup utilities."""
-import os, json, csv, hashlib, sqlite3, shutil, gzip, re, threading
+import csv
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 
+from unifile.bootstrap import HAS_RAPIDFUZZ
 from unifile.config import (
-    _APP_DATA_DIR, _UNDO_LOG_FILE, _UNDO_STACK_FILE, _CSV_LOG_FILE,
-    _LAST_CONFIG_FILE, _PROFILES_DIR, _CUSTOM_CATS_FILE, CONF_FUZZY_CAP,
+    _APP_DATA_DIR,
+    _CSV_LOG_FILE,
+    _UNDO_LOG_FILE,
+    _UNDO_STACK_FILE,
     register_sqlite_connection,
 )
 
-from unifile.bootstrap import HAS_RAPIDFUZZ
 try:
     from rapidfuzz import fuzz as _rfuzz
 except ImportError:

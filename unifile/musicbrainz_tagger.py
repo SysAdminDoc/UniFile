@@ -4,11 +4,20 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QDialog, QHBoxLayout, QHeaderView, QInputDialog,
-    QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QAbstractItemView,
+    QDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
 )
 
-from unifile.config import get_active_theme, get_active_stylesheet, _APP_DATA_DIR
+from unifile.config import _APP_DATA_DIR, get_active_stylesheet, get_active_theme
 
 # ── AcoustID API key management ───────────────────────────────────────────────
 # Users must register their own key at https://acoustid.org/applications
@@ -35,12 +44,12 @@ def _save_acoustid_key(key: str) -> None:
 _HAS_ACOUSTID = False
 _HAS_MBZ = False
 try:
-    import acoustid          # noqa: F401
+    import acoustid  # noqa: F401
     _HAS_ACOUSTID = True
 except ImportError:
     pass
 try:
-    import musicbrainzngs    # noqa: F401
+    import musicbrainzngs  # noqa: F401
     _HAS_MBZ = True
 except ImportError:
     pass

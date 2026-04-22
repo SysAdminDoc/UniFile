@@ -1,6 +1,7 @@
 """Tests for the engine module (CategoryBalancer, RuleEngine)."""
-import pytest
 from datetime import datetime
+
+import pytest
 
 from unifile.engine import CategoryBalancer, RuleEngine, _parse_naive_dt, _safe_regex_match
 

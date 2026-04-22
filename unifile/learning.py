@@ -1,7 +1,7 @@
 """UniFile -- Adaptive Learning engine for classification improvements."""
+import json
 import os
 import re
-import json
 import threading
 from collections import Counter, defaultdict
 from datetime import datetime

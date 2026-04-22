@@ -1,7 +1,7 @@
 """Tests for UniFile data model classes."""
 import pytest
 
-from unifile.models import RenameItem, CategorizeItem, FileItem
+from unifile.models import CategorizeItem, FileItem, RenameItem
 
 
 class TestRenameItem:

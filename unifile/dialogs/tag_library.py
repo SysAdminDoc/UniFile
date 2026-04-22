@@ -1,17 +1,34 @@
 """UniFile — Tag Library Panel (inline stacked widget page)."""
 import os
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QComboBox, QMenu, QInputDialog, QFileDialog, QTreeWidget, QTreeWidgetItem,
-    QSplitter, QTextEdit, QCheckBox, QFrame, QScrollArea, QGridLayout
-)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
-from PyQt6.QtGui import QColor, QAction, QPixmap, QImage
 
-from unifile.config import get_active_theme, _APP_DATA_DIR
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from unifile.config import get_active_theme
 from unifile.tagging.library import TagLibrary
-from unifile.tagging.models import Tag, Entry, TAG_COLORS
+from unifile.tagging.models import TAG_COLORS
 
 
 class TagLibraryPanel(QWidget):
