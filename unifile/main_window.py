@@ -94,6 +94,7 @@ from unifile.dialogs.tag_library import TagLibraryPanel
 from unifile.duplicates import ConflictResolver
 from unifile.engine import EventGrouper, RenameTemplateEngine, RuleEngine
 from unifile.files import _load_pc_categories, _save_pc_categories
+from unifile.filter_mixin import FilterMixin
 from unifile.learning import get_learner
 from unifile.metadata import MetadataExtractor, _load_envato_api_key, _save_envato_api_key
 from unifile.models import FileItem
@@ -126,7 +127,7 @@ from unifile.workers import (
 )
 
 
-class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, QMainWindow):
+class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin, QMainWindow):
     OP_AEP   = 0
     OP_CAT   = 1
     OP_SMART = 2   # Categorize + rename from project files (combined)
@@ -1996,79 +1997,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, QMainWindow):
     # ═══ UNDO ════════════════════════════════════════════════════════════════
     # `_on_undo` moved to unifile.undo_mixin.UndoMixin in v9.3.7
 
-    # ═══ FILTER / SEARCH ════════════════════════════════════════════════════
-    def _populate_face_filter(self):
-        """Populate the face filter dropdown from scanned file metadata."""
-        self.cmb_face_filter.blockSignals(True)
-        self.cmb_face_filter.clear()
-        self.cmb_face_filter.addItem("All Persons")
-        persons = set()
-        for it in self.file_items:
-            for p in it.metadata.get('_photo_face_persons', []):
-                persons.add(p)
-        for p in sorted(persons):
-            self.cmb_face_filter.addItem(p)
-        self.cmb_face_filter.blockSignals(False)
-        # Show only in files mode when faces were detected
-        self.cmb_face_filter.setVisible(
-            self.cmb_op.currentIndex() == self.OP_FILES and len(persons) > 0)
-
-    def _apply_filter(self):
-        text = self.txt_search.text().lower()
-        face = self.cmb_face_filter.currentText() if self.cmb_face_filter.isVisible() else "All Persons"
-        for row in range(self.tbl.rowCount()):
-            # Check if any cell in the row contains the search text
-            show = True
-            if text:
-                show = False
-                for col in range(self.tbl.columnCount()):
-                    item = self.tbl.item(row, col)
-                    if item and text in item.text().lower():
-                        show = True; break
-            # Face filter (PC Files mode only)
-            if show and face != "All Persons" and self.cmb_op.currentIndex() == self.OP_FILES:
-                if row < len(self.file_items):
-                    it = self.file_items[row]
-                    persons = it.metadata.get('_photo_face_persons', [])
-                    if face not in persons:
-                        show = False
-            self.tbl.setRowHidden(row, not show)
-
-    # ═══ CONFIDENCE THRESHOLD ════════════════════════════════════════════════
-    def _on_conf_changed(self, val):
-        self.lbl_conf.setText(f"{val}%")
-        op = self.cmb_op.currentIndex()
-        if op in (self.OP_CAT, self.OP_SMART):
-            items = self.cat_items
-        elif op == self.OP_FILES:
-            items = [it for it in self.file_items if not it.is_duplicate]
-        else:
-            return
-        # Build reverse map: item list index → visual row (sort-safe)
-        all_items = self._items()
-        visual_map = {}
-        for r in range(self.tbl.rowCount()):
-            visual_map[self._item_idx_from_row(r)] = r
-        # Auto-deselect items below threshold
-        for it in items:
-            should_select = it.confidence >= val
-            if it.selected != should_select:
-                it.selected = should_select
-                # Find the item's list index
-                try:
-                    list_idx = all_items.index(it)
-                except ValueError:
-                    continue
-                visual_row = visual_map.get(list_idx)
-                if visual_row is not None:
-                    cb = self.tbl.cellWidget(visual_row, 0)
-                    if cb:
-                        cb_inner = cb.findChild(QCheckBox)
-                        if cb_inner:
-                            cb_inner.blockSignals(True)
-                            cb_inner.setChecked(should_select)
-                            cb_inner.blockSignals(False)
-        self._upd_stats()
+    # Filter/search slots moved to unifile.filter_mixin.FilterMixin in v9.3.9
 
     # ═══ OPERATION SWITCH ════════════════════════════════════════════════════
     def _on_sidebar_nav(self, op_idx: int):

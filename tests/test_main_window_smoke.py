@@ -64,11 +64,12 @@ def test_mixins_in_mro(unifile_window):
     """Each mixin extracted from main_window.py must remain in the MRO.
     Guards against accidental removal during future refactors."""
     from unifile.apply_mixin import ApplyMixin
+    from unifile.filter_mixin import FilterMixin
     from unifile.scan_mixin import ScanMixin
     from unifile.theme_mixin import ThemeMixin
     from unifile.undo_mixin import UndoMixin
     mro = type(unifile_window).__mro__
-    for mixin in (ScanMixin, ApplyMixin, ThemeMixin, UndoMixin):
+    for mixin in (ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin):
         assert mixin in mro, f"{mixin.__name__} dropped from UniFile MRO"
 
 
@@ -78,6 +79,7 @@ def test_mixins_in_mro(unifile_window):
 @pytest.mark.parametrize("method_name", [
     "_on_scan", "_scan_aep", "_scan_cat", "_scan_files",      # ScanMixin
     "_on_undo",                                                # UndoMixin
+    "_apply_filter", "_populate_face_filter", "_on_conf_changed",  # FilterMixin
     "_show_empty_state", "_hide_empty_state",                  # main_window itself
 ])
 def test_method_resolves_on_composed_class(unifile_window, method_name):
