@@ -1,5 +1,6 @@
 """UniFile — Rule engine, event grouping, scheduling, rename templates."""
 import os, re, json, math, subprocess, sys
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 

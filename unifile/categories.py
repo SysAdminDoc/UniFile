@@ -5,10 +5,15 @@ from functools import lru_cache
 
 from unifile.config import _APP_DATA_DIR, _CUSTOM_CATS_FILE
 
-# Late import to avoid circular dependency
+# Late imports to avoid circular dependency with unifile.naming
 def _get_normalize():
     from unifile.naming import _normalize
     return _normalize
+
+
+def _get_asset_folder_names():
+    from unifile.naming import _ASSET_FOLDER_NAMES
+    return _ASSET_FOLDER_NAMES
 
 # ── Generic AEP names to exclude ──────────────────────────────────────────────
 GENERIC_AEP_NAMES = {
@@ -43,6 +48,8 @@ def _score_aep(aep_path, folder_path, folder_name):
       -10  per depth level beyond top
       -15  very short name (1-3 chars, likely abbreviations)
     """
+    _normalize = _get_normalize()
+    _ASSET_FOLDER_NAMES = _get_asset_folder_names()
     stem = aep_path.stem  # filename without .aep
     stem_lower = stem.strip().lower()
     stem_norm = _normalize(stem)

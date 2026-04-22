@@ -176,13 +176,18 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
             self._log(f"Dropped folder: {path}")
         # File drop — add to tag library if open, otherwise log
         if files:
-            stack_idx = self.content_stack.currentIndex()
-            if stack_idx == 3 and hasattr(self, 'tag_lib_panel'):
-                lib = self.tag_lib_panel._lib
-                if lib and lib.is_open:
-                    count = lib.add_entries_bulk(files)
-                    self.tag_lib_panel._refresh_entries()
-                    self._log(f"Added {count} file(s) to tag library via drag-and-drop")
+            stack_idx = self._content_stack.currentIndex() if hasattr(self, '_content_stack') else -1
+            tag_panel = getattr(self, '_tag_panel', None) or getattr(self, 'tag_lib_panel', None)
+            if stack_idx == 3 and tag_panel is not None:
+                lib = getattr(tag_panel, '_lib', None)
+                if lib is not None and getattr(lib, 'is_open', False):
+                    try:
+                        count = lib.add_entries_bulk(files)
+                        if hasattr(tag_panel, '_refresh_entries'):
+                            tag_panel._refresh_entries()
+                        self._log(f"Added {count} file(s) to tag library via drag-and-drop")
+                    except Exception as e:
+                        self._log(f"Failed to add files to tag library: {e}")
                     return
             self._log(f"Dropped {len(files)} file(s)")
 

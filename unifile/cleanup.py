@@ -44,6 +44,7 @@ def scan_empty_folders(root: str, *, ignore_hidden: bool = True,
     })
 
     results = []
+    empty_paths = set()  # set of normalized paths known to be empty (O(1) membership)
     # Walk bottom-up so we can detect recursively-empty trees
     for dirpath, dirnames, filenames in os.walk(root, topdown=False):
         if dirpath == root:
@@ -61,16 +62,15 @@ def scan_empty_folders(root: str, *, ignore_hidden: bool = True,
         has_non_empty_subdirs = False
         try:
             for entry in os.scandir(dirpath):
-                if entry.is_file(follow_symlinks=False):
+                if entry.is_file(follow_symlinks=False) or entry.is_symlink():
                     has_files = True
                     break
                 elif entry.is_dir(follow_symlinks=False):
-                    # Check if this subdir is in our results (i.e., already flagged empty)
-                    sub_path = entry.path
-                    if not any(r.path == sub_path for r in results):
+                    sub_norm = os.path.normcase(os.path.normpath(entry.path))
+                    if sub_norm not in empty_paths:
                         has_non_empty_subdirs = True
                         break
-        except PermissionError:
+        except (PermissionError, OSError):
             continue
 
         if not has_files and not has_non_empty_subdirs:
@@ -84,6 +84,7 @@ def scan_empty_folders(root: str, *, ignore_hidden: bool = True,
                 category="empty_folder", modified=mtime
             )
             results.append(item)
+            empty_paths.add(os.path.normcase(os.path.normpath(dirpath)))
             if progress_cb:
                 progress_cb(f"Empty: {dirpath}")
             if item_cb:

@@ -2,6 +2,40 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.0.1] — Deep hardening & correctness pass
+
+### Latent-import NameError bugs (would crash under rarely-hit code paths)
+- **`unifile/files.py`** — added missing `time`, `mimetypes` (`_mimetypes`), `HAS_RAPIDFUZZ`, and `_rfuzz` imports; previously the scan-cache write path (`time.time()`), MIME fallback detection (`_mimetypes.guess_type`), and fuzzy keyword signal (`_rfuzz.token_sort_ratio`) would `NameError` the first time they were exercised
+- **`unifile/workers.py`** — added missing `HAS_CV2`, `HAS_FACE_RECOGNITION` (from `bootstrap`), `_PHOTO_SCENES` (from `photos`), and `_extract_file_content` (from `metadata`) imports; vision-eligible, face-detection, and content-extraction code paths in `ScanFilesLLMWorker` would previously raise `NameError`
+- **`unifile/engine.py`** — imported `Counter` at module level; `EventGrouper.suggest_event_name()` was unusable
+- **`unifile/ollama.py`** — imported `_ASSET_FOLDER_NAMES` from `unifile.naming`; `ollama_classify_folder()` raised `NameError` when filtering asset subfolders
+- **`unifile/categories.py`** — `_score_aep()` referenced `_normalize` and `_ASSET_FOLDER_NAMES` directly; replaced with late-resolution helpers to break the circular import
+- **`unifile/dialogs/__init__.py`** — exported the previously-missing `CsvRulesDialog` so `main_window.py` loads cleanly
+- **`unifile/__main__.py`** — `--profile` CLI arg called `window._apply_profile()` (doesn't exist); now routes to `_apply_profile_config()`; `--auto-apply` polled `window._scan_worker` (wrong attribute) and only ever called `_apply_files`; now polls `window.worker` + `_scanning` flag, honors the active op mode, and adds a 30-minute deadline so a stuck scan can't pin the event loop forever; `import time` added
+
+### Correctness & data-safety
+- **`safe_merge_move()` backup collisions** — if `<dst>.bak` already existed from a prior aborted merge, `os.rename(dst, dst + '.bak')` raised on Windows and left the destination file gone. New `_unique_backup_path()` helper picks `.bak`, `.bak.1`, `.bak.2`… up to `.bak.<pid>`
+- **`safe_merge_move()` source==dest** — added an early guard so merging a directory into itself returns `(0, 0)` instead of potentially wiping data as the walker recurses into the growing destination
+- **`safe_merge_move()` duplicate-source cleanup** — `os.remove(src_file)` now wrapped in try/except; a read-only source no longer aborts the whole merge
+- **`ApplyAepWorker`** — replaced bare `os.rename()` (which fails across drives / volumes on Windows with `[WinError 17]`) with `shutil.move()`; same-path case (case-only rename) detected and short-circuited to "Done"; rollback path also uses `shutil.move()`; destination parent directory now created with `os.makedirs(..., exist_ok=True)` before move
+- **`config.is_protected()`** — rewrote:
+  - returns `False` for empty / invalid paths instead of crashing on `normpath('')`
+  - basename-only protection entries (e.g. `.git`, `node_modules`, `desktop.ini`) now also match when they appear as any parent segment of `path`, so `foo/.git/config` is correctly recognised as protected
+  - wraps `normpath` calls in try/except to handle exotic path inputs
+- **`PatternLearner.clear()`** — now holds `self._lock` during reset+save, matching `record_correction()`
+- **`get_learner()` singleton** — added double-checked locking so concurrent scan threads can't each construct a `PatternLearner`
+- **`SemanticIndex._ensure_db()`** — SQLite connection opens with `check_same_thread=False` so Qt worker threads don't get `ProgrammingError`; `close()` now clears `self._conn` so it can be safely re-opened
+- **`unifile/photos.py`** — `face_recognition` calls `quit()` (raises `SystemExit`) at import when `face_recognition_models` is missing; the except now catches `SystemExit` alongside `ImportError`, matching the pattern already used in `bootstrap.py`
+
+### UX / reliability
+- **Drag-and-drop crash** — `dropEvent()` referenced `self.content_stack` (doesn't exist; the attribute is `self._content_stack`) and `self.tag_lib_panel` (actually `self._tag_panel`). Any file drop at all would `AttributeError`. Fixed + wrapped in try/except for a user-facing error message
+- **`Ollama URL normalization`** — user-configured URLs with a trailing slash (`http://localhost:11434/`) are now normalised on load; prevents `//api/chat` double-slash requests that some proxies reject
+- **`IgnoreFilter.is_ignored()`** — the `is_dir` parameter was documented but never used; gitignore-style directory-only patterns (`build/`) now actually match directories
+- **`cleanup.scan_empty_folders()`** — O(n²) scan (`any(r.path == sub_path for r in results)` per directory entry) replaced with an O(1) `set` lookup; large directory trees now scan significantly faster. Also `(OSError)` added to the exception handler so disk errors don't silently abort the scan, and `is_symlink()` branches now correctly treat symlinks as non-empty
+
+### Developer experience & tests
+- New `tests/test_hardening.py` with 13 regression tests locking in the fixes above (backup collision avoidance, same-path merge guard, Ollama URL normalization, is_protected basename-in-parent, module-level imports, EventGrouper Counter, etc.)
+
 ## [v9.0.0] — Engineering hardening pass
 
 ### Bug fixes

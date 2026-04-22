@@ -17,11 +17,13 @@ from unifile.categories import (
     get_all_categories, get_all_category_names, is_generic_aep, _score_aep
 )
 from unifile.naming import _normalize, _beautify_name, _smart_name, _ASSET_FOLDER_NAMES
-from unifile.bootstrap import HAS_RAPIDFUZZ, HAS_PSD_TOOLS
+from unifile.bootstrap import (
+    HAS_RAPIDFUZZ, HAS_PSD_TOOLS, HAS_CV2, HAS_FACE_RECOGNITION,
+)
 from unifile.classifier import (
     categorize_folder, classify_by_extensions, tiered_classify
 )
-from unifile.metadata import extract_folder_metadata
+from unifile.metadata import extract_folder_metadata, _extract_file_content
 from unifile.ollama import (
     ollama_classify_folder, ollama_classify_batch, load_ollama_settings, save_ollama_settings,
     _find_ollama_binary, _is_ollama_server_running, _ollama_has_model,
@@ -30,7 +32,8 @@ from unifile.ollama import (
 )
 from unifile.photos import (
     load_photo_settings, _detect_faces_full, _detect_faces_count_only,
-    _reverse_geocode, _compute_blur_score, FaceDB, _convert_image_to_jpg
+    _reverse_geocode, _compute_blur_score, FaceDB, _convert_image_to_jpg,
+    _PHOTO_SCENES,
 )
 from unifile.duplicates import ProgressiveDuplicateDetector, ConflictResolver
 from unifile.nexa_backend import (
@@ -87,11 +90,34 @@ def _ai_classify_folder(folder_name: str, folder_path: str = None,
 
 
 # ── Safe merge (standalone for use in workers) ─────────────────────────────────
+def _unique_backup_path(base: str) -> str:
+    """Return a .bak path that does not already exist (avoid os.rename collision)."""
+    candidate = base + '.bak'
+    if not os.path.exists(candidate):
+        return candidate
+    for i in range(1, 1000):
+        candidate = f"{base}.bak.{i}"
+        if not os.path.exists(candidate):
+            return candidate
+    # Last resort: PID-qualified name
+    return f"{base}.bak.{os.getpid()}"
+
+
 def safe_merge_move(src, dst, log_cb=None, check_hashes=False):
     """Move src into dst, merging contents. Only overwrites duplicate files.
     Preserves all unique files in both src and dst. Never deletes data.
     If check_hashes=True, skips identical files instead of overwriting."""
     merged = 0; skipped = 0
+    # Guard against merging a folder into itself (would cause data loss)
+    try:
+        src_real = os.path.realpath(src)
+        dst_real = os.path.realpath(dst)
+        if os.path.normcase(src_real) == os.path.normcase(dst_real):
+            if log_cb:
+                log_cb("    Skipped merge: source and destination are the same path")
+            return (0, 0)
+    except OSError:
+        pass
     for dirpath, dirnames, filenames in os.walk(src):
         rel = os.path.relpath(dirpath, src)
         dest_dir = os.path.join(dst, rel) if rel != '.' else dst
@@ -107,19 +133,31 @@ def safe_merge_move(src, dst, log_cb=None, check_hashes=False):
                         if log_cb:
                             log_cb(f"    Skipped (identical): {os.path.relpath(src_file, src)}")
                         skipped += 1
-                        os.remove(src_file)  # Remove source since dest is identical
+                        try:
+                            os.remove(src_file)  # Remove source since dest is identical
+                        except OSError as rm_exc:
+                            if log_cb:
+                                log_cb(f"    Warning: could not remove duplicate source: {rm_exc}")
                         continue
                 # Atomically swap out existing destination before overwriting
-                bak_file = dst_file + '.bak'
+                bak_file = _unique_backup_path(dst_file)
                 os.rename(dst_file, bak_file)
                 merged += 1
                 try:
                     if log_cb:
                         log_cb(f"    Moving: {os.path.relpath(src_file, src)}")
                     shutil.move(src_file, dst_file)
-                    os.remove(bak_file)
+                    try:
+                        os.remove(bak_file)
+                    except OSError:
+                        pass  # Backup removal failure is non-fatal
                 except Exception:
-                    os.rename(bak_file, dst_file)  # restore original on failure
+                    # Restore original on failure, best effort
+                    try:
+                        if not os.path.exists(dst_file):
+                            os.rename(bak_file, dst_file)
+                    except Exception:
+                        pass
                     raise
                 continue
             if log_cb:
@@ -1183,12 +1221,21 @@ class ApplyAepWorker(QThread):
             try:
                 if not self.dry_run:
                     d = it.full_new_path
+                    # Guard against same-path rename (case-only changes on Windows) —
+                    # os.rename/shutil.move treat them as no-ops or errors silently.
+                    src_norm = os.path.normcase(os.path.normpath(it.full_current_path))
+                    dst_norm = os.path.normcase(os.path.normpath(d))
+                    if src_norm == dst_norm:
+                        self.log.emit(f"  Skipped (same path): {it.current_name}")
+                        self.item_done.emit(ri, "Done"); ok += 1; continue
                     if os.path.exists(d):
                         merged, skipped = safe_merge_move(it.full_current_path, d,
                             log_cb=self.log.emit, check_hashes=self.check_hashes)
                         self.log.emit(f"  Merged ({merged} replaced, {skipped} identical skipped)")
                     else:
-                        os.rename(it.full_current_path, d)
+                        os.makedirs(os.path.dirname(d), exist_ok=True)
+                        # shutil.move handles cross-drive moves; os.rename does not on Windows
+                        shutil.move(it.full_current_path, d)
                 ok += 1
                 undo_ops.append({'type': 'rename', 'src': it.full_new_path, 'dst': it.full_current_path,
                     'timestamp': ts, 'category': '', 'confidence': '', 'status': 'Done'})
@@ -1197,10 +1244,10 @@ class ApplyAepWorker(QThread):
             except Exception as e:
                 err += 1
                 self.log.emit(f"  \u274C Error: {e}")
-                # Attempt atomic rollback
+                # Attempt atomic rollback (only safe if it was a plain rename, not a merge)
                 if not self.dry_run and os.path.exists(it.full_new_path) and not os.path.exists(it.full_current_path):
                     try:
-                        os.rename(it.full_new_path, it.full_current_path)
+                        shutil.move(it.full_new_path, it.full_current_path)
                         self.log.emit(f"  Rolled back to original location")
                     except Exception:
                         pass

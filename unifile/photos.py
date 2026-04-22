@@ -18,8 +18,10 @@ except ImportError:
 try:
     import face_recognition as _face_recognition
     import numpy as _np
-except ImportError:
-    pass
+except (ImportError, SystemExit):
+    # face_recognition calls quit() (SystemExit) at import time when
+    # face_recognition_models is missing. Keep the app running.
+    _face_recognition = None
 try:
     import reverse_geocoder as _rg
 except ImportError:

@@ -1,5 +1,5 @@
 """UniFile — Application entry point."""
-import os, sys
+import os, sys, time
 from datetime import datetime
 from pathlib import Path
 from PyQt6.QtGui import QIcon
@@ -95,8 +95,18 @@ def main():
         try:
             profile = ProfileManager.load(args.profile)
             if profile:
-                window._apply_profile(profile)
-                window._log(f"Loaded profile: {args.profile}")
+                # Profile is a scan-config dict; main window expects
+                # _apply_profile_config, not _apply_profile.
+                apply_cfg = getattr(window, '_apply_profile_config', None)
+                if apply_cfg is None:
+                    apply_cfg = getattr(window, '_apply_profile', None)
+                if apply_cfg is not None:
+                    apply_cfg(profile)
+                    window._log(f"Loaded profile: {args.profile}")
+                else:
+                    window._log(f"Profile loader unavailable — ignoring '{args.profile}'")
+        except FileNotFoundError:
+            window._log(f"Profile not found: {args.profile}")
         except Exception as e:
             window._log(f"Failed to load profile '{args.profile}': {e}")
     window.show()
@@ -110,9 +120,26 @@ def main():
     elif args.profile and args.auto_apply:
         def _auto_scan_apply():
             window._on_scan()
+            _deadline = [time.time() + 30 * 60]  # 30-minute safety ceiling
             def _check_and_apply():
-                if not hasattr(window, '_scan_worker') or window._scan_worker is None:
-                    window._apply_files(dry_run=args.dry_run)
+                # Bail out if scan has exceeded deadline (prevents infinite polling on stuck scans)
+                if time.time() > _deadline[0]:
+                    window._log("Auto-apply aborted: scan exceeded 30 minute deadline")
+                    return
+                scan_worker = getattr(window, 'worker', None)
+                still_scanning = (
+                    getattr(window, '_scanning', False)
+                    or (scan_worker is not None and scan_worker.isRunning())
+                )
+                if not still_scanning:
+                    # Route to the correct apply based on the active op mode
+                    op_idx = window.cmb_op.currentIndex()
+                    if op_idx == UniFile.OP_FILES:
+                        window._apply_files(dry_run=args.dry_run)
+                    elif op_idx in (UniFile.OP_CAT, UniFile.OP_SMART):
+                        window._apply_cat()
+                    else:
+                        window._apply_aep(dry_run=args.dry_run)
                 else:
                     QTimer.singleShot(500, _check_and_apply)
             QTimer.singleShot(1000, _check_and_apply)

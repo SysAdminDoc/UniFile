@@ -21,7 +21,7 @@ except ImportError:
     _rfuzz = None
 from unifile.naming import (
     _is_id_only_folder, _extract_name_hints, _smart_name,
-    _is_generic_name, _normalize, _beautify_name
+    _is_generic_name, _normalize, _beautify_name, _ASSET_FOLDER_NAMES
 )
 
 _OLLAMA_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'ollama_settings.json')
@@ -44,13 +44,22 @@ _OLLAMA_DEFAULTS = {
     'convert_webp_to_jpg': True,
 }
 
+def _normalize_ollama_url(url: str) -> str:
+    """Strip trailing slashes — all API paths assume no trailing slash on the base URL."""
+    if not url:
+        return 'http://localhost:11434'
+    return url.rstrip('/').strip() or 'http://localhost:11434'
+
+
 def load_ollama_settings() -> dict:
     try:
         with open(_OLLAMA_SETTINGS_FILE, 'r') as f:
             s = json.load(f)
-        return {**_OLLAMA_DEFAULTS, **s}
+        merged = {**_OLLAMA_DEFAULTS, **s}
     except (FileNotFoundError, OSError, json.JSONDecodeError):
-        return dict(_OLLAMA_DEFAULTS)
+        merged = dict(_OLLAMA_DEFAULTS)
+    merged['url'] = _normalize_ollama_url(merged.get('url', ''))
+    return merged
 
 def save_ollama_settings(settings: dict):
     try:

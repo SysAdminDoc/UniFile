@@ -1,9 +1,10 @@
 """UniFile — PC file classification, scan cache, MIME detection, filename intelligence."""
-import os, re, json, sqlite3
+import os, re, json, sqlite3, time
+import mimetypes as _mimetypes
 from pathlib import Path
 from datetime import datetime
 
-from unifile.bootstrap import HAS_PILLOW, HAS_MAGIC
+from unifile.bootstrap import HAS_PILLOW, HAS_MAGIC, HAS_RAPIDFUZZ
 try:
     from PIL import Image as _PILImage
 except ImportError:
@@ -12,6 +13,10 @@ try:
     import magic as _magic
 except ImportError:
     pass
+try:
+    from rapidfuzz import fuzz as _rfuzz
+except ImportError:
+    _rfuzz = None
 
 from unifile.config import _APP_DATA_DIR, _PC_SCAN_CACHE_DB
 

@@ -41,10 +41,13 @@ class SemanticIndex:
         self._available = None
 
     def _ensure_db(self):
-        """Create/open the embedding database."""
+        """Create/open the embedding database. Uses check_same_thread=False
+        so the connection can be shared between the UI thread and workers —
+        callers are responsible for serializing writes."""
         if self._conn is not None:
             return
-        self._conn = sqlite3.connect(_EMBED_DB)
+        os.makedirs(os.path.dirname(_EMBED_DB), exist_ok=True)
+        self._conn = sqlite3.connect(_EMBED_DB, check_same_thread=False, timeout=10)
         self._conn.execute('PRAGMA journal_mode=WAL')
         self._conn.execute('''CREATE TABLE IF NOT EXISTS embeddings (
             id TEXT PRIMARY KEY,
@@ -217,5 +220,9 @@ class SemanticIndex:
     def close(self):
         """Close the database connection."""
         if self._conn:
-            self._conn.close()
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
             self._conn = None
