@@ -1,7 +1,7 @@
 """UniFile — Dependency bootstrap and optional imports."""
 
 #!/usr/bin/env python3
-"""UniFile v9.3.0 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
+"""UniFile v9.3.1 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
 
 import sys, os, subprocess, re, shutil, json, csv, hashlib, gzip, sqlite3, time, math, base64, io
 import importlib.util
