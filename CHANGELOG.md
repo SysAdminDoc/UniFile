@@ -2,6 +2,65 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.7] — pytest-qt smoke suite + first mixin extraction; one real bug caught
+
+### Architecture — UndoMixin extracted
+`main_window.py` was 4121 lines. The continuation plan called for
+extracting self-contained methods into dedicated mixins, starting with
+`_on_undo` (~40 lines, few shared attrs — just `self.btn_undo` and
+`self._log`). New module:
+
+- `unifile/undo_mixin.py` — `UndoMixin` class with `_on_undo`. Moves the
+  orphaned `shutil` / `_save_undo_stack` / `UndoBatchDialog` imports with
+  it and leaves a one-line comment pointer in `main_window.py`.
+- `UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, QMainWindow)` —
+  mixin order preserved so `QMainWindow` stays at the end of the MRO.
+- `main_window.py` shrank by 43 lines.
+
+### Tests — smoke suite via pytest-qt
+New `tests/test_main_window_smoke.py` (11 tests, all `@pytest.mark.slow`):
+
+- Instantiates the full `UniFile` window with `QT_QPA_PLATFORM=offscreen`
+  — catches any regression where `__init__` can't complete end-to-end.
+- Asserts each extracted mixin (`ScanMixin`, `ApplyMixin`, `ThemeMixin`,
+  `UndoMixin`) stays in the MRO. Protects future refactors from silently
+  dropping a base.
+- Parametrizes the seven most-called methods (`_on_scan`, `_scan_aep`,
+  `_scan_cat`, `_scan_files`, `_on_undo`, `_show_empty_state`,
+  `_hide_empty_state`) and confirms each resolves on the composed class.
+- Round-trips the empty-state overlay with the v9.3.5 recovery-action
+  kwargs, including the click handler.
+- Exercises the undo no-op path with `_load_undo_stack` monkeypatched to
+  return `[]`.
+- Skips cleanly if `pytest-qt` isn't installed (it's now in the `dev`
+  extra).
+
+### Bug fix — caught by the new smoke test on first run
+`unifile/dialogs/cleanup.py:624` referenced `self.lbl_progress` inside
+`CleanupPanel._build_ui` but never created the widget. Every UniFile
+startup therefore tried to instantiate `CleanupPanel` → raised
+`AttributeError: 'CleanupPanel' object has no attribute 'lbl_progress'`.
+The dialog was reachable only via the Cleanup menu entry, so it didn't
+surface in headless test runs or in the minimal pytest-qt fixture
+before v9.3.7. Added the missing `self.lbl_progress = QLabel("")`
+definition above its first use.
+
+### Dev deps
+- `pyproject.toml` — added `pytest-qt>=4` to the `dev` optional
+  dependencies so `pip install .[dev]` now wires the smoke tests.
+
+### Impact
+| Metric | Before | After |
+|--------|--------|-------|
+| `main_window.py` lines | 4121 | 4078 |
+| Extracted mixins | 3 | 4 |
+| Tests | 308 | 319 |
+| Smoke-test suite | — | 11 `@slow` tests |
+| Bugs caught by new suite | — | 1 (CleanupPanel AttributeError) |
+
+pyflakes undefined-name set still empty; ruff still 0 violations across
+both `unifile/` and `tests/`.
+
 ## [v9.3.6] — Ruff-clean across the codebase; CI flips to hard-fail
 
 ### Cleanup — 379 → 0 ruff violations
