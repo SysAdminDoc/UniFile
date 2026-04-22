@@ -342,6 +342,11 @@ class OllamaSettingsDialog(QDialog):
         row_btns.addWidget(btn_cancel)
         layout.addLayout(row_btns)
 
+        # Tab order + initial focus: users almost always edit the URL or
+        # pick a model; start on URL so they can type immediately.
+        self.setTabOrder(self.txt_url, self.lst_models)
+        self.txt_url.setFocus()
+
     def _on_model_selected(self, item):
         if item is None:
             return
@@ -616,6 +621,19 @@ class PhotoSettingsDialog(QDialog):
         layout.addWidget(btn_box)
 
         self._on_toggle(self.chk_enabled.isChecked())
+
+        # Tab order: master toggle drives everything; pin the sequence
+        # explicitly so it survives layout refactors.
+        self.setTabOrder(self.chk_enabled, self.cmb_preset)
+        self.setTabOrder(self.cmb_preset, self.chk_geocoding)
+        self.setTabOrder(self.chk_geocoding, self.chk_blur)
+        self.setTabOrder(self.chk_blur, self.spn_blur)
+        self.setTabOrder(self.spn_blur, self.chk_scene)
+        self.setTabOrder(self.chk_scene, self.chk_face)
+        self.setTabOrder(self.chk_face, self.btn_face_mgr)
+        self.setTabOrder(self.btn_face_mgr, self.chk_enhanced)
+        self.setTabOrder(self.chk_enhanced, btn_box)
+        self.chk_enabled.setFocus()
 
     def _on_toggle(self, checked):
         for w in (self.cmb_preset, self.chk_geocoding, self.chk_blur,

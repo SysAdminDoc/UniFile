@@ -135,6 +135,20 @@ class ProtectedPathsDialog(QDialog):
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
 
+        # Tab order: master toggle → custom list → actions → dialog buttons.
+        # Qt's default is creation-order and matches visual order here, but
+        # pinning it explicitly guards against future widget reorderings.
+        self.setTabOrder(self.chk_enabled, self.list_custom)
+        self.setTabOrder(self.list_custom, self.btn_add_folder)
+        self.setTabOrder(self.btn_add_folder, self.btn_add_file)
+        self.setTabOrder(self.btn_add_file, self.btn_add_pattern)
+        self.setTabOrder(self.btn_add_pattern, self.btn_remove)
+        self.setTabOrder(self.btn_remove, bb)
+
+        # Initial focus on the master toggle — the user can spacebar-lock
+        # protection without mousing before touching anything else.
+        self.chk_enabled.setFocus()
+
     def _load(self):
         data = load_protected_paths()
         self.chk_enabled.setChecked(data['enabled'])
