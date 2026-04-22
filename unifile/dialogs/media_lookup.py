@@ -120,44 +120,42 @@ class MediaLookupPanel(QWidget):
         self._build_ui()
 
     def _build_ui(self):
-        _t = get_active_theme()
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
+        lay.setContentsMargins(16, 16, 16, 16)
+        lay.setSpacing(12)
 
         # ── Header ────────────────────────────────────────────────────────
-        header = QWidget()
-        header.setFixedHeight(64)
-        header.setStyleSheet(f"background: {_t['bg_alt']}; border-bottom: 1px solid {_t['btn_bg']};")
-        h_lay = QHBoxLayout(header)
-        h_lay.setContentsMargins(16, 0, 16, 0)
+        self.header = QFrame()
+        self.header.setProperty("class", "card")
+        h_lay = QHBoxLayout(self.header)
+        h_lay.setContentsMargins(18, 16, 18, 16)
+        h_lay.setSpacing(16)
 
         header_copy = QVBoxLayout()
-        header_copy.setSpacing(1)
-        lbl_title = QLabel("Media Lookup")
-        lbl_title.setStyleSheet(
-            f"color: {_t['fg_bright']}; font-size: 14px; font-weight: 700; background: transparent;")
-        header_copy.addWidget(lbl_title)
-        lbl_subtitle = QLabel("Search TMDb, OMDb, and TVMaze, then send cleaned metadata straight into your library.")
-        lbl_subtitle.setStyleSheet(
-            f"color: {_t['muted']}; font-size: 11px; background: transparent;"
+        header_copy.setSpacing(4)
+        self.lbl_header_kicker = QLabel("METADATA LOOKUP")
+        header_copy.addWidget(self.lbl_header_kicker)
+        self.lbl_header_title = QLabel("Media Lookup")
+        header_copy.addWidget(self.lbl_header_title)
+        self.lbl_header_subtitle = QLabel(
+            "Search TMDb, OMDb, and TVMaze, then review a richer detail card before sending metadata into your library."
         )
-        header_copy.addWidget(lbl_subtitle)
+        self.lbl_header_subtitle.setWordWrap(True)
+        header_copy.addWidget(self.lbl_header_subtitle)
         h_lay.addLayout(header_copy)
         h_lay.addStretch()
 
         self.lbl_status = QLabel("")
-        self.lbl_status.setStyleSheet(
-            f"color: {_t['muted']}; font-size: 11px; background: transparent;")
+        self.lbl_status.setMinimumWidth(220)
+        self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         h_lay.addWidget(self.lbl_status)
-        lay.addWidget(header)
+        lay.addWidget(self.header)
 
         # ── Search Bar ────────────────────────────────────────────────────
-        search_bar = QWidget()
-        search_bar.setFixedHeight(44)
-        search_bar.setStyleSheet(f"background: {_t['bg']}; border-bottom: 1px solid {_t['btn_bg']};")
-        sb_lay = QHBoxLayout(search_bar)
-        sb_lay.setContentsMargins(16, 6, 16, 6)
+        self.search_bar = QFrame()
+        self.search_bar.setProperty("class", "card")
+        sb_lay = QHBoxLayout(self.search_bar)
+        sb_lay.setContentsMargins(16, 12, 16, 12)
         sb_lay.setSpacing(8)
 
         self.cmb_type = QComboBox()
@@ -178,40 +176,34 @@ class MediaLookupPanel(QWidget):
         self.txt_year.setFixedHeight(28)
         sb_lay.addWidget(self.txt_year)
 
-        btn_search = QPushButton("Search")
-        btn_search.setFixedHeight(28)
-        btn_search.setStyleSheet(
-            f"QPushButton {{ background: {_t['accent']}; color: #fff; border: none; "
-            f"border-radius: 4px; padding: 4px 16px; font-size: 11px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background: {_t['accent_hover']}; }}")
-        btn_search.clicked.connect(self._on_search)
-        sb_lay.addWidget(btn_search)
+        self.btn_search = QPushButton("Search")
+        self.btn_search.setProperty("class", "primary")
+        self.btn_search.clicked.connect(self._on_search)
+        sb_lay.addWidget(self.btn_search)
 
-        btn_parse = QPushButton("Parse Filename")
-        btn_parse.setFixedHeight(28)
-        btn_parse.setToolTip("Parse a media filename to auto-fill search")
-        btn_parse.setStyleSheet(
-            f"QPushButton {{ background: {_t['green']}; color: #fff; border: none; "
-            f"border-radius: 4px; padding: 4px 12px; font-size: 11px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background: {_t['green_hover']}; }}")
-        btn_parse.clicked.connect(self._on_parse_filename)
-        sb_lay.addWidget(btn_parse)
+        self.btn_parse = QPushButton("Parse Filename")
+        self.btn_parse.setToolTip("Parse a media filename to auto-fill the search query")
+        self.btn_parse.setProperty("class", "success")
+        self.btn_parse.clicked.connect(self._on_parse_filename)
+        sb_lay.addWidget(self.btn_parse)
 
-        lay.addWidget(search_bar)
+        lay.addWidget(self.search_bar)
 
         # ── Main Content: Results (left) | Detail (right) ─────────────────
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # ── Left: Search Results ──────────────────────────────────────────
-        results_panel = QWidget()
-        rp_lay = QVBoxLayout(results_panel)
-        rp_lay.setContentsMargins(12, 8, 6, 8)
-        rp_lay.setSpacing(6)
+        self.results_panel = QFrame()
+        self.results_panel.setProperty("class", "card")
+        rp_lay = QVBoxLayout(self.results_panel)
+        rp_lay.setContentsMargins(16, 16, 16, 16)
+        rp_lay.setSpacing(8)
 
         self.lbl_results_title = QLabel("Results")
-        self.lbl_results_title.setStyleSheet(
-            f"color: {_t['fg_bright']}; font-size: 12px; font-weight: 600;")
         rp_lay.addWidget(self.lbl_results_title)
+        self.lbl_results_hint = QLabel("Search by title or parse a filename to load candidate matches from the connected providers.")
+        self.lbl_results_hint.setWordWrap(True)
+        rp_lay.addWidget(self.lbl_results_hint)
 
         self.tbl_results = QTableWidget()
         self.tbl_results.setColumnCount(4)
@@ -247,59 +239,53 @@ class MediaLookupPanel(QWidget):
         self.tbl_episodes.itemSelectionChanged.connect(self._on_episode_selected)
         rp_lay.addWidget(self.tbl_episodes, 1)
 
-        splitter.addWidget(results_panel)
+        splitter.addWidget(self.results_panel)
 
         # ── Right: Detail Panel ───────────────────────────────────────────
-        detail_panel = QWidget()
-        dp_lay = QVBoxLayout(detail_panel)
-        dp_lay.setContentsMargins(6, 8, 12, 8)
-        dp_lay.setSpacing(8)
+        self.detail_panel = QFrame()
+        self.detail_panel.setProperty("class", "card")
+        dp_lay = QVBoxLayout(self.detail_panel)
+        dp_lay.setContentsMargins(16, 16, 16, 16)
+        dp_lay.setSpacing(10)
+
+        self.lbl_detail_section = QLabel("Selected metadata")
+        dp_lay.addWidget(self.lbl_detail_section)
+        self.lbl_detail_hint = QLabel("Pick a result to load synopsis, genres, artwork, and IDs before applying anything.")
+        self.lbl_detail_hint.setWordWrap(True)
+        dp_lay.addWidget(self.lbl_detail_hint)
 
         # Poster
         self.lbl_poster = QLabel()
         self.lbl_poster.setFixedSize(200, 300)
         self.lbl_poster.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_poster.setStyleSheet(
-            f"background: {_t['bg_alt']}; border: 1px solid {_t['border']}; "
-            f"border-radius: 6px;")
         self.lbl_poster.setText("Select a result")
         dp_lay.addWidget(self.lbl_poster, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # Title
         self.lbl_detail_title = QLabel("No title selected")
         self.lbl_detail_title.setWordWrap(True)
-        self.lbl_detail_title.setStyleSheet(
-            f"color: {_t['fg_bright']}; font-size: 16px; font-weight: 700;")
         dp_lay.addWidget(self.lbl_detail_title)
 
         # Meta info line
         self.lbl_detail_meta = QLabel("")
         self.lbl_detail_meta.setWordWrap(True)
-        self.lbl_detail_meta.setStyleSheet(
-            f"color: {_t['accent']}; font-size: 12px; font-weight: 500;")
         dp_lay.addWidget(self.lbl_detail_meta)
 
         # Genres
         self.lbl_genres = QLabel("")
         self.lbl_genres.setWordWrap(True)
-        self.lbl_genres.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
         dp_lay.addWidget(self.lbl_genres)
 
         # Synopsis
         self.txt_synopsis = QTextEdit()
         self.txt_synopsis.setReadOnly(True)
         self.txt_synopsis.setMaximumHeight(160)
-        self.txt_synopsis.setStyleSheet(
-            f"QTextEdit {{ background: {_t['bg_alt']}; color: {_t['fg']}; "
-            f"border: 1px solid {_t['border']}; border-radius: 4px; padding: 8px; "
-            f"font-size: 12px; }}")
         self.txt_synopsis.setText("Pick a result to load synopsis, genres, artwork, and external IDs.")
         dp_lay.addWidget(self.txt_synopsis)
 
         # IDs
         self.lbl_ids = QLabel("")
         self.lbl_ids.setWordWrap(True)
-        self.lbl_ids.setStyleSheet(f"color: {_t['muted']}; font-size: 10px;")
         dp_lay.addWidget(self.lbl_ids)
 
         dp_lay.addStretch()
@@ -308,33 +294,27 @@ class MediaLookupPanel(QWidget):
         action_row = QHBoxLayout()
         action_row.setSpacing(8)
 
-        btn_apply_tags = QPushButton("Apply to Tag Library")
-        btn_apply_tags.setFixedHeight(32)
-        btn_apply_tags.setStyleSheet(
-            f"QPushButton {{ background: {_t['accent']}; color: #fff; border: none; "
-            f"border-radius: 4px; padding: 4px 16px; font-size: 12px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background: {_t['accent_hover']}; }}")
-        btn_apply_tags.clicked.connect(self._on_apply_to_tags)
-        action_row.addWidget(btn_apply_tags)
+        self.btn_apply_tags = QPushButton("Apply to Tag Library")
+        self.btn_apply_tags.setProperty("class", "primary")
+        self.btn_apply_tags.setEnabled(False)
+        self.btn_apply_tags.clicked.connect(self._on_apply_to_tags)
+        action_row.addWidget(self.btn_apply_tags)
 
-        btn_copy = QPushButton("Copy Metadata")
-        btn_copy.setFixedHeight(32)
-        btn_copy.setStyleSheet(
-            f"QPushButton {{ background: {_t['btn_bg']}; color: {_t['fg']}; "
-            f"border: 1px solid {_t['border']}; border-radius: 4px; padding: 4px 16px; "
-            f"font-size: 12px; }}"
-            f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
-        btn_copy.clicked.connect(self._on_copy_metadata)
-        action_row.addWidget(btn_copy)
+        self.btn_copy = QPushButton("Copy Metadata")
+        self.btn_copy.setProperty("class", "toolbar")
+        self.btn_copy.setEnabled(False)
+        self.btn_copy.clicked.connect(self._on_copy_metadata)
+        action_row.addWidget(self.btn_copy)
 
         action_row.addStretch()
         dp_lay.addLayout(action_row)
 
-        splitter.addWidget(detail_panel)
+        splitter.addWidget(self.detail_panel)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
 
         lay.addWidget(splitter, 1)
+        self.apply_theme()
 
     # ── Search ─────────────────────────────────────────────────────────────
 
@@ -347,11 +327,13 @@ class MediaLookupPanel(QWidget):
         media_type = MediaType.MOVIE if self.cmb_type.currentIndex() == 0 else MediaType.EPISODE
         year = self.txt_year.text().strip() or None
 
-        self.lbl_status.setText("Searching…")
+        self.lbl_status.setText("Searching connected providers…")
+        self.lbl_results_hint.setText("Reviewing TMDb, OMDb, and TVMaze for the best matches.")
         self.tbl_results.setRowCount(0)
         self.tbl_episodes.setRowCount(0)
         self.tbl_episodes.setVisible(False)
         self.lbl_episodes.setVisible(False)
+        self._clear_detail()
 
         self._worker = _SearchWorker(query, year or "", media_type)
         self._worker.results_ready.connect(self._on_search_results)
@@ -417,10 +399,16 @@ class MediaLookupPanel(QWidget):
             "No matches found"
         )
         self.lbl_results_title.setText(f"Results ({count})")
+        self.lbl_results_hint.setText(
+            "Select a result to load artwork, synopsis, and IDs."
+            if count else
+            "No provider returned a confident match for that search."
+        )
 
     @pyqtSlot(str)
     def _on_search_error(self, error_msg):
         self.lbl_status.setText(f"Search failed: {error_msg}")
+        self.lbl_results_hint.setText("Check your provider settings or adjust the title and year, then try again.")
         self._clear_detail()
 
     # ── Result Selection ───────────────────────────────────────────────────
@@ -435,6 +423,7 @@ class MediaLookupPanel(QWidget):
 
         result = self._results[idx]
         self.lbl_status.setText("Loading details…")
+        self.lbl_detail_hint.setText("Pulling artwork, synopsis, genres, and provider IDs for the selected result.")
         self._clear_detail()
 
         is_episode = isinstance(result, EpisodeResult)
@@ -484,6 +473,9 @@ class MediaLookupPanel(QWidget):
             self.lbl_ids.setText("  |  ".join(ids))
 
         self.lbl_status.setText("Metadata ready")
+        self.lbl_detail_hint.setText("Review the metadata, then send it to Tag Library or copy it out.")
+        self.btn_apply_tags.setEnabled(True)
+        self.btn_copy.setEnabled(True)
 
     @pyqtSlot(bytes)
     def _on_poster_ready(self, data):
@@ -502,6 +494,7 @@ class MediaLookupPanel(QWidget):
         self.tbl_episodes.setVisible(True)
         self.lbl_episodes.setVisible(True)
         self.lbl_episodes.setText(f"Episodes ({len(episodes)})")
+        self.lbl_results_hint.setText("Choose a specific episode if you need episode-level metadata.")
 
         for row, ep in enumerate(episodes):
             self.tbl_episodes.setItem(row, 0, QTableWidgetItem(
@@ -525,6 +518,9 @@ class MediaLookupPanel(QWidget):
         self.lbl_detail_meta.setText(f"TV Show  |  {ep_str}  {ep.title}")
         self.txt_synopsis.setText(ep.synopsis or "No synopsis available.")
         self.lbl_ids.setText(f"TVMaze: {ep.id_tvmaze}" if ep.id_tvmaze else "")
+        self.lbl_detail_hint.setText("Episode-level metadata is ready to review or send to Tag Library.")
+        self.btn_apply_tags.setEnabled(True)
+        self.btn_copy.setEnabled(True)
 
     def _clear_detail(self):
         self.lbl_detail_title.setText("No title selected")
@@ -535,6 +531,8 @@ class MediaLookupPanel(QWidget):
         self.lbl_poster.clear()
         self.lbl_poster.setText("Select a result")
         self._current_detail = None
+        self.btn_apply_tags.setEnabled(False)
+        self.btn_copy.setEnabled(False)
 
     # ── Actions ────────────────────────────────────────────────────────────
 
@@ -571,6 +569,7 @@ class MediaLookupPanel(QWidget):
         if meta:
             self.metadata_applied.emit(meta)
             self.lbl_status.setText("Metadata sent to Tag Library")
+            self.lbl_detail_hint.setText("Metadata sent. You can keep reviewing results or copy the same payload.")
 
     def _on_copy_metadata(self):
         meta = self._build_metadata_dict()
@@ -585,3 +584,53 @@ class MediaLookupPanel(QWidget):
         text = "\n".join(lines)
         QApplication.clipboard().setText(text)
         self.lbl_status.setText("Metadata copied to clipboard")
+        self.lbl_detail_hint.setText("Copied the active metadata payload for reuse outside UniFile.")
+
+    def apply_theme(self, theme: dict | None = None):
+        t = theme or get_active_theme()
+        self.header.setStyleSheet(
+            f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; border-radius: 18px; }}"
+        )
+        self.lbl_header_kicker.setStyleSheet(
+            f"color: {t['accent']}; font-size: 10px; font-weight: 700; letter-spacing: 1.6px;"
+        )
+        self.lbl_header_title.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 22px; font-weight: 700;"
+        )
+        self.lbl_header_subtitle.setStyleSheet(
+            f"color: {t['muted']}; font-size: 12px; line-height: 1.4em;"
+        )
+        self.lbl_status.setStyleSheet(
+            f"background: {t['header_bg']}; color: {t['muted']}; border: 1px solid {t['border']}; "
+            "border-radius: 999px; padding: 6px 12px; font-size: 11px; font-weight: 600;"
+        )
+        for panel in (self.search_bar, self.results_panel, self.detail_panel):
+            panel.setStyleSheet(
+                f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; border-radius: 18px; }}"
+            )
+        self.lbl_results_title.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 14px; font-weight: 700;"
+        )
+        self.lbl_results_hint.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
+        self.lbl_detail_section.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 14px; font-weight: 700;"
+        )
+        self.lbl_detail_hint.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
+        self.lbl_episodes.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 12px; font-weight: 700;"
+        )
+        self.lbl_poster.setStyleSheet(
+            f"background: {t['header_bg']}; border: 1px solid {t['border']}; border-radius: 14px; color: {t['muted']};"
+        )
+        self.lbl_detail_title.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 18px; font-weight: 700;"
+        )
+        self.lbl_detail_meta.setStyleSheet(
+            f"color: {t['accent']}; font-size: 12px; font-weight: 600;"
+        )
+        self.lbl_genres.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
+        self.txt_synopsis.setStyleSheet(
+            f"QTextEdit {{ background: {t['header_bg']}; color: {t['fg']}; border: 1px solid {t['border']}; "
+            f"border-radius: 14px; padding: 10px 12px; font-size: 12px; }}"
+        )
+        self.lbl_ids.setStyleSheet(f"color: {t['muted']}; font-size: 10px;")

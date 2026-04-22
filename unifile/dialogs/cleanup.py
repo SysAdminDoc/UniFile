@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from unifile.config import (
     get_active_theme, get_active_stylesheet
 )
+from unifile.dialogs.common import build_dialog_header
 
 
 class _CleanupScanWorker(QThread):
@@ -50,18 +51,29 @@ class CleanupToolsDialog(QDialog):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
 
         # Tab widget
         from PyQt6.QtWidgets import QTabWidget, QDoubleSpinBox
         _t = get_active_theme()
+        layout.addWidget(build_dialog_header(
+            _t,
+            "Cleanup",
+            "Cleanup Tools",
+            "Inspect clutter, stale downloads, broken files, and oversized items in a calmer review-first workflow before deleting anything."
+        ))
+        self.lbl_progress = QLabel("Choose a scan type, point UniFile at a folder, and review the results before deleting.")
+        self.lbl_progress.setWordWrap(True)
+        self.lbl_progress.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        layout.addWidget(self.lbl_progress)
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet(
-            f"QTabWidget::pane {{ border: 1px solid {_t['border']}; background: {_t['bg_alt']}; }}"
+            f"QTabWidget::pane {{ border: 1px solid {_t['border']}; background: {_t['bg_alt']}; border-radius: 14px; }}"
             f"QTabBar::tab {{ background: {_t['bg_alt']}; color: {_t['muted']}; padding: 8px 18px;"
-            f"border: 1px solid {_t['border']}; border-bottom: none; margin-right: 2px;"
+            f"border: 1px solid transparent; border-bottom: none; margin-right: 4px;"
             f"font-size: 12px; }}"
-            f"QTabBar::tab:selected {{ background: {_t['selection']}; color: {_t['sidebar_btn_active_fg']}; font-weight: 600; }}")
+            f"QTabBar::tab:selected {{ background: {_t['selection']}; color: {_t['sidebar_btn_active_fg']}; font-weight: 700; border-color: {_t['border']}; }}")
 
         # ── Empty Folders tab ─────────────────────────────────────────────
         tab_empty = QWidget()
@@ -205,13 +217,9 @@ class CleanupToolsDialog(QDialog):
 
         # ── Scan button + progress ────────────────────────────────────────
         scan_row = QHBoxLayout()
-        self.btn_scan = QPushButton("Scan")
+        self.btn_scan = QPushButton("Run Scan")
         self.btn_scan.setFixedHeight(34)
-        self.btn_scan.setStyleSheet(
-            f"QPushButton {{ background: {_t['green']}; color: white; font-weight: bold;"
-            f"border-radius: 4px; padding: 4px 16px; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: {_t['green_hover']}; }}"
-            f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
+        self.btn_scan.setProperty("class", "success")
         self.btn_scan.clicked.connect(self._start_scan)
         scan_row.addWidget(self.btn_scan)
         self.lbl_progress = QLabel("")
@@ -244,24 +252,21 @@ class CleanupToolsDialog(QDialog):
         action_row.addWidget(self.lbl_summary, 1)
 
         btn_select_all = QPushButton("Select All")
+        btn_select_all.setProperty("class", "toolbar")
         btn_select_all.clicked.connect(lambda: self._toggle_all(True))
         action_row.addWidget(btn_select_all)
         btn_deselect = QPushButton("Deselect All")
+        btn_deselect.setProperty("class", "toolbar")
         btn_deselect.clicked.connect(lambda: self._toggle_all(False))
         action_row.addWidget(btn_deselect)
         btn_invert = QPushButton("Invert Selection")
+        btn_invert.setProperty("class", "toolbar")
         btn_invert.clicked.connect(self._invert_selection)
         action_row.addWidget(btn_invert)
 
-        _DANGER_BTN = (
-            f"QPushButton {{ background: {_t['btn_bg']}; color: #ef4444; font-weight: bold;"
-            f"border: 1px solid #5c2e2e; border-radius: 4px; padding: 4px 16px; }}"
-            f"QPushButton:hover {{ background: #4a1a1a; color: #fca5a5; }}"
-            f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
-
         self.btn_delete = QPushButton("Delete Selected")
         self.btn_delete.setEnabled(False)
-        self.btn_delete.setStyleSheet(_DANGER_BTN)
+        self.btn_delete.setProperty("class", "danger")
         self.btn_delete.clicked.connect(self._delete_selected)
         action_row.addWidget(self.btn_delete)
         layout.addLayout(action_row)
@@ -356,7 +361,7 @@ class CleanupToolsDialog(QDialog):
 
     def _on_scan_done(self, results):
         from unifile.cleanup import _fmt_size
-        self.btn_scan.setText("Scan")
+        self.btn_scan.setText("Run Scan")
         self.btn_scan.setEnabled(True)
         total_size = sum(r.size for r in self._results)
         self.lbl_summary.setText(
@@ -599,15 +604,9 @@ class CleanupPanel(QWidget):
         scan_row = QHBoxLayout()
         self.btn_scan = QPushButton("Run Scan")
         self.btn_scan.setFixedHeight(34)
-        self.btn_scan.setStyleSheet(
-            f"QPushButton {{ background: {_t['green']}; color: white; font-weight: bold;"
-            f"border-radius: 4px; padding: 4px 16px; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: {_t['green_hover']}; }}"
-            f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
+        self.btn_scan.setProperty("class", "success")
         self.btn_scan.clicked.connect(self._start_scan)
         scan_row.addWidget(self.btn_scan)
-        self.lbl_progress = QLabel("")
-        self.lbl_progress.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
         scan_row.addWidget(self.lbl_progress, 1)
         layout.addLayout(scan_row)
 
@@ -636,24 +635,21 @@ class CleanupPanel(QWidget):
         action_row.addWidget(self.lbl_summary, 1)
 
         btn_select_all = QPushButton("Select All")
+        btn_select_all.setProperty("class", "toolbar")
         btn_select_all.clicked.connect(lambda: self._toggle_all(True))
         action_row.addWidget(btn_select_all)
         btn_deselect = QPushButton("Deselect All")
+        btn_deselect.setProperty("class", "toolbar")
         btn_deselect.clicked.connect(lambda: self._toggle_all(False))
         action_row.addWidget(btn_deselect)
         btn_invert = QPushButton("Invert Selection")
+        btn_invert.setProperty("class", "toolbar")
         btn_invert.clicked.connect(self._invert_selection)
         action_row.addWidget(btn_invert)
 
-        _DANGER_BTN = (
-            f"QPushButton {{ background: {_t['btn_bg']}; color: #ef4444; font-weight: bold;"
-            f"border: 1px solid #5c2e2e; border-radius: 4px; padding: 4px 16px; }}"
-            f"QPushButton:hover {{ background: #4a1a1a; color: #fca5a5; }}"
-            f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
-
         self.btn_delete = QPushButton("Remove Selected")
         self.btn_delete.setEnabled(False)
-        self.btn_delete.setStyleSheet(_DANGER_BTN)
+        self.btn_delete.setProperty("class", "danger")
         self.btn_delete.clicked.connect(self._delete_selected)
         action_row.addWidget(self.btn_delete)
         layout.addLayout(action_row)

@@ -24,6 +24,7 @@ from unifile.files import (
 )
 from unifile.engine import RuleEngine, RenameTemplateEngine
 from unifile.config import _APP_DATA_DIR
+from unifile.dialogs.common import build_dialog_header
 
 
 _PC_CATEGORIES_DB = os.path.join(_APP_DATA_DIR, 'pc_categories.json')
@@ -33,21 +34,46 @@ class CustomCategoriesDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Custom Categories")
-        self.setMinimumSize(550, 450)
+        self.setMinimumSize(620, 500)
         self.setStyleSheet(get_active_stylesheet())
         self.custom_cats = load_custom_categories()
+        _t = get_active_theme()
 
         lay = QVBoxLayout(self)
-        lbl = QLabel("Add, edit, or remove custom categories. These supplement the built-in categories.")
-        lbl.setWordWrap(True); lay.addWidget(lbl)
+        lay.setSpacing(12)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.addWidget(build_dialog_header(
+            _t,
+            "Categories",
+            "Custom Categories",
+            "Add lightweight categories for niche content that should not fall back to broader buckets or AI guesses."
+        ))
+
+        self.lbl_summary = QLabel("")
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(self.lbl_summary)
 
         self.lst = QListWidget()
+        self.lst.setAlternatingRowColors(True)
+        self.lst.itemSelectionChanged.connect(self._update_summary)
         self._refresh_list()
         lay.addWidget(self.lst)
 
         btn_row = QHBoxLayout()
-        for text, cb in [("Add", self._add), ("Edit Keywords", self._edit), ("Remove", self._remove)]:
-            b = QPushButton(text); b.clicked.connect(cb); btn_row.addWidget(b)
+        self.btn_add = QPushButton("Add Category")
+        self.btn_add.setProperty("class", "primary")
+        self.btn_add.clicked.connect(self._add)
+        btn_row.addWidget(self.btn_add)
+        self.btn_edit = QPushButton("Edit Keywords")
+        self.btn_edit.setProperty("class", "toolbar")
+        self.btn_edit.clicked.connect(self._edit)
+        btn_row.addWidget(self.btn_edit)
+        self.btn_remove = QPushButton("Remove")
+        self.btn_remove.setProperty("class", "danger")
+        self.btn_remove.clicked.connect(self._remove)
+        btn_row.addWidget(self.btn_remove)
+        btn_row.addStretch()
         lay.addLayout(btn_row)
 
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -58,6 +84,28 @@ class CustomCategoriesDialog(QDialog):
         self.lst.clear()
         for name, kws in self.custom_cats:
             self.lst.addItem(f"{name}  [{', '.join(kws[:5])}{'...' if len(kws)>5 else ''}]")
+        self._update_summary()
+
+    def _update_summary(self):
+        count = len(self.custom_cats)
+        row = self.lst.currentRow()
+        if count:
+            if row >= 0:
+                name, kws = self.custom_cats[row]
+                self.lbl_summary.setText(
+                    f"{count} custom categor{'y' if count == 1 else 'ies'} available. "
+                    f"'{name}' has {len(kws)} keyword{'s' if len(kws) != 1 else ''}."
+                )
+            else:
+                self.lbl_summary.setText(
+                    f"{count} custom categor{'y' if count == 1 else 'ies'} available. Select one to inspect or refine its keywords."
+                )
+        else:
+            self.lbl_summary.setText("No custom categories yet. Add one to cover a niche collection before relying on broader rules.")
+        if hasattr(self, 'btn_edit'):
+            self.btn_edit.setEnabled(row >= 0)
+        if hasattr(self, 'btn_remove'):
+            self.btn_remove.setEnabled(row >= 0)
 
     def _add(self):
         name, ok = QInputDialog.getText(self, "New Category", "Category name:")
@@ -68,6 +116,7 @@ class CustomCategoriesDialog(QDialog):
         if not keywords: keywords = [name.strip().lower()]
         self.custom_cats.append((name.strip(), keywords))
         self._refresh_list()
+        self.lst.setCurrentRow(len(self.custom_cats) - 1)
 
     def _edit(self):
         row = self.lst.currentRow()
@@ -99,8 +148,25 @@ class DestTreeDialog(QDialog):
         self.setStyleSheet(get_active_stylesheet())
 
         import shutil
+        _t = get_active_theme()
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(f"Output structure under: {dest_root}"))
+        lay.setSpacing(12)
+        lay.setContentsMargins(18, 18, 18, 18)
+        lay.addWidget(build_dialog_header(
+            _t,
+            "Preview",
+            "Destination Preview",
+            "Inspect the planned output structure before anything is moved so category drift or naming mistakes are easy to catch while the run is still reversible."
+        ))
+
+        summary = QLabel(
+            f"Output root: {dest_root}  |  "
+            f"{sum(1 for it in items if it.selected and it.status == 'Pending')} pending item"
+            f"{'' if sum(1 for it in items if it.selected and it.status == 'Pending') == 1 else 's'} in the current plan."
+        )
+        summary.setWordWrap(True)
+        summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(summary)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Folder / Category", "Count"])
@@ -146,7 +212,11 @@ class DestTreeDialog(QDialog):
             space_text = f"Move size: {total_bytes:,} bytes (could not read disk info)"
             color = "#6b7785"
         lbl_space = QLabel(space_text)
-        lbl_space.setStyleSheet(f"color: {color}; font-size: 12px; padding: 6px 4px; font-weight: bold;")
+        lbl_space.setWordWrap(True)
+        lbl_space.setStyleSheet(
+            f"color: {color}; font-size: 12px; padding: 12px 14px; font-weight: bold; "
+            f"background: {_t['bg_alt']}; border: 1px solid {_t['border']}; border-radius: 12px;"
+        )
         lay.addWidget(lbl_space)
 
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Close)
@@ -626,18 +696,28 @@ class _FileBrowserDialog(QDialog):
     def _build_ui(self, current_name):
         _t = get_active_theme()
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.addWidget(build_dialog_header(
+            _t,
+            "Rename source",
+            "Pick File to Rename From",
+            "Choose the file that best represents the folder name. UniFile will preview the cleaned result before you apply it."
+        ))
 
-        # Header info
-        hdr = QLabel(f"Current name:  <b style='color:#f59e0b'>{current_name}</b>  "
-                     f"<span style='color:#3d5a73'>  ·  double-click or select + OK to apply</span>")
-        hdr.setTextFormat(Qt.TextFormat.RichText)
-        layout.addWidget(hdr)
+        self.lbl_summary = QLabel("")
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        self.lbl_summary.setText(
+            f"Current folder name: <b style='color:#f59e0b'>{current_name}</b>. "
+            "Double-click a file or select one and apply the cleaned name preview."
+        )
+        layout.addWidget(self.lbl_summary)
 
         # Search bar
         self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("🔍  Filter files…")
+        self.txt_search.setPlaceholderText("Filter files by path or cleaned name…")
         self.txt_search.textChanged.connect(self._filter)
         layout.addWidget(self.txt_search)
 
@@ -658,7 +738,9 @@ class _FileBrowserDialog(QDialog):
 
         # Preview of resulting folder name
         prev_row = QHBoxLayout()
-        prev_row.addWidget(QLabel("Result:"))
+        lbl_result = QLabel("Result")
+        lbl_result.setStyleSheet(f"color:{_t['muted']};font-size:11px;font-weight:600;")
+        prev_row.addWidget(lbl_result)
         self.lbl_preview = QLabel("—")
         self.lbl_preview.setStyleSheet(f"color:{_t['green']}; font-size:13px; font-weight:bold; padding-left:6px;")
         prev_row.addWidget(self.lbl_preview, 1)
@@ -725,6 +807,7 @@ class _FileBrowserDialog(QDialog):
         self.tree.setSortingEnabled(True)
         # Sort project files first
         self.tree.sortItems(1, Qt.SortOrder.AscendingOrder)
+        self._update_summary()
 
     def _clean_stem(self, filename: str) -> str:
         """Return the beautified stem that would be used as the folder name."""
@@ -743,19 +826,33 @@ class _FileBrowserDialog(QDialog):
 
     def _filter(self, text: str):
         q = text.lower()
+        visible = 0
         for item in self._all_items:
             hidden = bool(q) and q not in item.text(0).lower() and q not in item.text(2).lower()
             item.setHidden(hidden)
+            if not hidden:
+                visible += 1
+        total = len(self._all_items)
+        if q:
+            self.lbl_summary.setText(
+                f"Showing {visible} of {total} candidate file{'s' if total != 1 else ''} for rename preview."
+            )
+        else:
+            self._update_summary()
 
     def _on_select(self):
         sel = self.tree.selectedItems()
         if sel:
-            _, cleaned = sel[0].data(0, Qt.ItemDataRole.UserRole)
+            fname, cleaned = sel[0].data(0, Qt.ItemDataRole.UserRole)
             self.lbl_preview.setText(cleaned)
             self.btn_ok.setEnabled(bool(cleaned))
+            self.lbl_summary.setText(
+                f"Selected <b style='color:#f59e0b'>{fname}</b>. Review the cleaned result before applying it."
+            )
         else:
             self.lbl_preview.setText("—")
             self.btn_ok.setEnabled(False)
+            self._update_summary()
 
     def _accept_item(self, item, _col):
         fname, cleaned = item.data(0, Qt.ItemDataRole.UserRole)
@@ -772,6 +869,15 @@ class _FileBrowserDialog(QDialog):
                 self.chosen_name = cleaned
                 self.chosen_file = fname
                 self.accept()
+
+    def _update_summary(self):
+        total = len(getattr(self, '_all_items', []))
+        if total:
+            self.lbl_summary.setText(
+                f"{total} candidate file{'s' if total != 1 else ''} available. Project files are highlighted so the best rename source is easier to spot."
+            )
+        else:
+            self.lbl_summary.setText("No rename candidates were found in this folder.")
 
 
 class RuleEditorDialog(QDialog):
@@ -790,29 +896,73 @@ class RuleEditorDialog(QDialog):
         self.setStyleSheet(get_active_stylesheet())
         self.categories = categories
         self.rules = RuleEngine.load_rules()
+        _t = get_active_theme()
 
-        lay = QHBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setSpacing(12)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.addWidget(build_dialog_header(
+            _t,
+            "Automation",
+            "Classification Rules",
+            "Create structured routing rules before AI is needed. Keep rules specific and intentional, because the first matching rule wins."
+        ))
+
+        self.lbl_summary = QLabel("")
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        root.addWidget(self.lbl_summary)
+
+        lay = QHBoxLayout()
+        lay.setSpacing(12)
 
         # Left: rule list
-        left = QVBoxLayout()
+        left_panel = QFrame()
+        left_panel.setProperty("class", "card")
+        left = QVBoxLayout(left_panel)
+        left.setContentsMargins(16, 16, 16, 16)
+        left.setSpacing(8)
+        lbl_rules = QLabel("Saved rules")
+        lbl_rules.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 14px; font-weight: 700;")
+        left.addWidget(lbl_rules)
+        self.lbl_rules_hint = QLabel("Select a rule to edit it or clone it. Put narrower matches above broader fallbacks.")
+        self.lbl_rules_hint.setWordWrap(True)
+        self.lbl_rules_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        left.addWidget(self.lbl_rules_hint)
         self.lst_rules = QListWidget()
+        self.lst_rules.setAlternatingRowColors(True)
         self.lst_rules.currentRowChanged.connect(self._on_rule_selected)
         left.addWidget(self.lst_rules, 1)
         btn_row = QHBoxLayout()
-        btn_add = QPushButton("Add")
-        btn_add.clicked.connect(self._add_rule)
-        btn_row.addWidget(btn_add)
-        btn_del = QPushButton("Delete")
-        btn_del.clicked.connect(self._delete_rule)
-        btn_row.addWidget(btn_del)
-        btn_clone = QPushButton("Clone")
-        btn_clone.clicked.connect(self._clone_rule)
-        btn_row.addWidget(btn_clone)
+        self.btn_add_rule = QPushButton("Add Rule")
+        self.btn_add_rule.setProperty("class", "primary")
+        self.btn_add_rule.clicked.connect(self._add_rule)
+        btn_row.addWidget(self.btn_add_rule)
+        self.btn_delete_rule = QPushButton("Delete")
+        self.btn_delete_rule.setProperty("class", "danger")
+        self.btn_delete_rule.clicked.connect(self._delete_rule)
+        btn_row.addWidget(self.btn_delete_rule)
+        self.btn_clone_rule = QPushButton("Clone")
+        self.btn_clone_rule.setProperty("class", "toolbar")
+        self.btn_clone_rule.clicked.connect(self._clone_rule)
+        btn_row.addWidget(self.btn_clone_rule)
+        btn_row.addStretch()
         left.addLayout(btn_row)
-        lay.addLayout(left, 1)
+        lay.addWidget(left_panel, 1)
 
         # Right: rule editor
-        right = QVBoxLayout()
+        right_panel = QFrame()
+        right_panel.setProperty("class", "card")
+        right = QVBoxLayout(right_panel)
+        right.setContentsMargins(16, 16, 16, 16)
+        right.setSpacing(10)
+        self.lbl_editor_title = QLabel("Rule details")
+        self.lbl_editor_title.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 14px; font-weight: 700;")
+        right.addWidget(self.lbl_editor_title)
+        self.lbl_editor_hint = QLabel("Select a rule to inspect or update its conditions and actions.")
+        self.lbl_editor_hint.setWordWrap(True)
+        self.lbl_editor_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        right.addWidget(self.lbl_editor_hint)
         self.txt_name = QLineEdit()
         self.txt_name.setPlaceholderText("Rule name...")
         right.addWidget(self.txt_name)
@@ -822,20 +972,27 @@ class RuleEditorDialog(QDialog):
         right.addWidget(self.chk_enabled)
 
         # Conditions
-        lbl_cond = QLabel("Conditions:")
-        _t = get_active_theme()
+        lbl_cond = QLabel("Conditions")
         lbl_cond.setStyleSheet(f"color: {_t['sidebar_btn_active_fg']}; font-weight: bold;")
         right.addWidget(lbl_cond)
+        self.lbl_conditions_hint = QLabel("No conditions yet. Add at least one specific condition to avoid accidental broad matches.")
+        self.lbl_conditions_hint.setWordWrap(True)
+        self.lbl_conditions_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        right.addWidget(self.lbl_conditions_hint)
         self.lst_conditions = QListWidget()
+        self.lst_conditions.setAlternatingRowColors(True)
         self.lst_conditions.setMaximumHeight(120)
         right.addWidget(self.lst_conditions)
         cond_btns = QHBoxLayout()
-        btn_add_cond = QPushButton("+ Condition")
-        btn_add_cond.clicked.connect(self._add_condition)
-        cond_btns.addWidget(btn_add_cond)
-        btn_rm_cond = QPushButton("- Condition")
-        btn_rm_cond.clicked.connect(self._remove_condition)
-        cond_btns.addWidget(btn_rm_cond)
+        self.btn_add_cond = QPushButton("Add Condition")
+        self.btn_add_cond.setProperty("class", "toolbar")
+        self.btn_add_cond.clicked.connect(self._add_condition)
+        cond_btns.addWidget(self.btn_add_cond)
+        self.btn_rm_cond = QPushButton("Remove Condition")
+        self.btn_rm_cond.setProperty("class", "danger")
+        self.btn_rm_cond.clicked.connect(self._remove_condition)
+        cond_btns.addWidget(self.btn_rm_cond)
+        cond_btns.addStretch()
         right.addLayout(cond_btns)
 
         # Logic
@@ -865,17 +1022,18 @@ class RuleEditorDialog(QDialog):
 
         # Save/Close
         btn_save_row = QHBoxLayout()
-        btn_save = QPushButton("Save Rule")
-        btn_save.setStyleSheet(f"QPushButton {{ background: {_t['green_pressed']}; color: {_t['green']}; border: 1px solid {_t['sidebar_profile_border']}; border-radius: 4px; padding: 6px 12px; }} QPushButton:hover {{ background: {_t['green_hover']}; }}")
-        btn_save.clicked.connect(self._save_current)
-        btn_save_row.addWidget(btn_save)
+        self.btn_save_rule = QPushButton("Save Rule")
+        self.btn_save_rule.setProperty("class", "success")
+        self.btn_save_rule.clicked.connect(self._save_current)
+        btn_save_row.addWidget(self.btn_save_rule)
         btn_save_row.addStretch()
-        btn_close = QPushButton("Close")
-        btn_close.clicked.connect(self._close_and_save)
-        btn_save_row.addWidget(btn_close)
+        self.btn_close_rules = QPushButton("Close")
+        self.btn_close_rules.clicked.connect(self._close_and_save)
+        btn_save_row.addWidget(self.btn_close_rules)
         right.addLayout(btn_save_row)
 
-        lay.addLayout(right, 2)
+        lay.addWidget(right_panel, 2)
+        root.addLayout(lay, 1)
         self._refresh_list()
         self._current_conditions = []
 
@@ -884,9 +1042,21 @@ class RuleEditorDialog(QDialog):
         for r in self.rules:
             enabled = "+" if r.get('enabled', True) else "-"
             self.lst_rules.addItem(f"[{enabled}] {r.get('name', 'Unnamed')}")
+        count = len(self.rules)
+        self.lbl_summary.setText(
+            f"{count} saved rule{'s' if count != 1 else ''}. First matching rule wins."
+            if count else
+            "No saved rules yet. Add a specific rule before relying on broader automation or AI."
+        )
+        has_selection = self.lst_rules.currentRow() >= 0
+        self.btn_delete_rule.setEnabled(count > 0 and has_selection)
+        self.btn_clone_rule.setEnabled(count > 0 and has_selection)
 
     def _on_rule_selected(self, row):
         if row < 0 or row >= len(self.rules):
+            self.lbl_editor_hint.setText("Select a rule to inspect or update its conditions and actions.")
+            self.btn_delete_rule.setEnabled(False)
+            self.btn_clone_rule.setEnabled(False)
             return
         rule = self.rules[row]
         self.txt_name.setText(rule.get('name', ''))
@@ -899,21 +1069,35 @@ class RuleEditorDialog(QDialog):
         self.txt_rename.setText(rule.get('action_rename', ''))
         self._current_conditions = list(rule.get('conditions', []))
         self._refresh_conditions()
+        self.lbl_editor_hint.setText(
+            f"Editing '{rule.get('name', 'Unnamed')}'. Review conditions first, then confirm the category and optional rename."
+        )
+        self.btn_delete_rule.setEnabled(True)
+        self.btn_clone_rule.setEnabled(True)
 
     def _refresh_conditions(self):
         self.lst_conditions.clear()
         for c in self._current_conditions:
             self.lst_conditions.addItem(f"{c.get('field', '?')} {c.get('op', '?')} \"{c.get('value', '')}\"")
+        count = len(self._current_conditions)
+        self.lbl_conditions_hint.setText(
+            f"{count} condition{'s' if count != 1 else ''} configured."
+            if count else
+            "No conditions yet. Add at least one specific condition to avoid accidental broad matches."
+        )
+        self.btn_rm_cond.setEnabled(count > 0)
 
     def _add_condition(self):
         self._current_conditions.append({'field': 'extension', 'op': 'eq', 'value': '.txt'})
         self._refresh_conditions()
+        self.lbl_editor_hint.setText("Condition added. Update it before saving the rule.")
 
     def _remove_condition(self):
         row = self.lst_conditions.currentRow()
         if 0 <= row < len(self._current_conditions):
             self._current_conditions.pop(row)
             self._refresh_conditions()
+            self.lbl_editor_hint.setText("Condition removed from the current rule.")
 
     def _add_rule(self):
         self.rules.append({
@@ -924,12 +1108,14 @@ class RuleEditorDialog(QDialog):
         })
         self._refresh_list()
         self.lst_rules.setCurrentRow(len(self.rules) - 1)
+        self.lbl_editor_hint.setText("New rule created. Give it a clear name and add specific conditions.")
 
     def _delete_rule(self):
         row = self.lst_rules.currentRow()
         if 0 <= row < len(self.rules):
             self.rules.pop(row)
             self._refresh_list()
+            self.lbl_editor_hint.setText("Rule removed.")
 
     def _clone_rule(self):
         row = self.lst_rules.currentRow()
@@ -939,6 +1125,8 @@ class RuleEditorDialog(QDialog):
             cloned['name'] += ' (copy)'
             self.rules.append(cloned)
             self._refresh_list()
+            self.lst_rules.setCurrentRow(len(self.rules) - 1)
+            self.lbl_editor_hint.setText("Rule cloned. Review the copy before saving.")
 
     def _save_current(self):
         row = self.lst_rules.currentRow()
@@ -951,6 +1139,10 @@ class RuleEditorDialog(QDialog):
         self.rules[row]['action_rename'] = self.txt_rename.text()
         self.rules[row]['conditions'] = list(self._current_conditions)
         self._refresh_list()
+        self.lst_rules.setCurrentRow(row)
+        self.lbl_editor_hint.setText(
+            f"Saved '{self.rules[row]['name']}'. Remember that rule order affects which action runs first."
+        )
 
     def _close_and_save(self):
         RuleEngine.save_rules(self.rules)
