@@ -1,5 +1,9 @@
 <!-- codex-branding:start -->
-<p align="center"><img src="icon.png" width="128" alt="Uni File"></p>
+<p align="center">
+  
+
+<img width="1024" height="516" alt="icon" src="https://github.com/user-attachments/assets/196b1c78-ec0c-44cc-8a35-9c56adfd5247" />
+</p>
 
 <p align="center">
   <img alt="Version" src="https://img.shields.io/badge/version-8.9.4-58A6FF?style=for-the-badge">
