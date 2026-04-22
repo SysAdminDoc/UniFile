@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QInputDialog, QSplitter, QMessageBox, QFrame,
     QProgressBar, QScrollArea, QSystemTrayIcon, QStackedWidget, QTabWidget
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QMimeData, QUrl, QTimer, QSize
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QMimeData, QUrl, QTimer, QSize, QThreadPool
 from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QAction, QPixmap, QImage, QTextCursor, QIcon
 
 from unifile.config import (
@@ -42,6 +42,7 @@ from unifile.photos import (
 from unifile.duplicates import ProgressiveDuplicateDetector, ConflictResolver
 from unifile.files import _load_pc_categories, _save_pc_categories
 from unifile.engine import RuleEngine, EventGrouper, ScheduleManager, RenameTemplateEngine
+from unifile.metadata import MetadataExtractor, _load_envato_api_key, _save_envato_api_key
 from unifile.plugins import PluginManager, ProfileManager, CategoryPresetManager, CloudPathResolver
 from unifile.models import RenameItem, CategorizeItem, FileItem
 from unifile.workers import (
@@ -507,7 +508,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         menu_ai = menu_tools.addMenu("AI & Intelligence")
         menu_ai.addAction("AI Providers...", self._open_ai_providers)
         menu_ai.addAction("Whisper Audio...", self._open_whisper_settings)
-        menu_ai.addAction("Semantic Search...", self._open_semantic_settings)
+        menu_ai.addAction("Semantic Search...", self._open_semantic_search)
+        menu_ai.addAction("Semantic Search Settings...", self._open_semantic_settings)
         menu_ai.addAction("Metadata Embedding...", self._open_embedding_settings)
         menu_ai.addAction("Adaptive Learning...", self._open_learning_stats)
         self.menu_presets = menu_tools.addMenu("Category Presets")
@@ -1862,6 +1864,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
     def _open_semantic_settings(self):
         from unifile.dialogs.advanced_settings import SemanticSearchSettingsDialog
         dlg = SemanticSearchSettingsDialog(self)
+        dlg.exec()
+
+    def _open_semantic_search(self):
+        """Open the natural-language search panel."""
+        from unifile.dialogs.advanced_settings import SemanticSearchDialog
+        dlg = SemanticSearchDialog(self)
         dlg.exec()
 
     def _open_embedding_settings(self):

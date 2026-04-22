@@ -1,5 +1,5 @@
 """UniFile — Background worker threads for scanning, applying, and LLM tasks."""
-import os, re, json, shutil, time, math, hashlib, base64
+import os, re, json, shutil, time, math, hashlib, base64, sys, subprocess
 from datetime import datetime
 from pathlib import Path
 from collections import Counter
@@ -7,28 +7,52 @@ from collections import Counter
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QRunnable, QThreadPool, QMutex, QMutexLocker, QObject
 from PyQt6.QtGui import QImage
 
+# Optional image library — imported here so the face-recognition /
+# _detect_faces_full code path can reference _cv2 / _face_recognition directly.
+try:
+    import cv2 as _cv2
+except ImportError:
+    _cv2 = None
+try:
+    import face_recognition as _face_recognition
+except (ImportError, SystemExit):
+    _face_recognition = None
+
 from unifile.config import _APP_DATA_DIR, CONF_HIGH, CONF_MEDIUM, is_protected
 from unifile.cache import (
     cache_lookup, cache_store, cache_clear, _preload_corrections,
     _close_cache_conn, _init_cache_db, save_correction, save_undo_log,
-    append_csv_log, hash_file, create_backup_snapshot
+    append_csv_log, hash_file, create_backup_snapshot,
+    check_corrections,
 )
 from unifile.categories import (
-    get_all_categories, get_all_category_names, is_generic_aep, _score_aep
+    get_all_categories, get_all_category_names, is_generic_aep, _score_aep,
+    _CategoryIndex,
 )
-from unifile.naming import _normalize, _beautify_name, _smart_name, _ASSET_FOLDER_NAMES
+from unifile.naming import (
+    _normalize, _beautify_name, _smart_name, _ASSET_FOLDER_NAMES,
+    _is_id_only_folder, _extract_name_hints,
+)
 from unifile.bootstrap import (
-    HAS_RAPIDFUZZ, HAS_PSD_TOOLS, HAS_CV2, HAS_FACE_RECOGNITION,
+    HAS_RAPIDFUZZ, HAS_PSD_TOOLS, HAS_CV2, HAS_FACE_RECOGNITION, HAS_PILLOW,
 )
 from unifile.classifier import (
     categorize_folder, classify_by_extensions, tiered_classify
 )
-from unifile.metadata import extract_folder_metadata, _extract_file_content
+from unifile.metadata import (
+    extract_folder_metadata, _extract_file_content,
+    MetadataExtractor, ArchivePeeker,
+)
 from unifile.ollama import (
     ollama_classify_folder, ollama_classify_batch, load_ollama_settings, save_ollama_settings,
+    ollama_test_connection,
     _find_ollama_binary, _is_ollama_server_running, _ollama_has_model,
     _ollama_pull_model_streaming, _ollama_list_models_detailed, _ollama_delete_model,
-    _find_vision_model, _prepare_image_base64, _is_vision_model
+    _ollama_pull_model, _ollama_generate,
+    _find_vision_model, _prepare_image_base64, _is_vision_model,
+    _llm_cache_get, _llm_cache_set,
+    _EVIDENCE_CONFIDENCE_THRESHOLD, _escalate_classification,
+    ModelRouter,
 )
 from unifile.photos import (
     load_photo_settings, _detect_faces_full, _detect_faces_count_only,
@@ -42,9 +66,10 @@ from unifile.nexa_backend import (
 )
 from unifile.files import (
     _load_pc_categories, _build_ext_map, _classify_pc_item, _classify_pc_folder,
-    _ScanCache, _JUNK_PATTERNS, _extract_filename_date, _detect_mime_category,
-    load_directory_config, merge_categories,
+    _ScanCache, _JUNK_PATTERNS, _JUNK_SUFFIXES, _extract_filename_date,
+    _detect_mime_category, load_directory_config, merge_categories,
 )
+from unifile.duplicates import _PHASH_IMAGE_EXTS
 from unifile.engine import RuleEngine, RenameTemplateEngine
 from unifile.plugins import PluginManager
 from unifile.models import RenameItem, CategorizeItem, FileItem
@@ -1249,8 +1274,8 @@ class ApplyAepWorker(QThread):
                     try:
                         shutil.move(it.full_new_path, it.full_current_path)
                         self.log.emit(f"  Rolled back to original location")
-                    except Exception:
-                        pass
+                    except Exception as roll_exc:
+                        self.log.emit(f"  Rollback failed: {roll_exc}")
                 self.item_done.emit(ri, "Error")
         self.finished.emit(ok, err, undo_ops)
 

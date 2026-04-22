@@ -108,11 +108,13 @@ def _compute_phash(filepath: str, hash_size: int = 8) -> str:
     Returns hex string of the hash, or empty string on failure."""
     try:
         from PIL import Image
-        img = Image.open(filepath)
-        if img.mode == 'P' and 'transparency' in img.info:
-            img = img.convert('RGBA')
-        img = img.convert('L').resize((hash_size + 1, hash_size), Image.LANCZOS)
-        pixels = list(img.getdata())
+        # `with` guarantees the underlying file handle is closed. Critical on
+        # Windows where lingering handles block subsequent move/rename ops.
+        with Image.open(filepath) as img:
+            if img.mode == 'P' and 'transparency' in img.info:
+                img = img.convert('RGBA')
+            img = img.convert('L').resize((hash_size + 1, hash_size), Image.LANCZOS)
+            pixels = list(img.getdata())
         # Difference hash (dHash): compare adjacent pixels
         bits = []
         for row in range(hash_size):
