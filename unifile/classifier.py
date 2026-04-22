@@ -476,7 +476,9 @@ def infer_asset_type(initial_category: str, initial_confidence: float,
         conf = min(clues['asset_confidence'], 92)
         detail = f"context:{initial_category}+{clues['asset_detail']}"
         if log_cb:
-            log_cb(f"    Context: {initial_category} + filename \"{clues['asset_detail'].split('\"')[1]}\" → {clues['asset_type']}")
+            # Avoid backslashes/quote-reuse inside f-string expression (not allowed on Python 3.10/3.11)
+            _fn_hint = clues['asset_detail'].split('"')[1] if '"' in clues['asset_detail'] else clues['asset_detail']
+            log_cb(f'    Context: {initial_category} + filename "{_fn_hint}" → {clues["asset_type"]}')
         return (clues['asset_type'], conf, 'context', detail)
 
     # ── Priority 2: Folder name itself hints at an asset type ──
@@ -998,7 +1000,9 @@ def _apply_context_from_scan(result: dict, scan: dict, folder_path: str,
         conf = min(clues['asset_confidence'], 92)
         detail = f"context:{initial_category}+{clues['asset_detail']}"
         if log_cb:
-            log_cb(f"    Context: {initial_category} + filename \"{clues['asset_detail'].split('\"')[1]}\" → {clues['asset_type']}")
+            # Avoid backslashes/quote-reuse inside f-string expression (not allowed on Python 3.10/3.11)
+            _fn_hint = clues['asset_detail'].split('"')[1] if '"' in clues['asset_detail'] else clues['asset_detail']
+            log_cb(f'    Context: {initial_category} + filename "{_fn_hint}" → {clues["asset_type"]}')
         result['topic'] = result['category']
         result['category'] = clues['asset_type']
         result['confidence'] = conf
