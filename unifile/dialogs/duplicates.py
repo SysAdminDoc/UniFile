@@ -290,10 +290,25 @@ class DuplicateFinderDialog(QDialog):
                                         "compressed, or watermarked")
         opts.addWidget(self.chk_perceptual)
 
-        self.chk_audio = QCheckBox("Similar audio (acoustic fingerprint)")
-        self.chk_audio.setChecked(True)
-        self.chk_audio.setToolTip("Find songs/audio that sound the same even in different "
-                                   "formats or bitrates.\nRequires Chromaprint (fpcalc) installed.")
+        # Chromaprint availability check — surface fpcalc status so users
+        # don't wonder why audio matches aren't showing up.
+        from unifile.duplicates import _find_fpcalc
+        fpcalc_path = _find_fpcalc()
+        self.chk_audio = QCheckBox(
+            "Similar audio (acoustic fingerprint)"
+            if fpcalc_path else
+            "Similar audio  —  requires Chromaprint  (install fpcalc)"
+        )
+        self.chk_audio.setChecked(bool(fpcalc_path))
+        self.chk_audio.setEnabled(bool(fpcalc_path))
+        tip = ("Find songs/audio that sound the same even in different "
+               "formats or bitrates.")
+        if fpcalc_path:
+            tip += f"\nChromaprint detected: {fpcalc_path}"
+        else:
+            tip += ("\n\nChromaprint (`fpcalc`) is not on PATH. Install it "
+                    "from https://acoustid.org/chromaprint and restart UniFile.")
+        self.chk_audio.setToolTip(tip)
         opts.addWidget(self.chk_audio)
 
         opts.addWidget(QLabel("Min size:"))
@@ -305,6 +320,26 @@ class DuplicateFinderDialog(QDialog):
 
         opts.addStretch()
         lay.addLayout(opts)
+
+        # ── Match-type filter row — hides groups of unwanted types ────────
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(12)
+        filter_row.addWidget(QLabel("Show:"))
+        self.cmb_type_filter = QComboBox()
+        self.cmb_type_filter.addItems([
+            "All match types",
+            "Exact matches only",
+            "Visual (image) matches only",
+            "Audio matches only",
+        ])
+        self.cmb_type_filter.setFixedWidth(200)
+        self.cmb_type_filter.setToolTip(
+            "Filter the results tree to show only one kind of duplicate group."
+        )
+        self.cmb_type_filter.currentIndexChanged.connect(self._apply_type_filter)
+        filter_row.addWidget(self.cmb_type_filter)
+        filter_row.addStretch()
+        lay.addLayout(filter_row)
 
         # ── Scan button + progress ────────────────────────────────────────
         scan_row = QHBoxLayout()
@@ -509,6 +544,41 @@ class DuplicateFinderDialog(QDialog):
         self.btn_select_dupes.setEnabled(True)
         self.btn_select_none.setEnabled(True)
         self.btn_apply.setEnabled(True)
+        # Reset filter to "All" after fresh scan (previous filter may hide
+        # brand-new results the user expects to see).
+        if hasattr(self, 'cmb_type_filter'):
+            self.cmb_type_filter.blockSignals(True)
+            self.cmb_type_filter.setCurrentIndex(0)
+            self.cmb_type_filter.blockSignals(False)
+            self._apply_type_filter()
+
+    def _apply_type_filter(self):
+        """Hide/show top-level groups based on the selected match type filter."""
+        if self.tree.topLevelItemCount() == 0:
+            return
+        # Filter index → allowed match types. Empty set means "show all".
+        idx = self.cmb_type_filter.currentIndex() if hasattr(self, 'cmb_type_filter') else 0
+        allowed = {
+            0: None,
+            1: {'Exact'},
+            2: {'Visual'},
+            3: {'Audio'},
+        }.get(idx)
+        shown = 0
+        for i in range(self.tree.topLevelItemCount()):
+            group = self.tree.topLevelItem(i)
+            match_type = group.text(4)
+            visible = allowed is None or match_type in allowed
+            group.setHidden(not visible)
+            if visible:
+                shown += 1
+        # Status line so users know why results may look trimmed
+        if allowed is not None:
+            total = self.tree.topLevelItemCount()
+            self.lbl_status.setText(
+                f"Showing {shown} of {total} duplicate group{'s' if total != 1 else ''} "
+                f"(filter: {self.cmb_type_filter.currentText()})."
+            )
 
     def _auto_select(self):
         """Auto-check all non-original (duplicate) files for action."""
@@ -666,10 +736,23 @@ class DuplicatePanel(QWidget):
                                         "compressed, or watermarked")
         opts.addWidget(self.chk_perceptual)
 
-        self.chk_audio = QCheckBox("Similar audio (acoustic fingerprint)")
-        self.chk_audio.setChecked(True)
-        self.chk_audio.setToolTip("Find songs/audio that sound the same even in different "
-                                   "formats or bitrates.\nRequires Chromaprint (fpcalc) installed.")
+        from unifile.duplicates import _find_fpcalc as _find_fpcalc_panel
+        _fpcalc_panel = _find_fpcalc_panel()
+        self.chk_audio = QCheckBox(
+            "Similar audio (acoustic fingerprint)"
+            if _fpcalc_panel else
+            "Similar audio  —  requires Chromaprint  (install fpcalc)"
+        )
+        self.chk_audio.setChecked(bool(_fpcalc_panel))
+        self.chk_audio.setEnabled(bool(_fpcalc_panel))
+        _tip = ("Find songs/audio that sound the same even in different "
+                "formats or bitrates.")
+        if _fpcalc_panel:
+            _tip += f"\nChromaprint detected: {_fpcalc_panel}"
+        else:
+            _tip += ("\n\nChromaprint (`fpcalc`) is not on PATH. Install it "
+                     "from https://acoustid.org/chromaprint and restart UniFile.")
+        self.chk_audio.setToolTip(_tip)
         opts.addWidget(self.chk_audio)
 
         opts.addWidget(QLabel("Min size:"))
@@ -680,6 +763,23 @@ class DuplicatePanel(QWidget):
         opts.addWidget(self.spn_min)
         opts.addStretch()
         lay.addLayout(opts)
+
+        # Match-type filter for the panel too, mirroring the standalone dialog.
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(12)
+        filter_row.addWidget(QLabel("Show:"))
+        self.cmb_type_filter = QComboBox()
+        self.cmb_type_filter.addItems([
+            "All match types",
+            "Exact matches only",
+            "Visual (image) matches only",
+            "Audio matches only",
+        ])
+        self.cmb_type_filter.setFixedWidth(200)
+        self.cmb_type_filter.currentIndexChanged.connect(self._apply_type_filter)
+        filter_row.addWidget(self.cmb_type_filter)
+        filter_row.addStretch()
+        lay.addLayout(filter_row)
 
         # ── Scan button + progress ────────────────────────────────────────
         scan_row = QHBoxLayout()
@@ -864,6 +964,33 @@ class DuplicatePanel(QWidget):
         self.btn_select_dupes.setEnabled(True)
         self.btn_select_none.setEnabled(True)
         self.btn_apply.setEnabled(True)
+        if hasattr(self, 'cmb_type_filter'):
+            self.cmb_type_filter.blockSignals(True)
+            self.cmb_type_filter.setCurrentIndex(0)
+            self.cmb_type_filter.blockSignals(False)
+            self._apply_type_filter()
+
+    def _apply_type_filter(self):
+        """Hide top-level groups whose match type doesn't match the selection."""
+        if self.tree.topLevelItemCount() == 0:
+            return
+        idx = self.cmb_type_filter.currentIndex() if hasattr(self, 'cmb_type_filter') else 0
+        allowed = {
+            0: None, 1: {'Exact'}, 2: {'Visual'}, 3: {'Audio'},
+        }.get(idx)
+        shown = 0
+        for i in range(self.tree.topLevelItemCount()):
+            group = self.tree.topLevelItem(i)
+            visible = allowed is None or group.text(4) in allowed
+            group.setHidden(not visible)
+            if visible:
+                shown += 1
+        if allowed is not None:
+            total = self.tree.topLevelItemCount()
+            self.lbl_status.setText(
+                f"Showing {shown} of {total} group{'s' if total != 1 else ''} "
+                f"(filter: {self.cmb_type_filter.currentText()})."
+            )
 
     def _auto_select(self):
         for i in range(self.tree.topLevelItemCount()):

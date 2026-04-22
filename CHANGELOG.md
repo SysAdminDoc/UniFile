@@ -2,6 +2,55 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.0] — Deferred-item pass: Settings Hub, Audio-Dup UX, helper extraction
+
+### New features
+- **Unified Settings Hub** — `Settings > All Settings…` opens one tabbed
+  dialog covering every configurable surface in UniFile (AI, Photo & Media,
+  Rules & Learning, System & Safety). Replaces the need to hunt through
+  nested `Tools > AI & Intelligence` submenus. Each tab's buttons delegate
+  to the existing individual settings dialogs, so no settings store is
+  duplicated or forked.
+- **Audio duplicates discoverability** — `DuplicateFinderDialog` and
+  `DuplicatePanel` now:
+  - Detect Chromaprint (`fpcalc`) at open time and grey-out the audio
+    checkbox when it's not installed, with an explicit tooltip pointing
+    to https://acoustid.org/chromaprint.
+  - Expose a "Show: All / Exact / Visual / Audio" filter above the results
+    tree so users can focus on a specific match type. Audio duplicates were
+    always in the results — they're now easy to find.
+
+### Architecture
+- **`unifile/ui_helpers.py`** — new module holding pure, side-effect-free
+  UI helpers. First migrations: `confidence_bg()` and `confidence_text_color()`
+  (previously static methods on the `UniFile` class) and a new
+  `truncate_middle()` utility for long-path labels. The legacy
+  `UniFile._confidence_bg` / `UniFile._confidence_text_color` still exist
+  as thin shims for backward compatibility. The rule for future migrations:
+  a function belongs in `ui_helpers.py` iff it has no `self` and no Qt
+  widget side effects.
+
+### Tests
+- **+11 regression tests** in `tests/test_v93_features.py` covering:
+  - `ui_helpers.confidence_*` colour gradients, out-of-range clamping,
+    alpha preservation
+  - `truncate_middle` — short-string passthrough, ends preservation,
+    pathological max_length
+  - Backward-compat shims on `UniFile` still work
+  - `SettingsHubDialog` is exported from the package
+  - Settings Hub's `_call` routing gracefully handles missing parent slots
+    (no raise, visible feedback via title change)
+  - `_find_fpcalc()` always returns a string, never `None` (UI relies on `bool()`)
+  - Static source-level lock that `ApplyAepWorker` rollback now logs
+    failures instead of silently swallowing them
+- **Total: 129 tests passing** (up from 118).
+
+### Deferred (see CONTINUATION_PROMPT.md)
+- Stale `screenshot.png` re-capture requires a running GUI on a 125%-DPI
+  display — cannot be done in a headless session.
+- Deeper `main_window.py` mixin extraction (UndoMixin, FilterMixin, etc.)
+  awaits integration tests; see continuation prompt for the safe path.
+
 ## [v9.2.0] — Second hardening pass: latent NameError sweep, Semantic Search UI, CLI inventory
 
 ### Correctness — 97 latent undefined-name bugs fixed

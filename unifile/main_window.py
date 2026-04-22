@@ -107,27 +107,20 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         'no_ext_match': '#6b7280', 'folder_no_match': '#6b7280',
     }
 
+    # Thin backward-compatible wrappers. The actual implementation lives in
+    # unifile.ui_helpers so it's unit-testable without a QMainWindow and
+    # importable from dialogs / workers that shouldn't see main_window.
     @staticmethod
     def _confidence_bg(conf: float, alpha: int = 15) -> 'QColor':
-        """Smooth heatmap: red(0) → amber(50) → green(100)."""
-        t = max(0.0, min(100.0, conf)) / 100.0
-        if t < 0.5:
-            f = t / 0.5
-            r, g, b = int(239 + (245 - 239) * f), int(68 + (158 - 68) * f), int(68 + (11 - 68) * f)
-        else:
-            f = (t - 0.5) / 0.5
-            r, g, b = int(245 + (74 - 245) * f), int(158 + (222 - 158) * f), int(11 + (128 - 11) * f)
-        return QColor(r, g, b, alpha)
+        """Background color for a confidence value. See ui_helpers."""
+        from unifile.ui_helpers import confidence_bg
+        return confidence_bg(conf, alpha)
 
     @staticmethod
     def _confidence_text_color(conf: float) -> str:
-        """Smooth text color: red(0) → amber(50) → green(100)."""
-        t = max(0.0, min(100.0, conf)) / 100.0
-        if t < 0.5:
-            f = t / 0.5
-            return f"#{int(239 + (245 - 239) * f):02x}{int(68 + (158 - 68) * f):02x}{int(68 + (11 - 68) * f):02x}"
-        f = (t - 0.5) / 0.5
-        return f"#{int(245 + (74 - 245) * f):02x}{int(158 + (222 - 158) * f):02x}{int(11 + (128 - 11) * f):02x}"
+        """Text color for a confidence value. See ui_helpers."""
+        from unifile.ui_helpers import confidence_text_color
+        return confidence_text_color(conf)
 
     def __init__(self):
         super().__init__()
@@ -478,6 +471,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         # ── Menu bar ─────────────────────────────────────────────────────
         mbar = self.menuBar()
         menu_tools = mbar.addMenu("Settings")
+        # Unified Settings Hub — one-click entry point for every configurable
+        # surface. Accelerator key so power users can Alt-S, Enter to reach it.
+        menu_tools.addAction("&All Settings…", self._open_settings_hub)
+        menu_tools.addSeparator()
         menu_tools.addAction("Edit Categories", self._open_custom_cats)
         menu_tools.addAction("Envato API Key", self._set_envato_key)
         menu_tools.addAction("Ollama LLM", self._open_ollama_settings)
@@ -1870,6 +1867,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         """Open the natural-language search panel."""
         from unifile.dialogs.advanced_settings import SemanticSearchDialog
         dlg = SemanticSearchDialog(self)
+        dlg.exec()
+
+    def _open_settings_hub(self):
+        """Unified Settings Hub — aggregates every configuration dialog in
+        tabbed view so users don't have to navigate three submenus."""
+        from unifile.dialogs.settings_hub import SettingsHubDialog
+        dlg = SettingsHubDialog(self)
         dlg.exec()
 
     def _open_embedding_settings(self):

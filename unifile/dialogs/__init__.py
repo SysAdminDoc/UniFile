@@ -26,6 +26,7 @@ from unifile.dialogs.advanced_settings import (
     SemanticSearchSettingsDialog, SemanticSearchDialog,
     EmbeddingSettingsDialog, LearningStatsDialog
 )
+from unifile.dialogs.settings_hub import SettingsHubDialog
 
 __all__ = [
     'OllamaSettingsDialog', 'PhotoSettingsDialog', 'FaceManagerDialog', 'ModelManagerDialog',
@@ -40,4 +41,5 @@ __all__ = [
     'AIProviderSettingsDialog', 'WhisperSettingsDialog',
     'SemanticSearchSettingsDialog', 'SemanticSearchDialog',
     'EmbeddingSettingsDialog', 'LearningStatsDialog',
+    'SettingsHubDialog',
 ]
