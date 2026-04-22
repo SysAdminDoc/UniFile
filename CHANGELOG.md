@@ -2,6 +2,50 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.11] — DialogsMixin: 13 dialog-launcher methods out of main_window.py
+
+### Architecture
+Every `_open_*_settings` / `_open_*_dialog` in `main_window.py` had the
+same shape: instantiate dialog, exec, optionally log. Thirteen of the
+most-self-contained ones are now in a single place:
+
+- `unifile/dialogs_mixin.py` — `DialogsMixin`:
+  - Settings & model dialogs: `_open_custom_cats`, `_open_ollama_settings`,
+    `_open_ai_providers`, `_open_whisper_settings`, `_open_semantic_settings`,
+    `_open_semantic_search`, `_open_settings_hub`, `_open_embedding_settings`,
+    `_open_learning_stats`.
+  - Rule / plugin / schedule / theme: `_open_schedule_dialog`,
+    `_open_plugin_manager`, `_open_protected_paths`, `_open_sort_rules`,
+    `_open_theme_picker`.
+
+All the lazy imports (pandas-heavy `CsvRulesDialog`, embeddings-heavy
+`SemanticSearchDialog`, etc.) survive the move intact — the mixin keeps
+them inside the methods to preserve fast cold-start.
+
+Also caught and cleaned up a stale duplicate of `_open_watch_history`
+that was still present in `main_window.py` even though v9.3.10 had
+already put the canonical copy on `WatchMixin`. Python's MRO resolved
+the main_window copy first, making the WatchMixin version dead code.
+Now only the mixin version exists.
+
+### Mixin roster (current)
+`UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,`
+`       TrayMixin, WatchMixin, DialogsMixin, QMainWindow)` — **8 mixins**.
+
+### Metrics
+| File | Lines (before extractions started) | Lines now |
+|------|------------------------------------|-----------|
+| `main_window.py` | 4121 | **3827** (−294 / −7%) |
+
+### Tests (351 → 354)
+`tests/test_main_window_smoke.py`:
+- MRO check extended to `DialogsMixin`.
+- Method-resolution parametrize covers five representative dialog
+  openers: `_open_custom_cats`, `_open_ollama_settings`,
+  `_open_settings_hub`, `_open_theme_picker`, `_open_sort_rules`.
+
+Ruff: 0 violations. Pyflakes: 0 undefined names. All tests passing.
+
 ## [v9.3.10] — TrayMixin + WatchMixin + `validate-rules` CLI
 
 ### Architecture — two more mixins extracted
