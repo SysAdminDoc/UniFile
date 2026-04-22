@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unifile"
-version = "9.3.3"
+version = "9.3.4"
 description = "Unified AI-powered file organization platform — tag library, 7-level classification, LLM intelligence, cleanup, dedup, photo library."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -135,8 +135,12 @@ select = [
 ]
 ignore = [
     "E501",  # line too long — long Qt stylesheets and SQL strings are common
+    "E701",  # multiple-statements-on-one-line-colon — dense-output style preference
+    "E702",  # multiple-statements-on-one-line-semicolon — dense-output style preference
+    "E401",  # multiple-imports-on-one-line — dense-output style preference
     "B008",  # function calls in default arg (acceptable for Qt default widgets)
     "B904",  # raise-from — verbose to retrofit across the codebase
+    "B007",  # unused-loop-control-variable — noisy for enumerate-based patterns
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -55,7 +55,7 @@ class ScanMixin:
     def _replay_last_config(self):
         """Load last scan config and auto-start scan."""
         try:
-            with open(_LAST_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            with open(_LAST_CONFIG_FILE, encoding='utf-8') as f:
                 cfg = json.load(f)
         except Exception:
             self._log("No saved scan config found"); return

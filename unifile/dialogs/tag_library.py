@@ -450,7 +450,7 @@ class TagLibraryPanel(QWidget):
                 self._preview_thumb.setText(suffix.upper())
         elif suffix in self._TEXT_EXTS and os.path.exists(full_path):
             try:
-                with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+                with open(full_path, encoding='utf-8', errors='replace') as f:
                     excerpt = f.read(500)
                 self._preview_thumb.setText("")
                 self._preview_thumb.setStyleSheet(

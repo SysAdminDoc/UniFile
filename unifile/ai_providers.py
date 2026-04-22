@@ -63,7 +63,7 @@ def load_providers() -> dict:
     providers = dict(_DEFAULT_PROVIDERS)
     if os.path.isfile(_PROVIDERS_FILE):
         try:
-            with open(_PROVIDERS_FILE, 'r', encoding='utf-8') as f:
+            with open(_PROVIDERS_FILE, encoding='utf-8') as f:
                 saved = json.load(f)
             for key, val in saved.items():
                 if key in providers:

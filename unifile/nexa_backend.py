@@ -69,7 +69,7 @@ _NEXA_MODEL_CATALOG = [
 
 def load_nexa_settings() -> dict:
     try:
-        with open(_NEXA_SETTINGS_FILE, 'r') as f:
+        with open(_NEXA_SETTINGS_FILE) as f:
             s = json.load(f)
         return {**_NEXA_DEFAULTS, **s}
     except (FileNotFoundError, OSError, json.JSONDecodeError):
@@ -379,7 +379,7 @@ def nexa_classify_file(file_path: str, settings: dict | None = None,
             return result
     elif ext in text_exts:
         try:
-            with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(p, encoding='utf-8', errors='ignore') as f:
                 content = f.read(4000)
             description = summarize_text(content, settings)
             result['detail'] = 'nexa-text'

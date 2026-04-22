@@ -57,7 +57,7 @@ class RuleEngine:
     def load_rules() -> list:
         if os.path.isfile(_RULES_FILE):
             try:
-                with open(_RULES_FILE, 'r', encoding='utf-8') as f:
+                with open(_RULES_FILE, encoding='utf-8') as f:
                     return json.load(f)
             except Exception:
                 pass
@@ -147,15 +147,15 @@ class RuleEngine:
             if input_path.lower().endswith(('.yaml', '.yml')):
                 try:
                     import yaml
-                    with open(input_path, 'r', encoding='utf-8') as f:
+                    with open(input_path, encoding='utf-8') as f:
                         data = yaml.safe_load(f)
                 except ImportError:
                     import json
-                    with open(input_path, 'r', encoding='utf-8') as f:
+                    with open(input_path, encoding='utf-8') as f:
                         data = json.load(f)
             else:
                 import json
-                with open(input_path, 'r', encoding='utf-8') as f:
+                with open(input_path, encoding='utf-8') as f:
                     data = json.load(f)
             if isinstance(data, list):
                 return data
@@ -282,7 +282,7 @@ class EventGrouper:
     def load_cache() -> dict:
         if os.path.isfile(_EVENT_CACHE_FILE):
             try:
-                with open(_EVENT_CACHE_FILE, 'r', encoding='utf-8') as f:
+                with open(_EVENT_CACHE_FILE, encoding='utf-8') as f:
                     return json.load(f)
             except Exception:
                 pass

@@ -40,7 +40,7 @@ def _get_cached_transcription(filepath: str) -> str | None:
     cache_file = os.path.join(_TRANSCRIPTION_CACHE_DIR, f"{cache_key}.json")
     if os.path.isfile(cache_file):
         try:
-            with open(cache_file, 'r', encoding='utf-8') as f:
+            with open(cache_file, encoding='utf-8') as f:
                 data = json.load(f)
             return data.get('text', '')
         except (json.JSONDecodeError, OSError):
