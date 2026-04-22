@@ -107,6 +107,22 @@ class TagLibraryPanel(QWidget):
         tag_search_row.addWidget(self.btn_add_tag)
         tag_lay.addLayout(tag_search_row)
 
+        # Namespace filter
+        ns_row = QHBoxLayout()
+        ns_row.setSpacing(6)
+        self.lbl_ns_filter = QLabel("Namespace:")
+        self.lbl_ns_filter.setFixedWidth(70)
+        ns_row.addWidget(self.lbl_ns_filter)
+        self.cmb_ns_filter = QComboBox()
+        self.cmb_ns_filter.addItem("All namespaces")
+        self.cmb_ns_filter.currentTextChanged.connect(self._on_ns_filter_changed)
+        ns_row.addWidget(self.cmb_ns_filter, 1)
+        self.chk_show_hidden = QCheckBox("Hidden")
+        self.chk_show_hidden.setToolTip("Show hidden tags")
+        self.chk_show_hidden.stateChanged.connect(lambda _: self._refresh_tags())
+        ns_row.addWidget(self.chk_show_hidden)
+        tag_lay.addLayout(ns_row)
+
         # Tag tree (hierarchical)
         self.tag_tree = QTreeWidget()
         self.tag_tree.setHeaderLabels(["Tag", "Count"])
@@ -143,6 +159,10 @@ class TagLibraryPanel(QWidget):
         self.btn_export_pack.setProperty("class", "toolbar")
         self.btn_export_pack.clicked.connect(self._export_tag_pack)
         pack_row.addWidget(self.btn_export_pack)
+        self.btn_broken_links = QPushButton("Scan Broken Links")
+        self.btn_broken_links.setProperty("class", "toolbar")
+        self.btn_broken_links.clicked.connect(self._on_scan_broken_links)
+        pack_row.addWidget(self.btn_broken_links)
         pack_row.addStretch()
         tag_lay.addLayout(pack_row)
 
@@ -169,7 +189,9 @@ class TagLibraryPanel(QWidget):
         entry_header.addStretch()
 
         self.txt_entry_search = QLineEdit()
-        self.txt_entry_search.setPlaceholderText("Search files… (tag:Name, ext:pdf, field:key=val)")
+        self.txt_entry_search.setPlaceholderText(
+            "Search… (tag:Name, ext:pdf, rating:3, inbox:true, ns:namespace, group:name)"
+        )
         self.txt_entry_search.setFixedWidth(250)
         self.txt_entry_search.textChanged.connect(self._on_entry_search)
         entry_header.addWidget(self.txt_entry_search)
@@ -242,6 +264,27 @@ class TagLibraryPanel(QWidget):
         self.btn_remove_tag.clicked.connect(self._on_remove_tag_from_selected)
         db_lay.addWidget(self.btn_remove_tag)
         db_lay.addStretch()
+
+        # Rating stars
+        self.lbl_rating = QLabel("Rating:")
+        db_lay.addWidget(self.lbl_rating)
+        self._rating_btns = []
+        for star_i in range(5):
+            sb = QPushButton("☆")
+            sb.setFixedSize(22, 22)
+            sb.setProperty("class", "toolbar")
+            sb.clicked.connect(lambda checked, si=star_i: self._set_rating(si + 1))
+            db_lay.addWidget(sb)
+            self._rating_btns.append(sb)
+
+        # Inbox toggle
+        self.btn_inbox = QPushButton("Inbox")
+        self.btn_inbox.setProperty("class", "toolbar")
+        self.btn_inbox.setCheckable(True)
+        self.btn_inbox.setToolTip("Toggle Inbox/Archive state for selected entries")
+        self.btn_inbox.clicked.connect(self._on_toggle_inbox)
+        db_lay.addWidget(self.btn_inbox)
+
         self.lbl_selection_info = QLabel("")
         db_lay.addWidget(self.lbl_selection_info)
         entry_lay.addWidget(self.detail_bar)
@@ -368,8 +411,29 @@ class TagLibraryPanel(QWidget):
             meta_parts.append(f"Modified: {entry.date_modified.strftime('%Y-%m-%d %H:%M')}")
         if entry.date_created:
             meta_parts.append(f"Created: {entry.date_created.strftime('%Y-%m-%d')}")
+        if entry.rating:
+            meta_parts.append(f"Rating: {'★' * entry.rating}{'☆' * (5 - entry.rating)}")
+        if entry.is_inbox is not None:
+            meta_parts.append("Inbox" if entry.is_inbox else "Archived")
+        if entry.source_url:
+            meta_parts.append(f"Source: {entry.source_url[:40]}...")
+        if entry.word_count:
+            meta_parts.append(f"{entry.word_count:,} words")
+        if entry.media_duration:
+            mins = int(entry.media_duration // 60)
+            secs = int(entry.media_duration % 60)
+            meta_parts.append(f"{mins}:{secs:02d}")
+        if entry.media_width and entry.media_height:
+            meta_parts.append(f"{entry.media_width}×{entry.media_height}")
         meta_parts.append(str(entry.path))
         self._preview_meta.setText("  |  ".join(meta_parts))
+
+        # Update rating display
+        if hasattr(self, '_rating_btns'):
+            self._update_rating_display(entry.rating or 0)
+        # Update inbox toggle
+        if hasattr(self, 'btn_inbox'):
+            self.btn_inbox.setChecked(entry.is_inbox if entry.is_inbox is not None else True)
 
         # Thumbnail
         suffix = entry.suffix.lower()
@@ -518,34 +582,50 @@ class TagLibraryPanel(QWidget):
 
     # ── Tag Operations ────────────────────────────────────────────────────
 
-    def _refresh_tags(self):
+    def _refresh_tags(self, namespace_filter: str | None = None):
         self.tag_tree.clear()
         self.cmb_assign_tag.clear()
         if not self._lib.is_open:
             return
 
         tags = self._lib.get_all_tags()
+        # Apply namespace filter
+        show_hidden = self.chk_show_hidden.isChecked() if hasattr(self, 'chk_show_hidden') else False
+        if not show_hidden:
+            tags = [t for t in tags if not t.is_hidden]
+        if namespace_filter:
+            ns_tag_ids = {t.id for t in self._lib.get_tags_by_namespace(namespace_filter)}
+            tags = [t for t in tags if t.id in ns_tag_ids]
+
+        # Fetch all entry counts in one query (avoids N+1)
+        entry_counts = self._lib.get_tag_entry_counts()
+
         # Build hierarchy: category tags at top, children below
         categories = [t for t in tags if t.is_category]
         non_cat = [t for t in tags if not t.is_category]
 
         for cat in sorted(categories, key=lambda t: t.name):
-            item = QTreeWidgetItem([cat.name, ""])
+            display_name = f"{cat.icon} {cat.name}" if cat.icon else cat.name
+            if cat.namespace:
+                display_name = f"[{cat.namespace}] {display_name}"
+            item = QTreeWidgetItem([display_name, ""])
             item.setData(0, Qt.ItemDataRole.UserRole, cat.id)
             color = TAG_COLORS.get(cat.color_slug or "blue", "#3b82f6")
             item.setForeground(0, QColor(color))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsSelectable)
-            # Count entries with this tag
-            count = len(self._lib.get_entries_by_tag(cat.id))
+            count = entry_counts.get(cat.id, 0)
             item.setText(1, str(count) if count else "")
             self.tag_tree.addTopLevelItem(item)
 
             # Add child tags
             children = [t for t in non_cat if cat.id in t.parent_ids]
             for child in sorted(children, key=lambda t: t.name):
-                c_item = QTreeWidgetItem([child.name, ""])
+                child_display = f"{child.icon} {child.name}" if child.icon else child.name
+                if child.namespace:
+                    child_display = f"[{child.namespace}] {child_display}"
+                c_item = QTreeWidgetItem([child_display, ""])
                 c_item.setData(0, Qt.ItemDataRole.UserRole, child.id)
-                c_count = len(self._lib.get_entries_by_tag(child.id))
+                c_count = entry_counts.get(child.id, 0)
                 c_item.setText(1, str(c_count) if c_count else "")
                 item.addChild(c_item)
                 non_cat = [t for t in non_cat if t.id != child.id]
@@ -555,9 +635,12 @@ class TagLibraryPanel(QWidget):
             orphan_root = QTreeWidgetItem(["Uncategorized", ""])
             orphan_root.setForeground(0, QColor(TAG_COLORS.get("slate", "#64748b")))
             for t in sorted(non_cat, key=lambda t: t.name):
-                o_item = QTreeWidgetItem([t.name, ""])
+                orphan_display = f"{t.icon} {t.name}" if t.icon else t.name
+                if t.namespace:
+                    orphan_display = f"[{t.namespace}] {orphan_display}"
+                o_item = QTreeWidgetItem([orphan_display, ""])
                 o_item.setData(0, Qt.ItemDataRole.UserRole, t.id)
-                o_count = len(self._lib.get_entries_by_tag(t.id))
+                o_count = entry_counts.get(t.id, 0)
                 o_item.setText(1, str(o_count) if o_count else "")
                 orphan_root.addChild(o_item)
             self.tag_tree.addTopLevelItem(orphan_root)
@@ -638,6 +721,13 @@ class TagLibraryPanel(QWidget):
         menu.addAction("Set Parent Tag...", lambda: self._set_parent_tag(tag_id))
         menu.addAction("Toggle Category", lambda: self._toggle_category(tag_id))
         menu.addSeparator()
+        menu.addAction("Set Description...", lambda: self._set_tag_description(tag_id))
+        menu.addAction("Set Namespace...", lambda: self._set_tag_namespace(tag_id))
+        menu.addAction("Set Icon...", lambda: self._set_tag_icon(tag_id))
+        menu.addAction("Toggle Hidden", lambda: self._toggle_hidden(tag_id))
+        menu.addSeparator()
+        menu.addAction("Merge Into...", lambda: self._merge_tag_into(tag_id))
+        menu.addSeparator()
         menu.addAction("Delete Tag", lambda: self._delete_tag(tag_id))
         menu.exec(self.tag_tree.mapToGlobal(pos))
 
@@ -693,7 +783,7 @@ class TagLibraryPanel(QWidget):
         if not self._lib.is_open:
             return
         filepath, _ = QFileDialog.getOpenFileName(
-            self, "Import Tag Pack", "", "Tag Packs (*.json);;All Files (*)")
+            self, "Import Tag Pack", "", "Tag Packs (*.json *.toml);;JSON (*.json);;TOML (*.toml);;All Files (*)")
         if not filepath:
             return
         result = self._lib.import_tag_pack(filepath)
@@ -710,8 +800,8 @@ class TagLibraryPanel(QWidget):
         if not self._lib.is_open:
             return
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Tag Pack", "tag_pack.json",
-            "Tag Packs (*.json);;All Files (*)")
+            self, "Export Tag Pack", "tag_pack.toml",
+            "Tag Packs (*.toml *.json);;TOML (*.toml);;JSON (*.json);;All Files (*)")
         if not filepath:
             return
         selected_ids = None
@@ -880,6 +970,18 @@ class TagLibraryPanel(QWidget):
 
         menu.addSeparator()
         menu.addAction("Remove from Library", lambda: self._batch_remove_entries(entry_ids))
+        menu.addSeparator()
+        menu.addAction("Set Source URL...", lambda: self._set_source_url(entry_ids))
+        menu.addAction("Set Inbox", lambda: self._set_entries_inbox(entry_ids, True))
+        menu.addAction("Set Archived", lambda: self._set_entries_inbox(entry_ids, False))
+        menu.addSeparator()
+        # Entry groups submenu
+        groups = self._lib.get_all_groups() if self._lib.is_open else []
+        if groups:
+            grp_menu = menu.addMenu("Add to Group")
+            for g in groups:
+                grp_menu.addAction(g.name, lambda checked, gid=g.id: self._lib.add_entries_to_group(gid, entry_ids))
+        menu.addAction("Create Group from Selection...", lambda: self._create_group_from_selection(entry_ids))
         menu.exec(self.tbl_entries.mapToGlobal(pos))
 
     def _on_apply_tag_to_selected(self):
@@ -961,3 +1063,158 @@ class TagLibraryPanel(QWidget):
         self.lbl_selection_info.setText(
             f"Removed {len(entry_ids)} item{'s' if len(entry_ids) != 1 else ''} from the library"
         )
+
+    def _on_ns_filter_changed(self, ns_text: str):
+        """Refresh tags filtered by selected namespace."""
+        if not self._lib.is_open:
+            return
+        self._refresh_tags(namespace_filter=ns_text if ns_text != "All namespaces" else None)
+
+    def _refresh_ns_filter(self):
+        """Repopulate the namespace filter combo."""
+        if not self._lib.is_open:
+            return
+        current = self.cmb_ns_filter.currentText()
+        self.cmb_ns_filter.blockSignals(True)
+        self.cmb_ns_filter.clear()
+        self.cmb_ns_filter.addItem("All namespaces")
+        for ns in self._lib.get_all_namespaces():
+            self.cmb_ns_filter.addItem(ns)
+        idx = self.cmb_ns_filter.findText(current)
+        if idx >= 0:
+            self.cmb_ns_filter.setCurrentIndex(idx)
+        self.cmb_ns_filter.blockSignals(False)
+
+    def _set_tag_description(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if not tag:
+            return
+        desc, ok = QInputDialog.getMultiLineText(
+            self, "Set Description", "Tag description:", tag.description or "")
+        if ok:
+            self._lib.update_tag(tag_id, description=desc.strip() or None)
+
+    def _set_tag_namespace(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if not tag:
+            return
+        ns, ok = QInputDialog.getText(
+            self, "Set Namespace",
+            "Namespace (e.g. 'genre', 'year', 'project'):",
+            text=tag.namespace or "")
+        if ok:
+            self._lib.update_tag(tag_id, namespace=ns.strip() or None)
+            self._refresh_tags()
+            self._refresh_ns_filter()
+
+    def _set_tag_icon(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if not tag:
+            return
+        icon, ok = QInputDialog.getText(
+            self, "Set Icon",
+            "Icon character or emoji (single char):",
+            text=tag.icon or "")
+        if ok:
+            self._lib.update_tag(tag_id, icon=icon.strip()[:2] or None)
+            self._refresh_tags()
+
+    def _toggle_hidden(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if tag:
+            self._lib.update_tag(tag_id, is_hidden=not tag.is_hidden)
+            self._refresh_tags()
+
+    def _merge_tag_into(self, source_id: int):
+        all_tags = self._lib.get_all_tags()
+        candidates = [t for t in all_tags if t.id != source_id]
+        if not candidates:
+            return
+        names = [t.name for t in candidates]
+        name, ok = QInputDialog.getItem(
+            self, "Merge Tag",
+            "Merge INTO this tag (source tag entries will be moved to target, source deleted):",
+            names, 0, False)
+        if ok and name:
+            target = next((t for t in candidates if t.name == name), None)
+            if target:
+                from PyQt6.QtWidgets import QMessageBox
+                ok2 = QMessageBox.question(
+                    self, "Confirm Merge",
+                    f"Merge all entries from source tag into '{target.name}' and delete source tag?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                ) == QMessageBox.StandardButton.Yes
+                if ok2:
+                    self._lib.merge_tags(source_id, target.id)
+                    self._refresh_tags()
+                    self._refresh_entries()
+                    self._update_stats()
+
+    def _set_rating(self, rating: int):
+        if not self._lib.is_open:
+            return
+        rows = set(idx.row() for idx in self.tbl_entries.selectedIndexes())
+        if not rows:
+            return
+        for r in rows:
+            item = self.tbl_entries.item(r, 0)
+            if item:
+                self._lib.set_entry_rating(item.data(Qt.ItemDataRole.UserRole), rating)
+        self._update_rating_display(rating)
+
+    def _update_rating_display(self, rating: int):
+        for i, btn in enumerate(self._rating_btns):
+            btn.setText("★" if i < rating else "☆")
+
+    def _on_toggle_inbox(self, checked: bool):
+        if not self._lib.is_open:
+            return
+        rows = set(idx.row() for idx in self.tbl_entries.selectedIndexes())
+        for r in rows:
+            item = self.tbl_entries.item(r, 0)
+            if item:
+                self._lib.set_entry_inbox(item.data(Qt.ItemDataRole.UserRole), checked)
+
+    def _set_source_url(self, entry_ids: list[int]):
+        url, ok = QInputDialog.getText(self, "Set Source URL", "URL (where this file was downloaded from):")
+        if ok and url.strip():
+            for eid in entry_ids:
+                self._lib.set_entry_source_url(eid, url.strip())
+
+    def _set_entries_inbox(self, entry_ids: list[int], is_inbox: bool):
+        for eid in entry_ids:
+            self._lib.set_entry_inbox(eid, is_inbox)
+        state = "Inbox" if is_inbox else "Archived"
+        self.lbl_selection_info.setText(f"Marked {len(entry_ids)} file(s) as {state}")
+
+    def _create_group_from_selection(self, entry_ids: list[int]):
+        if not entry_ids:
+            return
+        name, ok = QInputDialog.getText(self, "Create Group", "Group name:")
+        if ok and name.strip():
+            group = self._lib.create_entry_group(name.strip())
+            self._lib.add_entries_to_group(group.id, entry_ids)
+            self.lbl_selection_info.setText(f"Created group '{name.strip()}' with {len(entry_ids)} file(s)")
+
+    def _on_scan_broken_links(self):
+        if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library first")
+            return
+        broken = self._lib.scan_broken_links()
+        if not broken:
+            self.lbl_selection_info.setText("No broken links found — all files are present")
+            return
+        # Show broken entries in the table
+        self.tbl_entries.setRowCount(len(broken))
+        for row, entry in enumerate(broken):
+            item_name = QTableWidgetItem(entry.filename)
+            item_name.setData(Qt.ItemDataRole.UserRole, entry.id)
+            item_name.setForeground(QColor("#ef4444"))
+            self.tbl_entries.setItem(row, 0, item_name)
+            self.tbl_entries.setItem(row, 1, QTableWidgetItem("BROKEN LINK"))
+            self.tbl_entries.setItem(row, 2, QTableWidgetItem(entry.suffix.upper()))
+            self.tbl_entries.setItem(row, 3, QTableWidgetItem(""))
+            self.tbl_entries.setItem(row, 4, QTableWidgetItem(str(entry.path)))
+        self.lbl_entry_title.setText(f"Broken Links ({len(broken)})")
+        self.lbl_selection_info.setText(
+            f"{len(broken)} broken link{'s' if len(broken) != 1 else ''}. Right-click to relink.")

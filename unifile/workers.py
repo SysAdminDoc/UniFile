@@ -109,8 +109,19 @@ def safe_merge_move(src, dst, log_cb=None, check_hashes=False):
                         skipped += 1
                         os.remove(src_file)  # Remove source since dest is identical
                         continue
-                os.remove(dst_file)
+                # Atomically swap out existing destination before overwriting
+                bak_file = dst_file + '.bak'
+                os.rename(dst_file, bak_file)
                 merged += 1
+                try:
+                    if log_cb:
+                        log_cb(f"    Moving: {os.path.relpath(src_file, src)}")
+                    shutil.move(src_file, dst_file)
+                    os.remove(bak_file)
+                except Exception:
+                    os.rename(bak_file, dst_file)  # restore original on failure
+                    raise
+                continue
             if log_cb:
                 log_cb(f"    Moving: {os.path.relpath(src_file, src)}")
             shutil.move(src_file, dst_file)
@@ -164,7 +175,10 @@ def action_delete(path: str, *, use_trash: bool = True) -> tuple:
                 send2trash(path)
                 return (True, "Sent to trash")
             except ImportError:
-                pass  # fall through to permanent delete
+                return (False,
+                        "send2trash is not installed — file not deleted. "
+                        "Install it with: pip install send2trash, "
+                        "or disable 'Move to Trash' in Settings.")
         if os.path.isdir(path):
             shutil.rmtree(path)
         else:
