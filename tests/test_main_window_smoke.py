@@ -64,6 +64,7 @@ def test_mixins_in_mro(unifile_window):
     """Each mixin extracted from main_window.py must remain in the MRO.
     Guards against accidental removal during future refactors."""
     from unifile.apply_mixin import ApplyMixin
+    from unifile.dialogs_mixin import DialogsMixin
     from unifile.filter_mixin import FilterMixin
     from unifile.scan_mixin import ScanMixin
     from unifile.theme_mixin import ThemeMixin
@@ -72,7 +73,7 @@ def test_mixins_in_mro(unifile_window):
     from unifile.watch_mixin import WatchMixin
     mro = type(unifile_window).__mro__
     for mixin in (ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
-                  TrayMixin, WatchMixin):
+                  TrayMixin, WatchMixin, DialogsMixin):
         assert mixin in mro, f"{mixin.__name__} dropped from UniFile MRO"
 
 
@@ -85,6 +86,8 @@ def test_mixins_in_mro(unifile_window):
     "_apply_filter", "_populate_face_filter", "_on_conf_changed",  # FilterMixin
     "_setup_tray", "_tray_show", "_tray_exit",                 # TrayMixin
     "_watch_pause", "_toggle_watch_mode", "_open_watch_history",   # WatchMixin
+    "_open_custom_cats", "_open_ollama_settings",              # DialogsMixin
+    "_open_settings_hub", "_open_theme_picker", "_open_sort_rules",  # DialogsMixin
     "_show_empty_state", "_hide_empty_state",                  # main_window itself
 ])
 def test_method_resolves_on_composed_class(unifile_window, method_name):
