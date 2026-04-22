@@ -2,6 +2,66 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.10] — TrayMixin + WatchMixin + `validate-rules` CLI
+
+### Architecture — two more mixins extracted
+Continues the mixin sweep. Two more modules:
+
+- `unifile/tray_mixin.py` — `TrayMixin` owns the `QSystemTrayIcon`
+  lifecycle: `_setup_tray`, `_on_tray_activated`, `_tray_show`,
+  `_tray_exit` (~40 lines).
+- `unifile/watch_mixin.py` — `WatchMixin` owns watch-mode toggling:
+  `_watch_pause`, `_toggle_watch_mode`, `_open_watch_history`
+  (~60 lines). Reads `self._tray` (provided by `TrayMixin`) but never
+  mutates it.
+
+`UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
+TrayMixin, WatchMixin, QMainWindow)` — seven mixins now (was three
+before v9.3.7). `main_window.py` is down another ~105 lines.
+
+### CLI — `validate-rules <dir>` (new subcommand)
+Users can now validate a directory's `.unifile_rules.json` without
+launching the GUI:
+
+```
+$ python -m unifile validate-rules ./client-project
+rules file:  ./client-project/.unifile_rules.json
+base rules:  3
+include:     pdf-rule, img-rule
+inline:      1
+effective:   3 rule(s)
+names:
+  - pdf-rule
+  - img-rule
+  - local-custom
+```
+
+Emits JSON with `--json`. Exit codes are contract:
+- `0` — valid (parsed, all `include`/`exclude` names match globals)
+- `2` — missing file (or non-directory path)
+- `3` — malformed / not a JSON object
+- `4` — references an unknown global rule name
+
+Handy for CI of a team's shared project directory: a CI job can run
+`validate-rules` on every folder with a `.unifile_rules.json` after a
+rule refactor, catching stale `include`/`exclude` entries before they
+silently drop rules at scan time.
+
+### Tests — 14 new (337 → 351)
+- `tests/test_cli_validate_rules.py` — 8 tests via `subprocess.run`
+  covering missing / malformed / ok / unknown-name / non-directory
+  / JSON and human output. Uses a tolerant JSON extractor (stdout
+  has a `face_recognition_models` import-time banner that can't be
+  suppressed without patching the library; the test isolates the
+  JSON payload).
+- `tests/test_main_window_smoke.py` — parametrize updated to cover
+  the three tray methods and three watch methods; MRO assertion
+  extended to `TrayMixin` and `WatchMixin`.
+
+### Status
+Ruff: 0 violations. Pyflakes: 0 undefined names. All 351 tests
+passing.
+
 ## [v9.3.9] — FilterMixin extracted (3 more methods out of main_window.py)
 
 ### Architecture

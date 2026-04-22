@@ -5,6 +5,12 @@ Usage:
     python -m unifile --source <path>              Auto-scan a folder.
     python -m unifile --profile <name> --auto-apply
     python -m unifile classify <path> [--json]     Headless classify one path.
+    python -m unifile list-profiles [--json]       List saved scan profiles.
+    python -m unifile list-models [--json]         List installed Ollama models.
+    python -m unifile validate-rules <dir> [--json]
+                                                   Verify a directory's
+                                                   .unifile_rules.json and
+                                                   report the effective rule set.
     python -m unifile --version                    Print version + exit.
 """
 import json
@@ -134,6 +140,86 @@ def _cmd_classify(args) -> int:
     return 0
 
 
+def _cmd_validate_rules(args) -> int:
+    """Validate a directory's `.unifile_rules.json` file.
+
+    Loads the per-folder delta, applies it against the saved global rule
+    set, and reports (human-readable or JSON) what the effective rules
+    would be. Exit codes:
+      0 — valid (file present and parsed)
+      2 — file missing
+      3 — file present but malformed / not a dict
+      4 — delta references unknown global rule names (include/exclude
+          that don't match anything in the global rule set)
+    """
+    target = os.path.abspath(args.path)
+    if not os.path.isdir(target):
+        print(f"error: not a directory: {target}", file=sys.stderr)
+        return 2
+
+    from unifile.engine import RuleEngine, apply_rule_delta
+    from unifile.files import DIRRULES_FILENAME, load_directory_rules
+
+    rules_path = os.path.join(target, DIRRULES_FILENAME)
+    if not os.path.exists(rules_path):
+        if args.json:
+            print(json.dumps({"ok": False, "reason": "missing",
+                              "expected_path": rules_path}))
+        else:
+            print(f"No {DIRRULES_FILENAME} in {target}", file=sys.stderr)
+        return 2
+
+    delta = load_directory_rules(target)
+    if delta is None:
+        if args.json:
+            print(json.dumps({"ok": False, "reason": "malformed",
+                              "expected_path": rules_path}))
+        else:
+            print(f"Malformed or empty {DIRRULES_FILENAME}", file=sys.stderr)
+        return 3
+
+    base = RuleEngine.load_rules()
+    base_names = {r.get('name') for r in base}
+    unknown_include = [n for n in (delta.get('include') or []) if n not in base_names]
+    unknown_exclude = [n for n in (delta.get('exclude') or []) if n not in base_names]
+
+    effective = apply_rule_delta(base, delta)
+    report = {
+        "ok": not (unknown_include or unknown_exclude),
+        "path": rules_path,
+        "base_rule_count": len(base),
+        "include": delta.get('include', []),
+        "exclude": delta.get('exclude', []),
+        "inline_count": len(delta.get('inline', [])),
+        "effective_rule_count": len(effective),
+        "effective_rule_names": [r.get('name', '') for r in effective],
+        "unknown_include_names": unknown_include,
+        "unknown_exclude_names": unknown_exclude,
+    }
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print(f"rules file:  {rules_path}")
+        print(f"base rules:  {report['base_rule_count']}")
+        if report['include']:
+            print(f"include:     {', '.join(report['include'])}")
+        if report['exclude']:
+            print(f"exclude:     {', '.join(report['exclude'])}")
+        print(f"inline:      {report['inline_count']}")
+        print(f"effective:   {report['effective_rule_count']} rule(s)")
+        if report['effective_rule_names']:
+            print("names:")
+            for name in report['effective_rule_names']:
+                print(f"  - {name}")
+        if unknown_include:
+            print(f"WARNING: include references unknown global rules: {', '.join(unknown_include)}",
+                  file=sys.stderr)
+        if unknown_exclude:
+            print(f"WARNING: exclude references unknown global rules: {', '.join(unknown_exclude)}",
+                  file=sys.stderr)
+    return 0 if report['ok'] else 4
+
+
 def _write_scan_json(window, output_path: str) -> None:
     """Serialize the current scan results to a JSON plan file.
 
@@ -254,6 +340,14 @@ def main():
     p_list_models.add_argument("--url", type=str, default=None,
                                help="Ollama server URL (default: saved setting)")
 
+    p_validate_rules = subparsers.add_parser(
+        "validate-rules",
+        help="Validate a directory's .unifile_rules.json and report the effective rule set",
+    )
+    p_validate_rules.add_argument("path", type=str, help="Directory containing .unifile_rules.json")
+    p_validate_rules.add_argument("--json", action="store_true",
+                                  help="Emit a JSON report instead of human-readable output")
+
     args, qt_args = parser.parse_known_args()
 
     # Headless subcommands — no GUI at all.
@@ -263,6 +357,8 @@ def main():
         sys.exit(_cmd_list_profiles(args))
     if args.subcommand == "list-models":
         sys.exit(_cmd_list_models(args))
+    if args.subcommand == "validate-rules":
+        sys.exit(_cmd_validate_rules(args))
 
     # GUI path — install crash handler before touching Qt.
     sys.excepthook = _crash_handler
