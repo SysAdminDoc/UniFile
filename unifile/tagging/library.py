@@ -5,14 +5,18 @@ import uuid
 from datetime import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session, joinedload
+
+# Sentinel for "not passed" (distinct from None, which means "clear the field")
+_UNSET = object()
 
 from unifile.tagging.db import Base, make_engine, make_tables
 from unifile.tagging.models import (
     Tag, TagAlias, TagEntry, TagParent, Entry, Folder,
     ValueType, TextField, DatetimeField, BooleanField,
     DEFAULT_FIELDS, FieldTypeEnum,
+    EntryGroup, EntryGroupMember,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,7 +89,7 @@ class TagLibrary:
             select(Folder).where(Folder.path == p)
         ).scalar_one_or_none()
         if not folder:
-            folder = Folder(id=1, path=p, uuid=str(uuid.uuid4()))
+            folder = Folder(path=p, uuid=str(uuid.uuid4()))
             self._session.add(folder)
             self._session.commit()
         return folder
@@ -94,7 +98,8 @@ class TagLibrary:
 
     def add_tag(self, name: str, shorthand: str | None = None,
                 color_slug: str | None = None, is_category: bool = False,
-                parent_id: int | None = None) -> Tag | None:
+                parent_id: int | None = None, namespace: str | None = None,
+                description: str | None = None) -> Tag | None:
         existing = self._session.execute(
             select(Tag).where(func.lower(Tag.name) == name.lower())
         ).scalar_one_or_none()
@@ -102,7 +107,8 @@ class TagLibrary:
             return existing
 
         tag = Tag(name=name, shorthand=shorthand, color_slug=color_slug,
-                  is_category=is_category)
+                  is_category=is_category, namespace=namespace,
+                  description=description)
         self._session.add(tag)
         self._session.flush()
 
@@ -134,12 +140,16 @@ class TagLibrary:
 
     def get_category_tags(self) -> list[Tag]:
         return list(self._session.execute(
-            select(Tag).where(Tag.is_category == True).order_by(Tag.name)
+            select(Tag).where(Tag.is_category.is_(True)).order_by(Tag.name)
         ).scalars().all())
 
     def update_tag(self, tag_id: int, name: str | None = None,
                    color_slug: str | None = None,
-                   is_category: bool | None = None) -> bool:
+                   is_category: bool | None = None,
+                   namespace=_UNSET,
+                   is_hidden: bool | None = None,
+                   description=_UNSET,
+                   icon=_UNSET) -> bool:
         tag = self._session.get(Tag, tag_id)
         if not tag:
             return False
@@ -149,6 +159,15 @@ class TagLibrary:
             tag.color_slug = color_slug
         if is_category is not None:
             tag.is_category = is_category
+        # Nullable fields: use sentinel so None means "clear the value"
+        if namespace is not _UNSET:
+            tag.namespace = namespace
+        if is_hidden is not None:
+            tag.is_hidden = is_hidden
+        if description is not _UNSET:
+            tag.description = description
+        if icon is not _UNSET:
+            tag.icon = icon
         self._session.commit()
         return True
 
@@ -215,12 +234,16 @@ class TagLibrary:
         count = 0
         for i in range(0, len(file_paths), batch_size):
             batch = file_paths[i:i + batch_size]
+            batch_paths = [Path(fp) for fp in batch]
+            # Fetch all already-present paths in one query (avoids N+1)
+            existing_paths: set = set(
+                self._session.execute(
+                    select(Entry.path).where(Entry.path.in_(batch_paths))
+                ).scalars().all()
+            )
             for fp in batch:
                 p = Path(fp)
-                existing = self._session.execute(
-                    select(Entry).where(Entry.path == p)
-                ).scalar_one_or_none()
-                if existing:
+                if p in existing_paths:
                     continue
                 stat = p.stat() if p.exists() else None
                 entry = Entry(
@@ -240,12 +263,12 @@ class TagLibrary:
     def get_entry(self, entry_id: int) -> Entry | None:
         return self._session.execute(
             select(Entry).options(joinedload(Entry.tags)).where(Entry.id == entry_id)
-        ).scalar_one_or_none()
+        ).unique().scalar_one_or_none()
 
     def get_entry_by_path(self, path: str) -> Entry | None:
         return self._session.execute(
             select(Entry).options(joinedload(Entry.tags)).where(Entry.path == Path(path))
-        ).scalar_one_or_none()
+        ).unique().scalar_one_or_none()
 
     def get_all_entries(self, limit: int = 1000, offset: int = 0) -> list[Entry]:
         return list(self._session.execute(
@@ -271,7 +294,7 @@ class TagLibrary:
     def add_tags_to_entry(self, entry_id: int, tag_ids: list[int]) -> bool:
         entry = self._session.execute(
             select(Entry).options(joinedload(Entry.tags)).where(Entry.id == entry_id)
-        ).scalar_one_or_none()
+        ).unique().scalar_one_or_none()
         if not entry:
             return False
         for tid in tag_ids:
@@ -284,7 +307,7 @@ class TagLibrary:
     def remove_tags_from_entry(self, entry_id: int, tag_ids: list[int]) -> bool:
         entry = self._session.execute(
             select(Entry).options(joinedload(Entry.tags)).where(Entry.id == entry_id)
-        ).scalar_one_or_none()
+        ).unique().scalar_one_or_none()
         if not entry:
             return False
         for tid in tag_ids:
@@ -299,6 +322,15 @@ class TagLibrary:
             select(Entry).join(Entry.tags).where(Tag.id == tag_id)
             .order_by(Entry.filename)
         ).scalars().all())
+
+    def get_tag_entry_counts(self) -> dict[int, int]:
+        """Return {tag_id: entry_count} for all tags in one query."""
+        from unifile.tagging.models import TagEntry as _TE
+        rows = self._session.execute(
+            select(_TE.tag_id, func.count(_TE.entry_id))
+            .group_by(_TE.tag_id)
+        ).all()
+        return {tag_id: count for tag_id, count in rows}
 
     def get_untagged_entries(self) -> list[Entry]:
         subq = select(TagEntry.entry_id)
@@ -332,6 +364,33 @@ class TagLibrary:
         self._session.commit()
         return True
 
+    @staticmethod
+    def set_entry_field_with_session(
+        session, entry_id: int, field_key: str, value: str
+    ) -> bool:
+        """Thread-safe variant: caller provides an explicit SQLAlchemy session."""
+        entry = session.get(Entry, entry_id)
+        vt = session.get(ValueType, field_key)
+        if not entry or not vt:
+            return False
+        existing = session.execute(
+            select(TextField).where(
+                TextField.entry_id == entry_id,
+                TextField.type_key == field_key,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            existing.value = value
+        else:
+            session.add(TextField(
+                type_key=field_key,
+                entry_id=entry_id,
+                value=value,
+                position=vt.position,
+            ))
+        session.commit()
+        return True
+
     def get_entry_fields(self, entry_id: int) -> dict[str, str]:
         fields = {}
         results = self._session.execute(
@@ -340,6 +399,241 @@ class TagLibrary:
         for f in results:
             fields[f.type_key] = f.value or ""
         return fields
+
+    # ── Rating ────────────────────────────────────────────────────────────────
+
+    def set_entry_rating(self, entry_id: int, rating: int) -> bool:
+        """Set 0-5 star rating. Returns False if entry not found."""
+        entry = self._session.get(Entry, entry_id)
+        if not entry:
+            return False
+        entry.rating = max(0, min(5, rating))
+        self._session.commit()
+        return True
+
+    def get_entries_by_rating(self, min_rating: int = 1) -> list[Entry]:
+        """Return entries with rating >= min_rating."""
+        return list(self._session.execute(
+            select(Entry).where(Entry.rating >= min_rating)
+            .order_by(Entry.rating.desc(), Entry.filename)
+        ).scalars().all())
+
+    # ── Inbox / Archive ───────────────────────────────────────────────────────
+
+    def set_entry_inbox(self, entry_id: int, is_inbox: bool) -> bool:
+        """Move entry to inbox (True) or archive (False)."""
+        entry = self._session.get(Entry, entry_id)
+        if not entry:
+            return False
+        entry.is_inbox = is_inbox
+        self._session.commit()
+        return True
+
+    def get_inbox_entries(self, limit: int = 1000) -> list[Entry]:
+        """Return entries where is_inbox = True."""
+        return list(self._session.execute(
+            select(Entry).where(Entry.is_inbox.is_(True))
+            .order_by(Entry.filename).limit(limit)
+        ).scalars().all())
+
+    def get_archived_entries(self, limit: int = 1000) -> list[Entry]:
+        """Return entries where is_inbox = False."""
+        return list(self._session.execute(
+            select(Entry).where(Entry.is_inbox.is_(False))
+            .order_by(Entry.filename).limit(limit)
+        ).scalars().all())
+
+    # ── Source URL ────────────────────────────────────────────────────────────
+
+    def set_entry_source_url(self, entry_id: int, url: str) -> bool:
+        """Store the source URL for an entry."""
+        entry = self._session.get(Entry, entry_id)
+        if not entry:
+            return False
+        entry.source_url = url
+        self._session.commit()
+        return True
+
+    # ── Cached Media Properties ───────────────────────────────────────────────
+
+    def update_entry_media_props(self, entry_id: int, width: int | None = None,
+                                  height: int | None = None, duration: float | None = None,
+                                  word_count: int | None = None) -> bool:
+        """Update cached media properties for an entry."""
+        entry = self._session.get(Entry, entry_id)
+        if not entry:
+            return False
+        if width is not None:
+            entry.media_width = width
+        if height is not None:
+            entry.media_height = height
+        if duration is not None:
+            entry.media_duration = duration
+        if word_count is not None:
+            entry.word_count = word_count
+        self._session.commit()
+        return True
+
+    # ── Broken-Link Scan ──────────────────────────────────────────────────────
+
+    def scan_broken_links(self, batch_size: int = 1000) -> list[Entry]:
+        """Return entries whose path no longer exists on disk.
+
+        Uses paginated queries to avoid loading the entire library into memory.
+        """
+        broken: list[Entry] = []
+        offset = 0
+        while True:
+            batch = list(self._session.execute(
+                select(Entry).order_by(Entry.id)
+                .limit(batch_size).offset(offset)
+            ).scalars().all())
+            if not batch:
+                break
+            for e in batch:
+                if not Path(e.path).exists():
+                    broken.append(e)
+            offset += batch_size
+            if len(batch) < batch_size:
+                break
+        return broken
+
+    def relink_entry(self, entry_id: int, new_path: str) -> bool:
+        """Update entry path to new_path (for relinking moved files)."""
+        entry = self._session.get(Entry, entry_id)
+        if not entry:
+            return False
+        p = Path(new_path)
+        entry.path = p
+        entry.filename = p.name
+        entry.suffix = p.suffix.lstrip(".").lower()
+        self._session.commit()
+        return True
+
+    # ── Tag Namespace ─────────────────────────────────────────────────────────
+
+    def get_tags_by_namespace(self, namespace: str) -> list[Tag]:
+        """Return all tags with the given namespace."""
+        return list(self._session.execute(
+            select(Tag).where(Tag.namespace == namespace).order_by(Tag.name)
+        ).scalars().all())
+
+    def get_all_namespaces(self) -> list[str]:
+        """Return sorted list of distinct tag namespaces (excluding None)."""
+        rows = self._session.execute(
+            select(Tag.namespace).where(Tag.namespace.is_not(None)).distinct()
+        ).scalars().all()
+        return sorted(r for r in rows if r)
+
+    # ── Tag Merge ─────────────────────────────────────────────────────────────
+
+    def merge_tags(self, source_id: int, target_id: int) -> bool:
+        """Merge source tag into target: re-point all entries, then delete source."""
+        source = self._session.get(Tag, source_id)
+        target = self._session.get(Tag, target_id)
+        if not source or not target:
+            return False
+        entries = self._session.execute(
+            select(Entry).join(Entry.tags).where(Tag.id == source_id)
+        ).unique().scalars().all()
+        for entry in entries:
+            entry.tags.discard(source)
+            if target not in entry.tags:
+                entry.tags.add(target)
+        self._session.flush()
+        self._session.delete(source)
+        self._session.commit()
+        return True
+
+    # ── Entry Groups ──────────────────────────────────────────────────────────
+
+    def create_entry_group(self, name: str, color_slug: str | None = None) -> EntryGroup:
+        """Create a new entry group."""
+        group = EntryGroup(name=name, color_slug=color_slug, created_at=dt.now())
+        self._session.add(group)
+        self._session.commit()
+        return group
+
+    def get_all_groups(self) -> list[EntryGroup]:
+        """Return all entry groups."""
+        return list(self._session.execute(
+            select(EntryGroup).order_by(EntryGroup.name)
+        ).scalars().all())
+
+    def add_entries_to_group(self, group_id: int, entry_ids: list[int]) -> bool:
+        """Add entries to a group (bulk, avoids N+1)."""
+        group = self._session.get(EntryGroup, group_id)
+        if not group:
+            return False
+        existing_ids = set(self._session.execute(
+            select(EntryGroupMember.entry_id).where(
+                EntryGroupMember.group_id == group_id,
+                EntryGroupMember.entry_id.in_(entry_ids),
+            )
+        ).scalars().all())
+        new_members = [
+            EntryGroupMember(group_id=group_id, entry_id=eid)
+            for eid in entry_ids if eid not in existing_ids
+        ]
+        if new_members:
+            self._session.add_all(new_members)
+        self._session.commit()
+        return True
+
+    def remove_entries_from_group(self, group_id: int, entry_ids: list[int]) -> bool:
+        """Remove entries from a group (bulk delete)."""
+        group = self._session.get(EntryGroup, group_id)
+        if not group:
+            return False
+        self._session.execute(
+            delete(EntryGroupMember).where(
+                EntryGroupMember.group_id == group_id,
+                EntryGroupMember.entry_id.in_(entry_ids),
+            )
+        )
+        self._session.commit()
+        return True
+
+    def get_group_entries(self, group_id: int) -> list[Entry]:
+        """Return all entries in a group (single JOIN query)."""
+        return list(self._session.execute(
+            select(Entry)
+            .join(EntryGroupMember, EntryGroupMember.entry_id == Entry.id)
+            .where(EntryGroupMember.group_id == group_id)
+            .order_by(Entry.filename)
+        ).scalars().all())
+
+    def delete_entry_group(self, group_id: int) -> bool:
+        """Delete a group (bulk member removal, not the entries themselves)."""
+        group = self._session.get(EntryGroup, group_id)
+        if not group:
+            return False
+        self._session.execute(
+            delete(EntryGroupMember).where(EntryGroupMember.group_id == group_id)
+        )
+        self._session.delete(group)
+        self._session.commit()
+        return True
+
+    # ── Multiple Library Roots ────────────────────────────────────────────────
+
+    def add_root(self, path: str) -> bool:
+        """Add an additional root folder to this library."""
+        p = Path(path)
+        existing = self._session.execute(
+            select(Folder).where(Folder.path == p)
+        ).scalar_one_or_none()
+        if existing:
+            return True
+        folder = Folder(path=p, uuid=str(uuid.uuid4()))
+        self._session.add(folder)
+        self._session.commit()
+        return True
+
+    def get_roots(self) -> list[str]:
+        """Return list of all root folder paths in this library."""
+        folders = self._session.execute(select(Folder)).scalars().all()
+        return [str(f.path) for f in folders]
 
     # ── Search ────────────────────────────────────────────────────────────────
 
@@ -353,6 +647,10 @@ class TagLibrary:
             field:key=value      — entries with a field matching value
             special:untagged     — entries with no tags
             special:tagged       — entries with at least one tag
+            rating:3             — entries with rating >= 3
+            inbox:true/false     — filter by inbox state
+            ns:namespace         — entries with at least one tag in namespace
+            group:name           — entries in the named group
             tag:A AND tag:B      — boolean AND (intersection)
             tag:A OR tag:B       — boolean OR (union)
             plain text           — filename search (ilike)
@@ -389,15 +687,15 @@ class TagLibrary:
                 .order_by(Entry.filename).limit(limit)
             ).scalars().all())
 
-        # NOT tag
+        # NOT tag — use SQL subquery instead of loading all entries into Python
         if q.startswith("-tag:"):
             tag_name = q[5:].strip().strip('"')
             tag = self.get_tag_by_name(tag_name)
             if not tag:
                 return self.get_all_entries(limit=limit)
-            tagged_ids = {e.id for e in self.get_entries_by_tag(tag.id)}
+            tagged_subq = select(TagEntry.entry_id).where(TagEntry.tag_id == tag.id)
             return list(self._session.execute(
-                select(Entry).where(~Entry.id.in_(tagged_ids))
+                select(Entry).where(~Entry.id.in_(tagged_subq))
                 .order_by(Entry.filename).limit(limit)
             ).scalars().all())
 
@@ -446,6 +744,50 @@ class TagLibrary:
                 select(Entry).where(Entry.id.in_(subq))
                 .order_by(Entry.filename).limit(limit)
             ).scalars().all())
+
+        # Rating filter
+        if q.startswith("rating:"):
+            try:
+                min_r = int(q[7:].strip())
+            except ValueError:
+                return []
+            return list(self._session.execute(
+                select(Entry).where(Entry.rating >= min_r)
+                .order_by(Entry.filename).limit(limit)
+            ).scalars().all())
+
+        # Inbox filter
+        if q.startswith("inbox:"):
+            val = q[6:].strip().lower()
+            is_inbox = val == "true"
+            return list(self._session.execute(
+                select(Entry).where(Entry.is_inbox == is_inbox)
+                .order_by(Entry.filename).limit(limit)
+            ).scalars().all())
+
+        # Namespace filter
+        if q.startswith("ns:"):
+            ns = q[3:].strip()
+            matching_ids = self._session.execute(
+                select(TagEntry.entry_id).join(Tag, Tag.id == TagEntry.tag_id)
+                .where(Tag.namespace == ns)
+            ).scalars().all()
+            return list(self._session.execute(
+                select(Entry).where(Entry.id.in_(matching_ids))
+                .order_by(Entry.filename).limit(limit)
+            ).scalars().all())
+
+        # Group filter
+        if q.startswith("group:"):
+            group_name = q[6:].strip()
+            group = self._session.execute(
+                select(EntryGroup).where(
+                    func.lower(EntryGroup.name) == group_name.lower()
+                )
+            ).scalar_one_or_none()
+            if not group:
+                return []
+            return self.get_group_entries(group.id)[:limit]
 
         # Default: filename search
         return list(self._session.execute(
@@ -516,32 +858,43 @@ class TagLibrary:
         """Get full tag hierarchy as a tree structure for UI display.
 
         Returns list of root tags (those with no parents) with their children nested.
+        Cycle-safe: silently omits any tag already visited in the current branch.
         """
         all_tags = self.get_all_tags()
         tag_map = {t.id: t for t in all_tags}
         # Find roots (tags with no parents)
         roots = [t for t in all_tags if not t.parent_tags]
 
-        def _build_tree(tag):
+        def _build_tree(tag, visited: set) -> dict | None:
+            if tag.id in visited:
+                return None  # cycle detected — skip
+            branch = visited | {tag.id}
             children_ids = self._session.execute(
                 select(TagParent.child_id).where(TagParent.parent_id == tag.id)
             ).scalars().all()
             children = [tag_map[cid] for cid in children_ids if cid in tag_map]
+            child_nodes = [
+                node for c in sorted(children, key=lambda t: t.name)
+                if (node := _build_tree(c, branch)) is not None
+            ]
             return {
                 'id': tag.id,
                 'name': tag.name,
                 'shorthand': tag.shorthand,
                 'color': tag.color_slug,
                 'is_category': tag.is_category,
-                'children': [_build_tree(c) for c in sorted(children, key=lambda t: t.name)],
+                'children': child_nodes,
             }
 
-        return [_build_tree(r) for r in sorted(roots, key=lambda t: t.name)]
+        return [
+            node for r in sorted(roots, key=lambda t: t.name)
+            if (node := _build_tree(r, set())) is not None
+        ]
 
     # ── Tag Packs (import/export) ─────────────────────────────────────────
 
     def export_tag_pack(self, filepath: str, tag_ids: list[int] | None = None) -> bool:
-        """Export tags as a shareable JSON tag pack.
+        """Export tags as a shareable tag pack (TOML preferred, JSON fallback).
 
         Args:
             filepath: Output file path.
@@ -560,11 +913,23 @@ class TagLibrary:
                 'name': tag.name,
                 'shorthand': tag.shorthand,
                 'color': tag.color_slug,
+                'namespace': tag.namespace,
+                'description': tag.description,
                 'is_category': tag.is_category,
                 'aliases': tag.alias_strings,
                 'parents': [p.name for p in tag.parent_tags],
             }
             pack['tags'].append(entry)
+
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext == '.toml':
+            try:
+                import tomli_w
+                with open(filepath, 'wb') as f:
+                    tomli_w.dump(pack, f)
+                return True
+            except ImportError:
+                pass
 
         import json
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -572,13 +937,31 @@ class TagLibrary:
         return True
 
     def import_tag_pack(self, filepath: str) -> dict:
-        """Import tags from a tag pack JSON file.
+        """Import tags from a tag pack (TOML or JSON).
 
         Returns: {'imported': int, 'skipped': int, 'errors': int}
         """
-        import json
-        with open(filepath, 'r', encoding='utf-8') as f:
-            pack = json.load(f)
+        pack = None
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext == '.toml':
+            try:
+                try:
+                    import tomllib
+                except ImportError:
+                    import tomli as tomllib  # type: ignore[no-redef]
+                with open(filepath, 'rb') as f:
+                    pack = tomllib.load(f)
+            except Exception:
+                pack = None
+
+        if pack is None:
+            try:
+                import json
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    pack = json.load(f)
+            except Exception as exc:
+                logger.error("import_tag_pack: failed to parse %s — %s", filepath, exc)
+                return {'imported': 0, 'skipped': 0, 'errors': 1}
 
         stats = {'imported': 0, 'skipped': 0, 'errors': 0}
         tag_entries = pack.get('tags', [])
@@ -601,13 +984,17 @@ class TagLibrary:
                 is_category=entry.get('is_category', False),
             )
             if tag:
+                if entry.get('namespace'):
+                    tag.namespace = entry['namespace']
+                if entry.get('description'):
+                    tag.description = entry['description']
                 name_to_tag[name] = tag
-                # Add aliases
                 for alias in entry.get('aliases', []):
                     self.add_alias(tag.id, alias)
                 stats['imported'] += 1
             else:
                 stats['errors'] += 1
+        self._session.commit()
 
         # Second pass: set parent relationships
         for entry in tag_entries:

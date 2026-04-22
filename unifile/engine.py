@@ -7,6 +7,22 @@ from unifile.config import _APP_DATA_DIR
 
 _RULES_FILE = os.path.join(_APP_DATA_DIR, 'rules.json')
 
+
+def _parse_naive_dt(s: str) -> datetime:
+    """Parse an ISO-format datetime string, stripping any timezone offset."""
+    s = s.strip()
+    s = re.sub(r'[Zz]$', '', s)
+    s = re.sub(r'[+-]\d{2}:?\d{2}$', '', s).strip()
+    return datetime.fromisoformat(s)
+
+
+def _safe_regex_match(pattern: str, value: str) -> bool:
+    """Match a regex pattern against value, returning False on invalid patterns."""
+    try:
+        return bool(re.search(pattern, value, re.IGNORECASE))
+    except re.error:
+        return False
+
 class RuleEngine:
     """User-defined classification rules with priority ordering."""
 
@@ -19,9 +35,21 @@ class RuleEngine:
         'lte': lambda a, b: float(a) <= float(b),
         'contains': lambda a, b: str(b).lower() in str(a).lower(),
         'not_contains': lambda a, b: str(b).lower() not in str(a).lower(),
-        'matches': lambda a, b: bool(re.search(b, str(a), re.IGNORECASE)),
+        'matches': lambda a, b: _safe_regex_match(b, str(a)),
         'startswith': lambda a, b: str(a).lower().startswith(str(b).lower()),
         'endswith': lambda a, b: str(a).lower().endswith(str(b).lower()),
+        'older_than_days': lambda a, b: (
+            datetime.now() - _parse_naive_dt(str(a)) > timedelta(days=int(b))
+            if a else False
+        ),
+        'newer_than_days': lambda a, b: (
+            datetime.now() - _parse_naive_dt(str(a)) < timedelta(days=int(b))
+            if a else False
+        ),
+        'size_gt_mb': lambda a, b: float(a) > float(b) * 1024 * 1024,
+        'size_lt_mb': lambda a, b: float(a) < float(b) * 1024 * 1024,
+        'in_list': lambda a, b: str(a).lower() in [x.strip().lower() for x in str(b).split(',')],
+        'not_in_list': lambda a, b: str(a).lower() not in [x.strip().lower() for x in str(b).split(',')],
     }
 
     @staticmethod
@@ -94,6 +122,107 @@ class RuleEngine:
                         rule.get('action_rename', ''),
                         rule.get('confidence', 90))
         return None
+
+    @staticmethod
+    def export_rules_yaml(rules: list, output_path: str) -> bool:
+        """Export rules to YAML. Falls back to JSON if PyYAML not available."""
+        try:
+            import yaml
+            with open(output_path, 'w', encoding='utf-8') as f:
+                yaml.dump({'rules': rules}, f, default_flow_style=False, allow_unicode=True)
+            return True
+        except ImportError:
+            import json
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump({'rules': rules}, f, indent=2, ensure_ascii=False)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def import_rules_yaml(input_path: str) -> list:
+        """Import rules from YAML or JSON. Returns list of rule dicts."""
+        try:
+            if input_path.lower().endswith(('.yaml', '.yml')):
+                try:
+                    import yaml
+                    with open(input_path, 'r', encoding='utf-8') as f:
+                        data = yaml.safe_load(f)
+                except ImportError:
+                    import json
+                    with open(input_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+            else:
+                import json
+                with open(input_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            if isinstance(data, list):
+                return data
+            return data.get('rules', [])
+        except Exception:
+            return []
+
+    @staticmethod
+    def natural_language_to_rule(prompt: str, ollama_url: str = 'http://localhost:11434',
+                                  model: str = 'llama3') -> dict | None:
+        """Convert natural language to a rule dict using Ollama LLM.
+
+        Example prompt: "Move PDF files larger than 5MB to Documents"
+        Returns a rule dict compatible with evaluate() or None on failure.
+        """
+        import json as _json
+        system = (
+            'You are a JSON rule generator for a file organizer. '
+            'Convert the user description into a single JSON rule object with these exact keys: '
+            '"name" (string), "enabled" (true), "priority" (int 1-99), "logic" ("all" or "any"), '
+            '"conditions" (array of {"field": string, "op": string, "value": string}), '
+            '"action_category" (string), "action_rename" (string, can be empty), "confidence" (int 1-100). '
+            'Valid field values: name, extension, size, modified_date, created_date, path_contains. '
+            'Valid op values: eq, neq, contains, not_contains, matches, startswith, endswith, '
+            'gt, lt, gte, lte, older_than_days, newer_than_days, size_gt_mb, size_lt_mb, in_list, not_in_list. '
+            'Respond with ONLY the JSON object, no explanation.'
+        )
+        payload = {
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': system},
+                {'role': 'user', 'content': prompt},
+            ],
+            'stream': False,
+        }
+        try:
+            import urllib.request
+            data = _json.dumps(payload).encode()
+            req = urllib.request.Request(
+                f'{ollama_url.rstrip("/")}/api/chat',
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = _json.loads(resp.read())
+            content = result.get('message', {}).get('content', '').strip()
+            # Strip code fences (```json ... ``` or ``` ... ```)
+            fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', content)
+            if fence_match:
+                content = fence_match.group(1).strip()
+            return _json.loads(content)
+        except Exception:
+            return None
+
+    @staticmethod
+    def find_conflicts(rules: list) -> list[tuple[int, int]]:
+        """Return list of (rule_index_a, rule_index_b) pairs that have identical conditions."""
+        conflicts = []
+        for i, ra in enumerate(rules):
+            for j, rb in enumerate(rules):
+                if j <= i:
+                    continue
+                ca = sorted(ra.get('conditions', []), key=lambda c: c.get('field', ''))
+                cb = sorted(rb.get('conditions', []), key=lambda c: c.get('field', ''))
+                if ca == cb and ra.get('action_category') != rb.get('action_category'):
+                    conflicts.append((i, j))
+        return conflicts
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -180,13 +309,11 @@ class ScheduleManager:
         """Create a Windows scheduled task."""
         if sys.platform != 'win32':
             return False
-        script_path = os.path.abspath(__file__) if '__file__' in dir() else ''
-        if not script_path:
-            return False
         args = f'--profile "{profile_name}"'
         if auto_apply:
             args += ' --auto-apply'
-        tr = f'"{sys.executable}" "{script_path}" {args}'
+        # Run as an installed package to avoid script-path fragility
+        tr = f'"{sys.executable}" -m unifile {args}'
         tn = f"UniFile\\{name}"
         cmd = ['schtasks', '/create', '/tn', tn, '/tr', tr, '/f']
         if schedule_type == 'daily':

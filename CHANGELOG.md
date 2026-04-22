@@ -2,6 +2,70 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.0.0] — Engineering hardening pass
+
+### Bug fixes
+- Fixed **data loss in `safe_merge_move()`** — destination file was permanently destroyed before the source move succeeded; now backs up destination to `.bak`, restores on failure, and deletes `.bak` on success
+- Fixed **silent permanent deletion** — when `use_trash=True` but `send2trash` is missing, files were silently deleted permanently; now returns an error so the UI can surface it
+- Fixed **SQLAlchemy thread-safety in `OcrWorker`** — OCR worker now opens its own `Session(engine)` instead of sharing the main-thread session
+- Fixed **SQLAlchemy thread-safety in `_StatsWorker`** — statistics worker creates its own session rather than borrowing `lib._session`
+- Fixed **N+1 query in Tag Library tree** — `_refresh_tags()` called `get_entries_by_tag()` once per tag; replaced with a single `get_tag_entry_counts()` GROUP BY query
+- Fixed **cycle/infinite-loop in `get_tag_hierarchy()`** — recursive tree builder now carries a `visited` set to handle circular parent-child relationships safely
+- Fixed **Python 3.10 `fromisoformat()` crash** — timezone-aware ISO timestamps (trailing `Z` or `±HH:MM`) now stripped before parsing via `_parse_naive_dt()` helper
+- Fixed **invalid regex crash in rule engine** — `matches` condition now wraps `re.search` in `try/except re.error` via `_safe_regex_match()` helper
+- Fixed **AcoustID hardcoded placeholder key** — `_MBWorker` now loads the key from `acoustid_key.txt`; dep-label warns when no key is configured; "Set API Key…" dialog added
+- Fixed **OCR temp file at source location** — `_ocr_pdf()` now uses `tempfile.mkstemp()` so temp PNGs never land beside the original file
+- Fixed **`update_tag()` sentinel ambiguity** — nullable fields (`namespace`, `description`, `icon`) now use an `_UNSET` sentinel so `None` means "clear" and absence means "leave unchanged"
+- Fixed **SA2 SQLAlchemy comparison warnings** — `== True` / `== False` comparisons on Boolean columns replaced with `.is_(True)` / `.is_(False)`
+- Fixed **`add_entries_bulk()` N+1** — pre-fetches all existing paths per batch with a single `IN` query before the insert loop
+- Fixed **`scan_broken_links()` OOM** — rewrote to use paginated 1000-entry batches instead of loading all entries into memory at once
+- Fixed **JSON fence stripping in `natural_language_to_rule()`** — regex now handles both `` ```json `` and `` ``` `` fences
+
+### New library API
+- Added `TagLibrary.get_tag_entry_counts()` — returns `{tag_id: count}` in one GROUP BY query
+- Added `TagLibrary.set_entry_field_with_session(session, ...)` — static method for thread-safe field writes from worker threads
+
+### Second hardening pass (audit pass 2)
+- Fixed **hardcoded `id=1` in `_get_or_create_folder()`** — removed explicit PK value so SQLite autoincrement prevents potential primary-key collision when a second folder record is inserted
+- Fixed **`ScheduleManager.create_task()` always returning `False`** — broken `'__file__' in dir()` check (which always evaluates `False` inside a method) replaced; scheduled tasks now use `python -m unifile` instead of a fragile script-path lookup
+- Fixed **`-tag:` NOT search loading all entries into Python** — replaced `{e.id for e in get_entries_by_tag(...)}` with a SQL subquery so large libraries are not fully materialised
+- Fixed **`add_entries_to_group()` N+1** — replaced per-entry SELECT + INSERT loop with a single bulk-existence check and `add_all()`
+- Fixed **`remove_entries_from_group()` N+1** — replaced per-entry SELECT + DELETE loop with a single `DELETE … WHERE entry_id IN (…)` statement
+- Fixed **`get_group_entries()` two-query pattern** — replaced load-member-ids + second query with a single JOIN query
+- Fixed **`delete_entry_group()` N+1** — replaced per-member delete loop with a single `DELETE … WHERE group_id=X` statement
+- Fixed **`import_tag_pack()` unhandled exception** — JSON fallback path now wrapped in `try/except`; returns `{'errors': 1}` instead of crashing
+- Fixed **`Tag.parent_tags` self-referential `back_populates`** — removed incorrect `back_populates="parent_tags"` on the association relationship that would cause SAWarnings
+- Fixed **`_card_frame` / `_section_frame` duplication** — merged the two identical 9-line functions into one; `_section_frame` is now an alias
+- Fixed **`_TimelineChart` label comment** — comment said "MM-YY" but the slice produces "YY-MM" (last 5 chars of "YYYY-MM"); updated comment
+- Expanded `requirements.txt` — added all optional dependencies (SQLAlchemy, send2trash, rapidfuzz, mutagen, acoustid, musicbrainzngs, pytesseract, easyocr, pdfminer.six, pymupdf, pdf2image, tomli, tomli-w, PyYAML) with section comments
+
+### New tests (audit pass 2)
+- Added 31 new tests in `tests/test_engine.py` covering `_parse_naive_dt` (8 cases), `_safe_regex_match` (6 cases), `RuleEngine.evaluate` (12 cases), and `RuleEngine.find_conflicts` (5 cases)
+
+### Features (v9.0.0)
+- Added: **Rule Engine — time & size operators** — new `older_than_days`, `newer_than_days`, `size_gt_mb`, `size_lt_mb`, `in_list`, and `not_in_list` conditions for richer automation rules
+- Added: **Rule import/export (YAML)** — rules can now be exported to YAML (with JSON fallback) and imported from `.yaml`/`.yml`/`.json` files via the Settings menu
+- Added: **Natural language rule creation** — describe a rule in plain English; Ollama converts it to a structured rule automatically
+- Added: **Rule conflict detection** — `find_conflicts()` surfaces rules that share the same source/condition so overlaps are visible before running
+- Added: **Content-based classifier (Level 8)** — extracts text from PDF, DOCX, TXT, CSV, PPTX, XLSX files and classifies by keyword matching for higher accuracy
+- Added: **Archive inspector (Level 9)** — peeks inside ZIP/TAR archives and classifies by the extension mix of contained files
+- Added: **Tag namespaces** — tags can be grouped under a namespace (e.g. `genre:Rock`, `project:Alpha`), filterable in the Tag Library panel
+- Added: **Tag descriptions and icons** — every tag can have a freeform description and an icon glyph for quick visual identification
+- Added: **Hidden tags** — tags can be marked hidden; toggle visibility with the new Hidden checkbox in the tag tree header
+- Added: **Entry ratings** — 1–5 star rating per entry; searchable with `rating:3` syntax; displayed in the detail bar
+- Added: **Inbox / Archive workflow** — every entry has an inbox/archive state (`inbox:true`); dedicated Inbox/Archive sidebar panel with tab split
+- Added: **Source URL tracking** — record where a file was downloaded from; searchable with `source_url:` syntax
+- Added: **Media properties** — width, height, duration, word count stored per entry; shown in the preview detail bar
+- Added: **Entry groups** — logical groupings of entries independent of folder structure; create from selection, browse in context menu
+- Added: **Tag merge** — merge any tag into another with one action; all entries on the source are re-tagged and the source is deleted
+- Added: **Multiple library roots** — Tag Library now supports multiple root scan paths per library
+- Added: **Tag Pack (TOML)** — export/import tag definitions as `.toml` files with namespace and description preserved; JSON fallback
+- Added: **Broken links panel** — dedicated sidebar panel scans the library for missing files, shows results in a table with Relink and Remove actions
+- Added: **Statistics dashboard** — sidebar panel with file/tag/entry totals, extension distribution, top tags, storage by category, and 12-month activity timeline
+- Added: **MusicBrainz Tagger** — acoustID fingerprint + MusicBrainz lookup dialog for audio files; writes ID3/FLAC tags and suggests renames
+- Added: **OCR Indexer** — indexes image and PDF text via pytesseract/easyocr; stores result in the entry's AI summary field for full-text search
+- Added: **Portable mode** — pass `--portable` to `run.py` (or set `UNIFILE_PORTABLE=1`) to store all data beside the script instead of `%APPDATA%`
+
 ## [v8.9.4]
 
 - Refined: **Niche helper dialogs now feel more review-first** — Before/After comparison, AI Event Grouping, and the rename-source file picker now provide clearer summaries, better empty/selection guidance, and calmer card-based layout treatment so these smaller decision points feel intentional instead of legacy

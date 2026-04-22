@@ -33,6 +33,22 @@ class TagEntry(Base):
     entry_id: Mapped[int] = mapped_column(ForeignKey("entries.id"), primary_key=True)
 
 
+# ── Entry Group Models ────────────────────────────────────────────────────────
+
+class EntryGroup(Base):
+    __tablename__ = "entry_groups"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str]
+    color_slug: Mapped[str | None]
+    created_at: Mapped[dt | None]
+
+
+class EntryGroupMember(Base):
+    __tablename__ = "entry_group_members"
+    group_id: Mapped[int] = mapped_column(ForeignKey("entry_groups.id"), primary_key=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey("entries.id"), primary_key=True)
+
+
 # ── Field Models ──────────────────────────────────────────────────────────────
 
 class ValueType(Base):
@@ -100,12 +116,13 @@ class Tag(Base):
     is_category: Mapped[bool]
     is_hidden: Mapped[bool]
     icon: Mapped[str | None]
+    namespace: Mapped[str | None]
+    description: Mapped[str | None]
     aliases: Mapped[set[TagAlias]] = relationship(back_populates="tag")
     parent_tags: Mapped[set["Tag"]] = relationship(
         secondary=TagParent.__tablename__,
         primaryjoin="Tag.id == TagParent.child_id",
         secondaryjoin="Tag.id == TagParent.parent_id",
-        back_populates="parent_tags",
     )
 
     __table_args__ = ({"sqlite_autoincrement": True},)
@@ -129,6 +146,8 @@ class Tag(Base):
         color_slug: str | None = None,
         is_category: bool = False,
         is_hidden: bool = False,
+        namespace: str | None = None,
+        description: str | None = None,
     ):
         self.name = name
         self.aliases = aliases or set()
@@ -138,12 +157,15 @@ class Tag(Base):
         self.shorthand = shorthand
         self.is_category = is_category
         self.is_hidden = is_hidden
+        self.namespace = namespace
+        self.description = description
         self.id = id
         super().__init__()
 
     @override
     def __str__(self) -> str:
-        return f"<Tag ID: {self.id} Name: {self.name}>"
+        display = f"{self.namespace}:{self.name}" if self.namespace else self.name
+        return f"<Tag ID: {self.id} Name: {display}>"
 
     @override
     def __repr__(self) -> str:
@@ -183,8 +205,16 @@ class Entry(Base):
     date_created: Mapped[dt | None]
     date_modified: Mapped[dt | None]
     date_added: Mapped[dt | None]
+    rating: Mapped[int | None]
+    is_inbox: Mapped[bool] = mapped_column(default=True)
+    source_url: Mapped[str | None]
+    media_width: Mapped[int | None]
+    media_height: Mapped[int | None]
+    media_duration: Mapped[float | None]
+    word_count: Mapped[int | None]
 
     tags: Mapped[set[Tag]] = relationship(secondary="tag_entries")
+    groups: Mapped[set[EntryGroup]] = relationship(secondary="entry_group_members")
 
     text_fields: Mapped[list[TextField]] = relationship(
         back_populates="entry",
