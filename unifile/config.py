@@ -534,23 +534,41 @@ def save_protected_paths(custom: list, enabled: bool = True):
 def is_protected(path: str) -> bool:
     """Check if a path (file or folder) is protected from operations.
     Matches by exact path, basename, or if the path is inside a protected directory."""
+    if not path:
+        return False
     prot = load_protected_paths()
     if not prot['enabled']:
         return False
-    norm = os.path.normcase(os.path.normpath(path))
+    try:
+        norm = os.path.normcase(os.path.normpath(path))
+    except (ValueError, TypeError):
+        return False
     basename = os.path.basename(norm)
+    # Also check any parent directory's basename to catch cases like
+    # ".git/config" where the protected entry is just ".git".
+    parts = [p for p in norm.replace('\\', '/').split('/') if p]
     all_protected = prot['system'] + prot['custom']
     for p in all_protected:
-        p_norm = os.path.normcase(os.path.normpath(p))
+        if not p:
+            continue
+        try:
+            p_norm = os.path.normcase(os.path.normpath(p))
+        except (ValueError, TypeError):
+            continue
         # Exact match
         if norm == p_norm:
             return True
-        # Basename match (for entries like 'desktop.ini', '.git')
+        # Basename-only protection entries (e.g. 'desktop.ini', '.git', 'node_modules')
         if os.sep not in p and '/' not in p and '\\' not in p:
-            if basename == os.path.normcase(p):
+            p_case = os.path.normcase(p)
+            if basename == p_case:
                 return True
+            # Any parent path segment matches — e.g. ".git" inside "foo/.git/config"
+            if p_case in parts:
+                return True
+            continue
         # Path-is-inside check
-        elif norm.startswith(p_norm + os.sep) or norm == p_norm:
+        if norm == p_norm or norm.startswith(p_norm + os.sep):
             return True
     return False
 

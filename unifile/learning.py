@@ -204,21 +204,25 @@ class PatternLearner:
 
     def clear(self):
         """Reset all learned patterns."""
-        self._ext_patterns.clear()
-        self._token_patterns.clear()
-        self._folder_patterns.clear()
-        self._size_patterns.clear()
-        self._total_corrections = 0
-        self._save()
+        with self._lock:
+            self._ext_patterns.clear()
+            self._token_patterns.clear()
+            self._folder_patterns.clear()
+            self._size_patterns.clear()
+            self._total_corrections = 0
+            self._save()
 
 
 # Module-level singleton
 _learner: PatternLearner | None = None
+_learner_lock = threading.Lock()
 
 
 def get_learner() -> PatternLearner:
-    """Get the singleton PatternLearner instance."""
+    """Get the singleton PatternLearner instance (thread-safe)."""
     global _learner
     if _learner is None:
-        _learner = PatternLearner()
+        with _learner_lock:
+            if _learner is None:
+                _learner = PatternLearner()
     return _learner

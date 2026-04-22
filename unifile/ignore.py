@@ -121,7 +121,8 @@ class IgnoreFilter:
 
         Args:
             path: Relative or absolute path to check.
-            is_dir: True if the path is a directory.
+            is_dir: True if the path is a directory. Directory-only patterns
+                    (trailing `/`) are then honored correctly.
 
         Returns:
             True if the path matches an ignore pattern.
@@ -129,14 +130,18 @@ class IgnoreFilter:
         if not self._rules:
             return False
 
-        # Normalize separators
-        check = path.replace('\\', '/')
+        # Normalize separators and strip leading "./"
+        check = path.replace('\\', '/').lstrip('./')
+        # For directories, also test with a trailing slash so patterns
+        # like "build/" match "build".
+        check_dir = check + '/' if is_dir else check
         name = os.path.basename(check)
 
         ignored = False
         for negation, regex in self._rules:
-            # Try matching against full path and just the name
-            if regex.search(check) or regex.search(name):
+            # Try matching against full path (including trailing slash for dirs)
+            # and just the basename.
+            if regex.search(check) or regex.search(check_dir) or regex.search(name):
                 ignored = not negation
         return ignored
 
