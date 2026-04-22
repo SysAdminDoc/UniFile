@@ -10,33 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 from unifile.config import get_active_theme, get_active_stylesheet
-
-
-def _build_dialog_header(t: dict, kicker: str, title: str, description: str) -> QFrame:
-    frame = QFrame()
-    frame.setStyleSheet(
-        f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; "
-        f"border-radius: 14px; }}"
-    )
-    layout = QVBoxLayout(frame)
-    layout.setContentsMargins(16, 14, 16, 14)
-    layout.setSpacing(4)
-
-    lbl_kicker = QLabel(kicker.upper())
-    lbl_kicker.setStyleSheet(
-        f"color: {t['accent']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
-    )
-    layout.addWidget(lbl_kicker)
-
-    lbl_title = QLabel(title)
-    lbl_title.setStyleSheet(f"color: {t['fg_bright']}; font-size: 20px; font-weight: 700;")
-    layout.addWidget(lbl_title)
-
-    lbl_desc = QLabel(description)
-    lbl_desc.setWordWrap(True)
-    lbl_desc.setStyleSheet(f"color: {t['muted']}; font-size: 12px; line-height: 1.4;")
-    layout.addWidget(lbl_desc)
-    return frame
+from unifile.dialogs.common import build_dialog_header
 
 
 class AIProviderSettingsDialog(QDialog):
@@ -57,7 +31,7 @@ class AIProviderSettingsDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(18, 18, 18, 18)
 
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "Providers",
             "AI Provider Settings",
@@ -186,7 +160,7 @@ class WhisperSettingsDialog(QDialog):
         from unifile.whisper_backend import WHISPER_MODELS, get_transcriber
         transcriber = get_transcriber()
 
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "Audio",
             "Whisper Audio Settings",
@@ -263,7 +237,7 @@ class SemanticSearchSettingsDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(18, 18, 18, 18)
 
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "Search",
             "Semantic Search Settings",
@@ -349,7 +323,7 @@ class EmbeddingSettingsDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(18, 18, 18, 18)
 
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "Metadata",
             "Metadata Embedding Settings",
@@ -415,7 +389,7 @@ class LearningStatsDialog(QDialog):
         learner = get_learner()
         stats = learner.get_stats()
 
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "Learning",
             "Adaptive Learning",

@@ -13,6 +13,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QPixmap
 
 from unifile.config import get_active_theme, get_active_stylesheet
+from unifile.dialogs.common import build_dialog_header
 from unifile.workers import format_size
 
 
@@ -62,7 +63,7 @@ class DuplicateCompareDialog(QDialog):
         # Action buttons
         btn_row = QHBoxLayout()
         btn_auto = QPushButton("Auto-Select Best")
-        btn_auto.setStyleSheet(f"QPushButton {{ background: {_t['green_pressed']}; color: {_t['green']}; border: 1px solid {_t['sidebar_profile_border']}; border-radius: 4px; padding: 6px 12px; }} QPushButton:hover {{ background: {_t['green_hover']}; }}")
+        btn_auto.setProperty("class", "success")
         btn_auto.clicked.connect(self._auto_select)
         btn_row.addWidget(btn_auto)
         btn_row.addStretch()
@@ -253,14 +254,20 @@ class DuplicateFinderDialog(QDialog):
     def _build_ui(self):
         _t = get_active_theme()
         lay = QVBoxLayout(self)
-        lay.setSpacing(8)
+        lay.setSpacing(12)
+        lay.setContentsMargins(18, 18, 18, 18)
 
         # ── Header ────────────────────────────────────────────────────────
-        hdr = QLabel("Find duplicate and similar files using content hashing, "
-                      "perceptual image matching, and audio fingerprinting.")
-        hdr.setWordWrap(True)
-        hdr.setStyleSheet(f"color: {_t['muted']}; font-size: 12px; padding: 4px 0;")
-        lay.addWidget(hdr)
+        lay.addWidget(build_dialog_header(
+            _t,
+            "Duplicates",
+            "Duplicate Finder",
+            "Review exact and likely duplicates using content hashes, perceptual image matching, and optional audio fingerprinting before you remove anything."
+        ))
+        self.lbl_status = QLabel("Choose a folder to scan, then review duplicate groups before applying an action.")
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(self.lbl_status)
 
         # ── Folder selector ───────────────────────────────────────────────
         row1 = QHBoxLayout()
@@ -301,14 +308,9 @@ class DuplicateFinderDialog(QDialog):
 
         # ── Scan button + progress ────────────────────────────────────────
         scan_row = QHBoxLayout()
-        self._scan_btn_style = (
-            f"QPushButton {{ background: {_t['green']}; color: white; font-weight: bold;"
-            f"border-radius: 4px; padding: 4px 16px; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: {_t['green_hover']}; }}"
-            f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
         self.btn_scan = QPushButton("Scan for Duplicates")
         self.btn_scan.setFixedHeight(34)
-        self.btn_scan.setStyleSheet(self._scan_btn_style)
+        self.btn_scan.setProperty("class", "success")
         self.btn_scan.clicked.connect(self._start_scan)
         scan_row.addWidget(self.btn_scan)
 
@@ -321,8 +323,6 @@ class DuplicateFinderDialog(QDialog):
             f"QProgressBar::chunk {{ background: {_t['green']}; border-radius: 3px; }}")
         scan_row.addWidget(self.progress, 1)
 
-        self.lbl_status = QLabel("")
-        self.lbl_status.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
         scan_row.addWidget(self.lbl_status)
         lay.addLayout(scan_row)
 
@@ -352,11 +352,13 @@ class DuplicateFinderDialog(QDialog):
         self.btn_select_dupes = QPushButton("Auto-Select Duplicates")
         self.btn_select_dupes.setToolTip("Keep the best file in each group, select the rest for deletion")
         self.btn_select_dupes.setEnabled(False)
+        self.btn_select_dupes.setProperty("class", "toolbar")
         self.btn_select_dupes.clicked.connect(self._auto_select)
         action_row.addWidget(self.btn_select_dupes)
 
         self.btn_select_none = QPushButton("Deselect All")
         self.btn_select_none.setEnabled(False)
+        self.btn_select_none.setProperty("class", "toolbar")
         self.btn_select_none.clicked.connect(self._deselect_all)
         action_row.addWidget(self.btn_select_none)
 
@@ -376,11 +378,7 @@ class DuplicateFinderDialog(QDialog):
 
         self.btn_apply = QPushButton("Apply to Selected")
         self.btn_apply.setEnabled(False)
-        self.btn_apply.setStyleSheet(
-            f"QPushButton {{ background: {_t['btn_bg']}; color: #ef4444; font-weight: bold;"
-            f"border: 1px solid #5c2e2e; border-radius: 4px; padding: 4px 18px; }}"
-            f"QPushButton:hover {{ background: #4a1a1a; color: #fca5a5; }}"
-            f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
+        self.btn_apply.setProperty("class", "danger")
         self.btn_apply.clicked.connect(self._apply_action)
         action_row.addWidget(self.btn_apply)
 
@@ -685,14 +683,9 @@ class DuplicatePanel(QWidget):
 
         # ── Scan button + progress ────────────────────────────────────────
         scan_row = QHBoxLayout()
-        self._scan_btn_style = (
-            f"QPushButton {{ background: {_t['green']}; color: white; font-weight: bold;"
-            f"border-radius: 4px; padding: 4px 16px; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: {_t['green_hover']}; }}"
-            f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
         self.btn_scan = QPushButton("Scan for Duplicates")
         self.btn_scan.setFixedHeight(34)
-        self.btn_scan.setStyleSheet(self._scan_btn_style)
+        self.btn_scan.setProperty("class", "success")
         self.btn_scan.clicked.connect(self._start_scan)
         scan_row.addWidget(self.btn_scan)
 
@@ -736,11 +729,13 @@ class DuplicatePanel(QWidget):
         self.btn_select_dupes = QPushButton("Auto-Select Duplicates")
         self.btn_select_dupes.setToolTip("Keep the best file in each group, select the rest")
         self.btn_select_dupes.setEnabled(False)
+        self.btn_select_dupes.setProperty("class", "toolbar")
         self.btn_select_dupes.clicked.connect(self._auto_select)
         action_row.addWidget(self.btn_select_dupes)
 
         self.btn_select_none = QPushButton("Deselect All")
         self.btn_select_none.setEnabled(False)
+        self.btn_select_none.setProperty("class", "toolbar")
         self.btn_select_none.clicked.connect(self._deselect_all)
         action_row.addWidget(self.btn_select_none)
 
@@ -759,11 +754,7 @@ class DuplicatePanel(QWidget):
 
         self.btn_apply = QPushButton("Apply to Selected")
         self.btn_apply.setEnabled(False)
-        self.btn_apply.setStyleSheet(
-            f"QPushButton {{ background: {_t['btn_bg']}; color: #ef4444; font-weight: bold;"
-            f"border: 1px solid #5c2e2e; border-radius: 4px; padding: 4px 18px; }}"
-            f"QPushButton:hover {{ background: #4a1a1a; color: #fca5a5; }}"
-            f"QPushButton:disabled {{ background: {_t['btn_bg']}; color: {_t['disabled']}; }}")
+        self.btn_apply.setProperty("class", "danger")
         self.btn_apply.clicked.connect(self._apply_action)
         action_row.addWidget(self.btn_apply)
         lay.addLayout(action_row)

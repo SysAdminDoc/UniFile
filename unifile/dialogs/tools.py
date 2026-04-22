@@ -17,36 +17,10 @@ from unifile.config import (
     get_active_theme, get_active_stylesheet,
     load_watch_history, clear_watch_history
 )
+from unifile.dialogs.common import build_dialog_header
 from unifile.cache import _load_undo_stack, _save_undo_stack
 from unifile.engine import ScheduleManager, EventGrouper
 from unifile.plugins import PluginManager, ProfileManager, _PLUGINS_DIR
-
-
-def _build_dialog_header(t: dict, kicker: str, title: str, description: str) -> QFrame:
-    frame = QFrame()
-    frame.setStyleSheet(
-        f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; "
-        f"border-radius: 14px; }}"
-    )
-    layout = QVBoxLayout(frame)
-    layout.setContentsMargins(16, 14, 16, 14)
-    layout.setSpacing(4)
-
-    lbl_kicker = QLabel(kicker.upper())
-    lbl_kicker.setStyleSheet(
-        f"color: {t['accent']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
-    )
-    layout.addWidget(lbl_kicker)
-
-    lbl_title = QLabel(title)
-    lbl_title.setStyleSheet(f"color: {t['fg_bright']}; font-size: 20px; font-weight: 700;")
-    layout.addWidget(lbl_title)
-
-    lbl_desc = QLabel(description)
-    lbl_desc.setWordWrap(True)
-    lbl_desc.setStyleSheet(f"color: {t['muted']}; font-size: 12px; line-height: 1.4;")
-    layout.addWidget(lbl_desc)
-    return frame
 
 
 class UndoBatchDialog(QDialog):
@@ -63,7 +37,7 @@ class UndoBatchDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.setSpacing(12)
         lay.setContentsMargins(18, 18, 18, 18)
-        lay.addWidget(_build_dialog_header(
+        lay.addWidget(build_dialog_header(
             _t,
             "Recovery",
             "Undo Operations",
@@ -138,7 +112,7 @@ class BeforeAfterDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.setSpacing(12)
         lay.setContentsMargins(18, 18, 18, 18)
-        lay.addWidget(_build_dialog_header(
+        lay.addWidget(build_dialog_header(
             _t,
             "Preview",
             "Before and After",
@@ -156,30 +130,36 @@ class BeforeAfterDialog(QDialog):
         splitter.setChildrenCollapsible(False)
 
         # Before tree
-        left_w = QWidget()
+        left_w = QFrame()
+        left_w.setProperty("class", "card")
         left_lay = QVBoxLayout(left_w)
-        left_lay.setContentsMargins(6, 6, 6, 6)
+        left_lay.setContentsMargins(14, 14, 14, 14)
         left_lay.setSpacing(8)
         lbl_before = QLabel("CURRENT STRUCTURE")
-        lbl_before.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 12px;")  # semantic: before=red
+        lbl_before.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 12px;")
         left_lay.addWidget(lbl_before)
+        lbl_before_hint = QLabel("What exists in the source right now.")
+        lbl_before_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 10px;")
+        left_lay.addWidget(lbl_before_hint)
         self.tree_before = QTreeWidget()
         self.tree_before.setHeaderLabels(["Path"])
-        self.tree_before.setStyleSheet(f"QTreeWidget {{ background: {_t['header_bg']}; color: {_t['muted']}; }}")
         left_lay.addWidget(self.tree_before)
         splitter.addWidget(left_w)
 
         # After tree
-        right_w = QWidget()
+        right_w = QFrame()
+        right_w.setProperty("class", "card")
         right_lay = QVBoxLayout(right_w)
-        right_lay.setContentsMargins(6, 6, 6, 6)
+        right_lay.setContentsMargins(14, 14, 14, 14)
         right_lay.setSpacing(8)
         lbl_after = QLabel("PROPOSED STRUCTURE")
         lbl_after.setStyleSheet(f"color: {_t['green']}; font-weight: bold; font-size: 12px;")
         right_lay.addWidget(lbl_after)
+        lbl_after_hint = QLabel("What UniFile plans to create if you apply this run.")
+        lbl_after_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 10px;")
+        right_lay.addWidget(lbl_after_hint)
         self.tree_after = QTreeWidget()
         self.tree_after.setHeaderLabels(["Path"])
-        self.tree_after.setStyleSheet(f"QTreeWidget {{ background: {_t['header_bg']}; color: {_t['fg_bright']}; }}")
         right_lay.addWidget(self.tree_after)
         splitter.addWidget(right_w)
 
@@ -250,58 +230,110 @@ class EventGroupDialog(QDialog):
         self.setStyleSheet(get_active_stylesheet())
         self.event_groups = event_groups  # list of (event_id, [items])
         self.event_names = {}  # event_id -> name
+        _t = get_active_theme()
 
-        lay = QHBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setSpacing(12)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.addWidget(build_dialog_header(
+            _t,
+            "Grouping",
+            "AI Event Grouping",
+            "Review suggested event clusters before turning them into subfolders. This keeps date- or scene-based grouping intentional rather than automatic noise."
+        ))
+
+        self.lbl_summary = QLabel("")
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        root.addWidget(self.lbl_summary)
+
+        lay = QHBoxLayout()
+        lay.setSpacing(12)
 
         # Left: event list
-        left = QVBoxLayout()
-        lbl_h = QLabel("Detected Events")
-        _t = get_active_theme()
+        left_panel = QFrame()
+        left_panel.setProperty("class", "card")
+        left = QVBoxLayout(left_panel)
+        left.setContentsMargins(16, 16, 16, 16)
+        left.setSpacing(8)
+        lbl_h = QLabel("Detected events")
         lbl_h.setStyleSheet(f"color: {_t['sidebar_btn_active_fg']}; font-weight: bold; font-size: 13px;")
         left.addWidget(lbl_h)
+        lbl_h_hint = QLabel("Select a suggested event to preview the files it would group together.")
+        lbl_h_hint.setWordWrap(True)
+        lbl_h_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        left.addWidget(lbl_h_hint)
         self.lst_events = QListWidget()
+        self.lst_events.setAlternatingRowColors(True)
         self.lst_events.currentRowChanged.connect(self._on_event_selected)
         left.addWidget(self.lst_events, 1)
-        lay.addLayout(left, 1)
+        lay.addWidget(left_panel, 1)
 
         # Right: files in event
-        right = QVBoxLayout()
+        right_panel = QFrame()
+        right_panel.setProperty("class", "card")
+        right = QVBoxLayout(right_panel)
+        right.setContentsMargins(16, 16, 16, 16)
+        right.setSpacing(8)
         self.lbl_event_name = QLabel("")
         self.lbl_event_name.setStyleSheet(f"color: {_t['fg_bright']}; font-weight: bold; font-size: 13px;")
         right.addWidget(self.lbl_event_name)
+        self.lbl_event_hint = QLabel("Select an event to inspect the files it contains before applying a subfolder.")
+        self.lbl_event_hint.setWordWrap(True)
+        self.lbl_event_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        right.addWidget(self.lbl_event_hint)
         self.lst_files = QListWidget()
-        self.lst_files.setStyleSheet(f"QListWidget {{ background: {_t['header_bg']}; color: {_t['muted']}; }}")
+        self.lst_files.setAlternatingRowColors(True)
         right.addWidget(self.lst_files, 1)
 
         btn_row = QHBoxLayout()
-        btn_subfolder = QPushButton("Apply as Subfolder")
-        btn_subfolder.setStyleSheet(f"QPushButton {{ background: {_t['green_pressed']}; color: {_t['green']}; border: 1px solid {_t['sidebar_profile_border']}; border-radius: 4px; padding: 6px 12px; }} QPushButton:hover {{ background: {_t['green_hover']}; }}")
-        btn_subfolder.clicked.connect(self._apply_subfolder)
-        btn_row.addWidget(btn_subfolder)
+        self.btn_subfolder = QPushButton("Apply as Subfolder")
+        self.btn_subfolder.setProperty("class", "success")
+        self.btn_subfolder.setEnabled(False)
+        self.btn_subfolder.clicked.connect(self._apply_subfolder)
+        btn_row.addWidget(self.btn_subfolder)
         btn_row.addStretch()
         btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.accept)
         btn_row.addWidget(btn_close)
         right.addLayout(btn_row)
-        lay.addLayout(right, 2)
+        lay.addWidget(right_panel, 2)
 
+        root.addLayout(lay, 1)
         self._populate()
 
     def _populate(self):
+        self.lst_events.clear()
         for eid, items in self.event_groups:
             descs = [it.vision_description for it in items if it.vision_description]
             name = EventGrouper.suggest_event_name(descs)
             self.event_names[eid] = name
             self.lst_events.addItem(f"Event {eid}: {name} ({len(items)} files)")
+        count = len(self.event_groups)
+        self.lbl_summary.setText(
+            f"{count} suggested event group{'s' if count != 1 else ''} detected."
+            if count else
+            "No event groups were detected for the current selection."
+        )
+        if count:
+            self.lst_events.setCurrentRow(0)
+        else:
+            self.lbl_event_name.setText("No event selected")
+            self.lbl_event_hint.setText("No event groups are available to preview right now.")
 
     def _on_event_selected(self, row):
         if row < 0 or row >= len(self.event_groups):
+            self.btn_subfolder.setEnabled(False)
             return
         eid, items = self.event_groups[row]
         self.lbl_event_name.setText(self.event_names.get(eid, f"Event {eid}"))
         self.lst_files.clear()
         for it in items:
             self.lst_files.addItem(it.name)
+        self.lbl_event_hint.setText(
+            f"{len(items)} file{'s' if len(items) != 1 else ''} would be placed into a shared subfolder for this event."
+        )
+        self.btn_subfolder.setEnabled(True)
 
     def _apply_subfolder(self):
         row = self.lst_events.currentRow()
@@ -315,6 +347,9 @@ class EventGroupDialog(QDialog):
             if hasattr(it, 'full_dst') and it.full_dst:
                 base_dir = os.path.dirname(it.full_dst)
                 it.full_dst = os.path.join(base_dir, event_name, os.path.basename(it.full_dst))
+        self.lbl_summary.setText(
+            f"Applied '{event_name}' as a subfolder to {len(items)} file{'s' if len(items) != 1 else ''}."
+        )
 
 
 class RelationshipGraphWidget(QWidget):
@@ -498,7 +533,7 @@ class ScheduleDialog(QDialog):
         lay = QVBoxLayout(self)
         lay.setSpacing(12)
         lay.setContentsMargins(18, 18, 18, 18)
-        lay.addWidget(_build_dialog_header(
+        lay.addWidget(build_dialog_header(
             _t,
             "Automation",
             "Scheduled Scans",
@@ -631,7 +666,7 @@ class UndoTimelineDialog(QDialog):
         root = QVBoxLayout(self)
         root.setSpacing(12)
         root.setContentsMargins(18, 18, 18, 18)
-        root.addWidget(_build_dialog_header(
+        root.addWidget(build_dialog_header(
             _t,
             "History",
             "Undo Timeline",
@@ -803,7 +838,7 @@ class PluginManagerDialog(QDialog):
         _t = get_active_theme()
         lay.setSpacing(12)
         lay.setContentsMargins(18, 18, 18, 18)
-        lay.addWidget(_build_dialog_header(
+        lay.addWidget(build_dialog_header(
             _t,
             "Extensions",
             "Plugin Manager",
@@ -829,9 +864,11 @@ class PluginManagerDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_open = QPushButton("Open Plugins Folder")
+        btn_open.setProperty("class", "toolbar")
         btn_open.clicked.connect(self._open_folder)
         btn_row.addWidget(btn_open)
         btn_reload = QPushButton("Reload Plugins")
+        btn_reload.setProperty("class", "primary")
         btn_reload.clicked.connect(self._reload)
         btn_row.addWidget(btn_reload)
         btn_row.addStretch()
@@ -898,7 +935,7 @@ class WatchHistoryDialog(QDialog):
         lay.setSpacing(12)
         lay.setContentsMargins(18, 18, 18, 18)
 
-        lay.addWidget(_build_dialog_header(
+        lay.addWidget(build_dialog_header(
             _t,
             "Monitoring",
             "Watch Mode History",
@@ -924,7 +961,7 @@ class WatchHistoryDialog(QDialog):
 
         bb = QHBoxLayout()
         self.btn_clear = QPushButton("Clear Watch History")
-        self.btn_clear.setStyleSheet("QPushButton { color: #ef4444; }")
+        self.btn_clear.setProperty("class", "danger")
         self.btn_clear.clicked.connect(self._clear)
         bb.addWidget(self.btn_clear)
         bb.addStretch()
@@ -986,13 +1023,18 @@ class CsvRulesDialog(QDialog):
         lay.setSpacing(10)
         lay.setContentsMargins(18, 18, 18, 18)
 
-        lay.addWidget(_build_dialog_header(
+        lay.addWidget(build_dialog_header(
             _t,
             "Automation",
             "Sort Rules Editor",
             "Define regex patterns that map folder names to categories. Rules are matched in order — the first match wins. "
             "Applied before the AI — zero tokens consumed."
         ))
+
+        self.lbl_summary = QLabel("")
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
+        lay.addWidget(self.lbl_summary)
 
         # Table
         self.tbl = QTableWidget(0, 2)
@@ -1002,19 +1044,22 @@ class CsvRulesDialog(QDialog):
         self.tbl.verticalHeader().setVisible(False)
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl.setAlternatingRowColors(True)
+        self.tbl.itemSelectionChanged.connect(self._update_summary)
         lay.addWidget(self.tbl, 1)
 
         # Row controls
         row_btns = QHBoxLayout()
-        btn_add = QPushButton("+ Add Row")
-        btn_add.clicked.connect(self._add_row)
-        btn_del = QPushButton("Remove Selected")
-        btn_del.setStyleSheet("QPushButton { color: #ef4444; }")
-        btn_del.clicked.connect(self._remove_row)
+        self.btn_add = QPushButton("Add Row")
+        self.btn_add.setProperty("class", "primary")
+        self.btn_add.clicked.connect(self._add_row)
+        self.btn_del = QPushButton("Remove Selected")
+        self.btn_del.setProperty("class", "danger")
+        self.btn_del.clicked.connect(self._remove_row)
         self.btn_open = QPushButton("Open rules.csv")
+        self.btn_open.setProperty("class", "toolbar")
         self.btn_open.clicked.connect(self._open_file)
-        row_btns.addWidget(btn_add)
-        row_btns.addWidget(btn_del)
+        row_btns.addWidget(self.btn_add)
+        row_btns.addWidget(self.btn_del)
         row_btns.addStretch()
         row_btns.addWidget(self.btn_open)
         lay.addLayout(row_btns)
@@ -1023,26 +1068,28 @@ class CsvRulesDialog(QDialog):
         test_row = QHBoxLayout()
         self.txt_test = QLineEdit()
         self.txt_test.setPlaceholderText("Test folder name...")
-        btn_test = QPushButton("Test")
-        btn_test.clicked.connect(self._test)
+        self.btn_test = QPushButton("Test Rule")
+        self.btn_test.setProperty("class", "toolbar")
+        self.btn_test.clicked.connect(self._test)
         self.lbl_test_result = QLabel("")
         self.lbl_test_result.setStyleSheet(f"color: {_t['accent']}; font-size: 11px;")
         test_row.addWidget(QLabel("Test:"))
         test_row.addWidget(self.txt_test, 1)
-        test_row.addWidget(btn_test)
+        test_row.addWidget(self.btn_test)
         test_row.addWidget(self.lbl_test_result, 1)
         lay.addLayout(test_row)
 
         # Dialog buttons
         bb = QHBoxLayout()
-        btn_save = QPushButton("Save Rules")
-        btn_save.setDefault(True)
-        btn_save.clicked.connect(self._save)
+        self.btn_save = QPushButton("Save Rules")
+        self.btn_save.setProperty("class", "success")
+        self.btn_save.setDefault(True)
+        self.btn_save.clicked.connect(self._save)
         btn_cancel = QPushButton("Cancel")
         btn_cancel.clicked.connect(self.reject)
         bb.addStretch()
         bb.addWidget(btn_cancel)
-        bb.addWidget(btn_save)
+        bb.addWidget(self.btn_save)
         lay.addLayout(bb)
 
     def _load(self):
@@ -1054,6 +1101,7 @@ class CsvRulesDialog(QDialog):
             self.tbl.setItem(r, 0, QTableWidgetItem(cat))
             self.tbl.setItem(r, 1, QTableWidgetItem(pat))
         self.btn_open.setEnabled(self._rules_file_exists())
+        self._update_summary()
 
     def _add_row(self):
         r = self.tbl.rowCount()
@@ -1061,11 +1109,13 @@ class CsvRulesDialog(QDialog):
         self.tbl.setItem(r, 0, QTableWidgetItem("Category"))
         self.tbl.setItem(r, 1, QTableWidgetItem(".*pattern.*"))
         self.tbl.editItem(self.tbl.item(r, 0))
+        self._update_summary()
 
     def _remove_row(self):
         rows = sorted({i.row() for i in self.tbl.selectedItems()}, reverse=True)
         for r in rows:
             self.tbl.removeRow(r)
+        self._update_summary()
 
     def _open_file(self):
         path = self._get_rules_file()
@@ -1078,6 +1128,7 @@ class CsvRulesDialog(QDialog):
         from unifile.csv_rules import test_rules
         name = self.txt_test.text().strip()
         if not name:
+            self.lbl_test_result.setText("Enter a folder name to test")
             return
         rules = self._collect_rules()
         result = test_rules(name, rules)
@@ -1103,7 +1154,18 @@ class CsvRulesDialog(QDialog):
         try:
             save_rules(rules)
             self.btn_open.setEnabled(True)
+            self._update_summary()
             QMessageBox.information(self, "Sort Rules", f"Saved {len(rules)} rule{'s' if len(rules) != 1 else ''}.")
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save rules:\n{e}")
+
+    def _update_summary(self):
+        count = self.tbl.rowCount()
+        selected = len({i.row() for i in self.tbl.selectedItems()})
+        self.lbl_summary.setText(
+            f"{count} CSV rule{'s' if count != 1 else ''} in the editor. Rules are evaluated top to bottom."
+            if count else
+            "No CSV rules yet. Add a specific regex rule to catch obvious folder patterns before AI is needed."
+        )
+        self.btn_del.setEnabled(selected > 0)

@@ -14,33 +14,7 @@ from unifile.config import (
     THEMES, load_protected_paths, save_protected_paths,
     load_theme_name, save_theme_name, get_active_theme, get_active_stylesheet
 )
-
-
-def _build_dialog_header(t: dict, kicker: str, title: str, description: str) -> QFrame:
-    frame = QFrame()
-    frame.setStyleSheet(
-        f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; "
-        f"border-radius: 14px; }}"
-    )
-    layout = QVBoxLayout(frame)
-    layout.setContentsMargins(16, 14, 16, 14)
-    layout.setSpacing(4)
-
-    lbl_kicker = QLabel(kicker.upper())
-    lbl_kicker.setStyleSheet(
-        f"color: {t['accent']}; font-size: 10px; font-weight: 700; letter-spacing: 1.6px;"
-    )
-    layout.addWidget(lbl_kicker)
-
-    lbl_title = QLabel(title)
-    lbl_title.setStyleSheet(f"color: {t['fg_bright']}; font-size: 20px; font-weight: 700;")
-    layout.addWidget(lbl_title)
-
-    lbl_desc = QLabel(description)
-    lbl_desc.setWordWrap(True)
-    lbl_desc.setStyleSheet(f"color: {t['muted']}; font-size: 12px; line-height: 1.4;")
-    layout.addWidget(lbl_desc)
-    return frame
+from unifile.dialogs.common import build_dialog_header
 
 
 class ProtectedPathsDialog(QDialog):
@@ -60,7 +34,7 @@ class ProtectedPathsDialog(QDialog):
         lay.setSpacing(12)
         lay.setContentsMargins(18, 18, 18, 18)
 
-        lay.addWidget(_build_dialog_header(
+        lay.addWidget(build_dialog_header(
             t,
             "Safety",
             "Protected Paths",
@@ -246,7 +220,7 @@ class ThemePickerDialog(QDialog):
         lay.setContentsMargins(18, 18, 18, 18)
 
         t = get_active_theme()
-        lay.addWidget(_build_dialog_header(
+        lay.addWidget(build_dialog_header(
             t,
             "Appearance",
             "Color Theme",

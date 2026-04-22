@@ -14,6 +14,7 @@ from PyQt6.QtGui import QColor, QPixmap, QIcon
 from unifile.config import (
     get_active_theme, get_active_stylesheet
 )
+from unifile.dialogs.common import build_dialog_header
 from unifile.ollama import (
     load_ollama_settings, save_ollama_settings, ollama_test_connection,
     _MODEL_CATALOG, _MODEL_CATALOG_MAP,
@@ -34,33 +35,6 @@ from unifile.nexa_backend import (
 )
 
 
-def _build_dialog_header(t: dict, kicker: str, title: str, description: str) -> QFrame:
-    frame = QFrame()
-    frame.setStyleSheet(
-        f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; "
-        f"border-radius: 14px; }}"
-    )
-    layout = QVBoxLayout(frame)
-    layout.setContentsMargins(16, 14, 16, 14)
-    layout.setSpacing(4)
-
-    lbl_kicker = QLabel(kicker.upper())
-    lbl_kicker.setStyleSheet(
-        f"color: {t['accent']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
-    )
-    layout.addWidget(lbl_kicker)
-
-    lbl_title = QLabel(title)
-    lbl_title.setStyleSheet(f"color: {t['fg_bright']}; font-size: 20px; font-weight: 700;")
-    layout.addWidget(lbl_title)
-
-    lbl_desc = QLabel(description)
-    lbl_desc.setWordWrap(True)
-    lbl_desc.setStyleSheet(f"color: {t['muted']}; font-size: 12px; line-height: 1.4;")
-    layout.addWidget(lbl_desc)
-    return frame
-
-
 class OllamaSettingsDialog(QDialog):
     """Dialog for configuring Ollama LLM integration with model catalog."""
     def __init__(self, parent=None):
@@ -77,7 +51,7 @@ class OllamaSettingsDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(18, 18, 18, 18)
 
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "AI",
             "Ollama Settings",
@@ -166,6 +140,7 @@ class OllamaSettingsDialog(QDialog):
         self.cmb_model.setMinimumWidth(180)
         col1.addWidget(self.cmb_model)
         btn_refresh = QPushButton("Refresh Installed Models")
+        btn_refresh.setProperty("class", "toolbar")
         btn_refresh.clicked.connect(self._refresh_models)
         col1.addWidget(btn_refresh)
         grid.addLayout(col1)
@@ -264,9 +239,11 @@ class OllamaSettingsDialog(QDialog):
         # ── Test / Pull / Status ──────────────────────────────────────────────
         row_test = QHBoxLayout()
         btn_test = QPushButton("Check Connection")
+        btn_test.setProperty("class", "toolbar")
         btn_test.clicked.connect(self._test)
         row_test.addWidget(btn_test)
         self.btn_pull = QPushButton("Download Missing Model")
+        self.btn_pull.setProperty("class", "success")
         self.btn_pull.setVisible(False)
         self.btn_pull.clicked.connect(self._pull_model)
         row_test.addWidget(self.btn_pull)
@@ -280,11 +257,7 @@ class OllamaSettingsDialog(QDialog):
         row_mgr = QHBoxLayout()
         btn_mgr = QPushButton("Open Model Manager")
         btn_mgr.setToolTip("Browse, download, and delete Ollama models")
-        btn_mgr.setStyleSheet(
-            f"QPushButton {{ background: {_t['selection']}; color: {_t['fg_bright']}; border: 1px solid {_t['border']};"
-            f"  border-radius: 4px; padding: 6px 16px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background: {_t['border_hover']}; }}"
-        )
+        btn_mgr.setProperty("class", "primary")
         btn_mgr.clicked.connect(self._open_model_manager)
         row_mgr.addWidget(btn_mgr)
         row_mgr.addStretch()
@@ -346,6 +319,7 @@ class OllamaSettingsDialog(QDialog):
         # ── Save / Cancel ─────────────────────────────────────────────────────
         row_btns = QHBoxLayout()
         btn_save = QPushButton("Save AI Settings")
+        btn_save.setProperty("class", "primary")
         btn_save.clicked.connect(self._save)
         btn_cancel = QPushButton("Cancel")
         btn_cancel.clicked.connect(self.reject)
@@ -499,7 +473,7 @@ class PhotoSettingsDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(18, 18, 18, 18)
 
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "Photos",
             "Photo Organization Settings",
@@ -590,6 +564,7 @@ class PhotoSettingsDialog(QDialog):
         row_face = QHBoxLayout()
         row_face.addSpacing(24)
         self.btn_face_mgr = QPushButton("Open Face Library")
+        self.btn_face_mgr.setProperty("class", "toolbar")
         self.btn_face_mgr.setFixedWidth(140)
         self.btn_face_mgr.setEnabled(HAS_FACE_RECOGNITION)
         if not HAS_FACE_RECOGNITION:
@@ -621,6 +596,7 @@ class PhotoSettingsDialog(QDialog):
         # ── Buttons ──────────────────────────────────────────────────────────
         btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btn_box.button(QDialogButtonBox.StandardButton.Ok).setText("Save Photo Settings")
+        btn_box.button(QDialogButtonBox.StandardButton.Ok).setProperty("class", "primary")
         btn_box.accepted.connect(self._save_and_close)
         btn_box.rejected.connect(self.reject)
         layout.addWidget(btn_box)
@@ -693,6 +669,10 @@ class FaceManagerDialog(QDialog):
             #face_mgr QPushButton {{ background: {_t['btn_bg']}; color: {_t['fg_bright']}; border: 1px solid {_t['border']};
                                      border-radius: 4px; padding: 6px 14px; }}
             #face_mgr QPushButton:hover {{ background: {_t['btn_hover']}; }}
+            #face_mgr QPushButton[class="primary"] {{ background: {_t['accent']}; color: #ffffff; border-color: {_t['accent']}; }}
+            #face_mgr QPushButton[class="primary"]:hover {{ background: {_t['accent_hover']}; }}
+            #face_mgr QPushButton[class="danger"] {{ background: #3a1f25; color: #ffb4c0; border-color: #6e3241; }}
+            #face_mgr QPushButton[class="danger"]:hover {{ background: #4a2730; color: #ffd5db; }}
             #face_mgr QPushButton:disabled {{ color: {_t['disabled']}; }}
             #face_mgr QSlider::groove:horizontal {{ background: {_t['btn_bg']}; height: 6px; border-radius: 3px; }}
             #face_mgr QSlider::handle:horizontal {{ background: {_t['sidebar_btn_active_fg']}; width: 14px; margin: -4px 0;
@@ -707,7 +687,7 @@ class FaceManagerDialog(QDialog):
         layout.setSpacing(10)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "People",
             "Face Library",
@@ -758,11 +738,12 @@ class FaceManagerDialog(QDialog):
         self.btn_rename.clicked.connect(self._rename_face)
         row_btns.addWidget(self.btn_rename)
         self.btn_delete = QPushButton("Delete Face")
-        self.btn_delete.setStyleSheet("QPushButton { color: #f38ba8; }")  # semantic: danger
+        self.btn_delete.setProperty("class", "danger")
         self.btn_delete.clicked.connect(self._delete_face)
         row_btns.addWidget(self.btn_delete)
         row_btns.addStretch()
         btn_close = QPushButton("Save and Close")
+        btn_close.setProperty("class", "primary")
         btn_close.clicked.connect(self._close_and_save)
         row_btns.addWidget(btn_close)
         layout.addLayout(row_btns)
@@ -852,7 +833,7 @@ class ModelManagerDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 18)
 
         # ── Header ────────────────────────────────────────────────────────────
-        layout.addWidget(_build_dialog_header(
+        layout.addWidget(build_dialog_header(
             _t,
             "Models",
             "Ollama Model Manager",
@@ -939,6 +920,7 @@ class ModelManagerDialog(QDialog):
         # ── Bottom Buttons ────────────────────────────────────────────────────
         row_btns = QHBoxLayout()
         btn_refresh = QPushButton("Refresh Model List")
+        btn_refresh.setProperty("class", "toolbar")
         btn_refresh.clicked.connect(self._load_models)
         row_btns.addWidget(btn_refresh)
         row_btns.addStretch()
@@ -1065,22 +1047,11 @@ class ModelManagerDialog(QDialog):
         btn = QPushButton(action)
         btn.setFixedWidth(80)
         btn.setProperty("model", model)
-        _t = get_active_theme()
         if action == "Download":
-            btn.setStyleSheet(
-                f"QPushButton {{ background: {_t['selection']}; color: {_t['fg_bright']}; border: 1px solid {_t['border']};"
-                f"  border-radius: 3px; padding: 2px 8px; font-size: 11px; }}"
-                f"QPushButton:hover {{ background: {_t['border_hover']}; }}"
-                f"QPushButton:disabled {{ background: {_t['bg_alt']}; color: {_t['disabled']}; }}"
-            )
+            btn.setProperty("class", "success")
             btn.clicked.connect(lambda checked, m=model: self._start_download(m))
         else:
-            btn.setStyleSheet(
-                "QPushButton { background: #4a1a1a; color: #ef4444; border: 1px solid #6b2c2c;"  # semantic: danger
-                "  border-radius: 3px; padding: 2px 8px; font-size: 11px; }"
-                "QPushButton:hover { background: #6b2c2c; color: #fca5a5; }"
-                f"QPushButton:disabled {{ background: {_t['bg_alt']}; color: {_t['disabled']}; }}"
-            )
+            btn.setProperty("class", "danger")
             btn.clicked.connect(lambda checked, m=model: self._start_delete(m))
         self.tree.setItemWidget(item, 3, btn)
 
