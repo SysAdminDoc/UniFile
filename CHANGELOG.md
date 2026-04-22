@@ -2,6 +2,40 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.3] — Python 3.10/3.11 f-string compat: three latent `SyntaxError`s
+
+### Correctness
+`pyproject.toml` declares `requires-python = ">=3.10"`, but three f-strings
+in the codebase used PEP-701 relaxations that Python didn't ship until 3.12:
+  - backslash inside an f-string expression (`\\`)
+  - reuse of the outer quote character inside an expression (`\"`)
+
+On 3.10 or 3.11 each of these raises `SyntaxError` at import time, so a
+user on a compliant Python would find UniFile completely unable to start.
+Ruff flagged all three as `invalid-syntax` against its configured
+`target-version = "py310"`. The dev interpreter is 3.12, which is why none
+of the prior test runs surfaced them.
+
+**Fixed (v9.3.3)**:
+- `unifile/classifier.py:479` — the "Context: …" debug log used
+  `{clues['asset_detail'].split('\"')[1]}` inside a double-quoted f-string.
+  Extracted the split to a local `_fn_hint` and flipped the outer quotes
+  to single, so the expression is plain Python.
+- `unifile/classifier.py:1001` — identical pattern, fixed the same way.
+- `unifile/workers.py:2511` — the Ollama image-reclassification prompt
+  built a regex literal `r'[{}\[\]<>]` *inside* an f-string expression.
+  Hoisted the `re.sub` call to a local `_clean_name` and rebuilt the
+  prompt with single-quoted outer f-strings (no quote reuse needed).
+
+### Tests
+- **+1 test** in `tests/test_py310_fstring_compat.py`. Runs
+  `ruff check --output-format=json unifile/` and asserts zero
+  `invalid-syntax` diagnostics. Skips cleanly if `ruff` isn't on `PATH`
+  (optional dev dep). Verified against a canary file that carries the
+  original violation — the test correctly fails on it.
+- **Total: 302 tests passing** (up from 301). pyflakes undefined-name
+  set still empty.
+
 ## [v9.3.2] — Per-file scan progress: `current_item` signal wired end-to-end
 
 ### UX

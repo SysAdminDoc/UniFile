@@ -2506,12 +2506,17 @@ class ScanFilesLLMWorker(QThread):
                     }
                     # Use text model to classify based on vision description
                     try:
+                        # Sanitize name outside the f-string so we don't embed a regex literal
+                        # containing backslashes in an f-string expression (forbidden on 3.10/3.11).
+                        _clean_name = re.sub(r'[{}\[\]<>]', '', name)[:200]
+                        _desc = description[:500]
+                        _cats = ', '.join(cat_names)
                         reclassify_prompt = (
-                            f"An image was described as: \"{description[:500]}\"\n"
-                            f"The filename is: \"{re.sub(r'[{}\\[\\]<>]', '', name)[:200]}\"\n"
-                            f"Classify into exactly ONE category: {', '.join(cat_names)}\n"
-                            "Respond ONLY with JSON: {\"category\": \"<name>\", \"confidence\": <0-100>, "
-                            "\"reason\": \"<brief>\", \"suggested_name\": \"<short_descriptive_name_no_ext>\"}"
+                            f'An image was described as: "{_desc}"\n'
+                            f'The filename is: "{_clean_name}"\n'
+                            f'Classify into exactly ONE category: {_cats}\n'
+                            'Respond ONLY with JSON: {"category": "<name>", "confidence": <0-100>, '
+                            '"reason": "<brief>", "suggested_name": "<short_descriptive_name_no_ext>"}'
                         )
                         text_model = ModelRouter.get_model('text_classify', url=settings['url'],
                                                            log_cb=self.log.emit, auto_pull=False)
