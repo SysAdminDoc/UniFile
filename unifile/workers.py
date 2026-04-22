@@ -696,7 +696,7 @@ class ScanCategoryWorker(QThread):
                 topic_tag = f" (topic: {topic})" if topic else ""
                 self.log.emit(f"    -->  {cat}{topic_tag}  ({conf:.0f}%){method_tag}")
             else:
-                self.log.emit(f"    -->  [no match]")
+                self.log.emit("    -->  [no match]")
 
             result_dict = {
                 'folder_name': folder.name,
@@ -1123,8 +1123,8 @@ class OllamaSetupWorker(QThread):
             self.status.emit(f"LLM: {self.model}")
             self.finished.emit(True)
         else:
-            self.log.emit(f"  WARNING: Model pull may have failed. Check: ollama list")
-            self.status.emit(f"LLM: pull failed")
+            self.log.emit("  WARNING: Model pull may have failed. Check: ollama list")
+            self.status.emit("LLM: pull failed")
             self.finished.emit(False)
 
     def _install_ollama(self) -> bool:
@@ -1143,7 +1143,7 @@ class OllamaSetupWorker(QThread):
         import urllib.request
         installer_url = "https://ollama.com/download/OllamaSetup.exe"
         installer_path = os.path.join(os.environ.get('TEMP', '.'), 'OllamaSetup.exe')
-        self.log.emit(f"  Downloading Ollama installer...")
+        self.log.emit("  Downloading Ollama installer...")
         try:
             urllib.request.urlretrieve(installer_url, installer_path)
         except Exception as e:
@@ -1268,7 +1268,7 @@ class ApplyAepWorker(QThread):
                 ok += 1
                 undo_ops.append({'type': 'rename', 'src': it.full_new_path, 'dst': it.full_current_path,
                     'timestamp': ts, 'category': '', 'confidence': '', 'status': 'Done'})
-                self.log.emit(f"  \u2705 Done")
+                self.log.emit("  \u2705 Done")
                 self.item_done.emit(ri, "Done")
             except Exception as e:
                 err += 1
@@ -1277,7 +1277,7 @@ class ApplyAepWorker(QThread):
                 if not self.dry_run and os.path.exists(it.full_new_path) and not os.path.exists(it.full_current_path):
                     try:
                         shutil.move(it.full_new_path, it.full_current_path)
-                        self.log.emit(f"  Rolled back to original location")
+                        self.log.emit("  Rolled back to original location")
                     except Exception as roll_exc:
                         self.log.emit(f"  Rollback failed: {roll_exc}")
                 self.item_done.emit(ri, "Error")
@@ -1326,7 +1326,7 @@ class ApplyCatWorker(QThread):
                 undo_ops.append({'type': 'move', 'src': it.full_dest_path, 'dst': it.full_source_path,
                     'timestamp': ts, 'category': it.category, 'confidence': f'{it.confidence:.0f}',
                     'status': 'Done'})
-                self.log.emit(f"  \u2705 Done")
+                self.log.emit("  \u2705 Done")
                 self.item_done.emit(ri, "Done")
                 if not self.dry_run:
                     cache_store(it.folder_name, it.full_source_path,
@@ -1339,7 +1339,7 @@ class ApplyCatWorker(QThread):
                 if not self.dry_run and os.path.exists(it.full_dest_path) and not os.path.exists(it.full_source_path):
                     try:
                         shutil.move(it.full_dest_path, it.full_source_path)
-                        self.log.emit(f"  Rolled back to original location")
+                        self.log.emit("  Rolled back to original location")
                     except Exception:
                         pass
                 self.item_done.emit(ri, "Error")
@@ -1764,7 +1764,7 @@ class ApplyFilesWorker(QThread):
                 undo_ops.append({'type': 'move', 'src': it.full_dst, 'dst': it.full_src,
                     'timestamp': ts, 'category': it.category,
                     'confidence': str(it.confidence), 'status': 'Done'})
-                self.log.emit(f"    ✅ Done")
+                self.log.emit("    ✅ Done")
                 self.item_done.emit(li, "Done")
                 # Plugin post-move hooks
                 try:
@@ -2073,12 +2073,12 @@ class ScanFilesLLMWorker(QThread):
                                 vision_model = fallback
                                 self.log.emit(f"  Vision: falling back to installed [{vision_model}]")
                             else:
-                                self.log.emit(f"  Vision: no vision model available — images will use text-only classification")
+                                self.log.emit("  Vision: no vision model available — images will use text-only classification")
                                 vision_model = ''
                         else:
                             self.log.emit(f"  Vision: [{vision_model}] ready")
                 else:
-                    self.log.emit(f"  Vision: no vision model available — images will use text-only classification")
+                    self.log.emit("  Vision: no vision model available — images will use text-only classification")
 
         use_vision = bool(_v_enabled and _v_pil and has_images and vision_model and _is_vision_model(vision_model))
         self.log.emit(f"  Vision active: {use_vision}" + (f" [{vision_model}]" if use_vision else ""))

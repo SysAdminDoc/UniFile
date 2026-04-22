@@ -494,7 +494,7 @@ _RAW_RULES: list[tuple[str, str, int]] = [
 ]
 
 # Compiled rule cache
-_COMPILED: Optional[list] = None
+_COMPILED: list | None = None
 
 
 def _get_rules() -> list:
@@ -504,7 +504,7 @@ def _get_rules() -> list:
     return _COMPILED
 
 
-def classify_archive_name(stem: str) -> tuple[Optional[str], int]:
+def classify_archive_name(stem: str) -> tuple[str | None, int]:
     """Classify a single archive stem.  Returns (category, confidence) or (None, 0)."""
     s = stem.lower()
     for pattern, category, confidence in _get_rules():
@@ -513,7 +513,7 @@ def classify_archive_name(stem: str) -> tuple[Optional[str], int]:
     return None, 0
 
 
-def aggregate_archive_names(archive_stems: list[str]) -> tuple[Optional[str], int, str]:
+def aggregate_archive_names(archive_stems: list[str]) -> tuple[str | None, int, str]:
     """Aggregate classification votes from multiple archive names.
 
     Returns (category, confidence, detail) or (None, 0, '').

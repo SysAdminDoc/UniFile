@@ -1,7 +1,7 @@
 """UniFile — Dependency bootstrap and optional imports."""
 
 #!/usr/bin/env python3
-"""UniFile v9.3.3 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
+"""UniFile v9.3.4 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
 
 import sys, os, subprocess, re, shutil, json, csv, hashlib, gzip, sqlite3, time, math, base64, io
 import importlib.util
@@ -16,8 +16,10 @@ def _bootstrap():
     if getattr(sys, 'frozen', False):
         return
 
-    if sys.version_info < (3, 8):
-        print("Python 3.8+ required"); sys.exit(1)
+    # Friendly error for source-run users on older Python (pip enforces this via
+    # requires-python, but git-clone users don't hit that gate).
+    if sys.version_info < (3, 10):  # noqa: UP036
+        print("Python 3.10+ required"); sys.exit(1)
 
     # pip-name → actual import module name (only where they differ)
     _IMPORT_MAP = {
@@ -40,7 +42,7 @@ def _bootstrap():
     _FAIL_TTL = 7 * 86400  # 7 days in seconds
     failed_pkgs = {}  # {pkg_name: timestamp}
     try:
-        with open(_fail_cache, 'r') as f:
+        with open(_fail_cache) as f:
             raw = json.load(f)
             # Migrate from old list format to {pkg: timestamp} dict
             if isinstance(raw, list):

@@ -233,7 +233,7 @@ _ENVATO_KEY_FILE = os.path.join(_APP_DATA_DIR, 'envato_api_key.txt')
 def _load_envato_api_key() -> str:
     """Load Envato API key from file. Returns empty string if not set."""
     try:
-        with open(_ENVATO_KEY_FILE, 'r') as f:
+        with open(_ENVATO_KEY_FILE) as f:
             return f.read().strip()
     except (FileNotFoundError, OSError):
         return ''
@@ -424,7 +424,7 @@ def _extract_file_content(file_path: str, max_chars: int = 800) -> str:
     # ── HTML files ────────────────────────────────────────────────────────
     elif ext in ('.html', '.htm'):
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            with open(file_path, encoding='utf-8', errors='replace') as f:
                 raw = f.read(max_chars * 3)
             # Extract title
             title_m = re.search(r'<title[^>]*>(.*?)</title>', raw, re.IGNORECASE | re.DOTALL)
@@ -439,7 +439,7 @@ def _extract_file_content(file_path: str, max_chars: int = 800) -> str:
     # ── Plain text / code / config ───────────────────────────────────────
     elif ext in _CONTENT_TEXT_EXTS or ext == '':
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            with open(file_path, encoding='utf-8', errors='replace') as f:
                 content = f.read(max_chars + 200)
         except Exception:
             pass

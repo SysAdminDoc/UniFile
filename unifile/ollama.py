@@ -598,7 +598,7 @@ def _gather_evidence(folder_path, url=None, log_cb=None) -> dict:
     # ── Text peeking ──
     for tp in texts[:2]:
         try:
-            with open(tp, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(tp, encoding='utf-8', errors='ignore') as f:
                 snippet = f.read(500).strip()
             if snippet:
                 evidence['text_snippets'].append(snippet[:300])
@@ -635,7 +635,7 @@ def _escalate_classification(folder_name, folder_path, initial_result,
     evidence = _gather_evidence(folder_path, url=url, log_cb=log_cb)
     if not evidence['context']:
         if log_cb:
-            log_cb(f"    [Escalate] No evidence found -- keeping original result")
+            log_cb("    [Escalate] No evidence found -- keeping original result")
         return initial_result
 
     # Get category list
@@ -682,7 +682,7 @@ def _escalate_classification(folder_name, folder_path, initial_result,
             parsed = json.loads(resp_clean[start:end + 1])
         else:
             if log_cb:
-                log_cb(f"    [Escalate] Could not parse LLM response")
+                log_cb("    [Escalate] Could not parse LLM response")
             return initial_result
 
         new_cat = parsed.get('category', '')
@@ -849,7 +849,7 @@ def ollama_classify_folder(folder_name: str, folder_path: str = None,
 
             # Show project files first with a clear label (these are the naming signals)
             if project_files:
-                context_lines.append(f"PROJECT FILES (use these names for the project title):")
+                context_lines.append("PROJECT FILES (use these names for the project title):")
                 for f in project_files[:15]:
                     context_lines.append(f"  ** {f}")
             if other_files:
@@ -1197,7 +1197,7 @@ def _ollama_pull_model(model: str, url: str = None, log_cb=None) -> bool:
             proc.wait(timeout=600)  # 10 minute max for model pull
         except subprocess.TimeoutExpired:
             proc.kill()
-            if log_cb: log_cb(f"Model pull timed out after 10 minutes")
+            if log_cb: log_cb("Model pull timed out after 10 minutes")
             return False
         return proc.returncode == 0
     except Exception as e:

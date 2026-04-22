@@ -20,7 +20,7 @@ def _load_acoustid_key() -> str:
     """Load saved AcoustID API key, or return empty string if not configured."""
     try:
         if os.path.isfile(_ACOUSTID_KEY_FILE):
-            with open(_ACOUSTID_KEY_FILE, 'r', encoding='utf-8') as f:
+            with open(_ACOUSTID_KEY_FILE, encoding='utf-8') as f:
                 return f.read().strip()
     except OSError:
         pass

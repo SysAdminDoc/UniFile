@@ -255,7 +255,7 @@ class MetadataEmbedder:
         try:
             existing = []
             if os.path.isfile(_EMBED_LOG):
-                with open(_EMBED_LOG, 'r', encoding='utf-8') as f:
+                with open(_EMBED_LOG, encoding='utf-8') as f:
                     existing = json.load(f)
             existing.extend(self._log_entries)
             # Keep last 500 entries

@@ -41,7 +41,7 @@ class IgnoreFilter:
     def load(self, filepath: str):
         """Load patterns from a .unifile_ignore file."""
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(filepath, encoding='utf-8') as f:
                 for line in f:
                     line = line.rstrip('\n\r')
                     self._add_pattern(line)

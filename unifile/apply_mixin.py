@@ -75,7 +75,7 @@ class ApplyMixin:
                           mode='aep')
             self.undo_ops = undo_ops; self.btn_undo.setEnabled(True)
             append_csv_log(undo_ops)
-            self._log(f"Undo log and CSV log saved")
+            self._log("Undo log and CSV log saved")
 
     # ═══ CATEGORY APPLY ══════════════════════════════════════════════════════
 
@@ -127,7 +127,7 @@ class ApplyMixin:
                           mode='categorize')
             self.undo_ops = undo_ops; self.btn_undo.setEnabled(True)
             append_csv_log(undo_ops)
-            self._log(f"Undo log and CSV log saved")
+            self._log("Undo log and CSV log saved")
 
     # ═══ PC FILES APPLY ══════════════════════════════════════════════════════
 

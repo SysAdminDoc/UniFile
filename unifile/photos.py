@@ -58,7 +58,7 @@ _PHOTO_FOLDER_PRESETS = {
 
 def load_photo_settings() -> dict:
     try:
-        with open(_PHOTO_SETTINGS_FILE, 'r') as f:
+        with open(_PHOTO_SETTINGS_FILE) as f:
             s = json.load(f)
         return {**_PHOTO_DEFAULTS, **s}
     except (FileNotFoundError, OSError, json.JSONDecodeError):
@@ -77,7 +77,7 @@ def save_photo_settings(settings: dict):
 def load_face_db() -> dict:
     """Load face database from JSON file."""
     try:
-        with open(_FACE_DB_FILE, 'r') as f:
+        with open(_FACE_DB_FILE) as f:
             return json.load(f)
     except (FileNotFoundError, OSError, json.JSONDecodeError):
         return {'faces': {}, 'tolerance': 0.6, 'next_id': 1}

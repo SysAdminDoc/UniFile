@@ -3157,7 +3157,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
                     '.hi{color:#4ade80;} .med{color:#f59e0b;} .lo{color:#ef4444;}',
                     '.method{font-weight:bold;} .cat{font-weight:bold;}',
                     '</style></head><body>',
-                    f'<h1>UniFile Report</h1>',
+                    '<h1>UniFile Report</h1>',
                     f'<div class="stats">{self.lbl_stats.text()}</div>',
                     '<table><thead><tr>']
             if op == self.OP_FILES:
@@ -3622,7 +3622,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         path, _ = QFileDialog.getOpenFileName(self, "Import Category Preset", "", "JSON Files (*.json)")
         if path:
             try:
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(path, encoding='utf-8') as f:
                     data = json.load(f)
                 if isinstance(data, list):
                     name = os.path.splitext(os.path.basename(path))[0]

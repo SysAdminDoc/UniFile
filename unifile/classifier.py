@@ -827,9 +827,9 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
             return (arc_cat, arc_conf, arc_detail)
 
     if ext.get('.aep', 0) >= 1 and scan['has_footage']:
-        return ('After Effects - Templates', 72, f"composition:.aep+/footage/ subfolder")
+        return ('After Effects - Templates', 72, "composition:.aep+/footage/ subfolder")
     if ext.get('.aep', 0) >= 1 and scan['has_audio']:
-        return ('After Effects - Templates', 68, f"composition:.aep+/audio/ subfolder")
+        return ('After Effects - Templates', 68, "composition:.aep+/audio/ subfolder")
     if video_exts >= 5 and video_exts / total >= 0.5:
         return ('Stock Footage - General', 75, f"composition:{video_exts} video files ({video_exts/total:.0%})")
     if audio_exts >= 5 and audio_exts / total >= 0.5:
@@ -865,7 +865,7 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
         if ext.get('.pptx', 0) >= 1:
             return ('Presentations & PowerPoint', 60, f"composition:{doc_exts} docs (pptx found)")
         if ext.get('.indd', 0) >= 1 or ext.get('.idml', 0) >= 1:
-            return ('InDesign - Templates & Layouts', 65, f"composition:InDesign files found")
+            return ('InDesign - Templates & Layouts', 65, "composition:InDesign files found")
         return ('Forms & Documents', 55, f"composition:{doc_exts} document files")
     if image_exts >= 8 and not any(ext.get(e, 0) for e in ['.aep', '.psd', '.prproj', '.ai']):
         # Icon pack: many small PNG/SVG files, often in /icons/ subfolder
@@ -1226,11 +1226,11 @@ def classify_by_content(path: str, categories: list = None) -> tuple:
 
     try:
         if suffix in ('.txt', '.md'):
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(path, encoding='utf-8', errors='ignore') as f:
                 text = f.read(4096)  # First 4KB
 
         elif suffix == '.csv':
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(path, encoding='utf-8', errors='ignore') as f:
                 text = f.read(2048)
 
         elif suffix == '.pdf':

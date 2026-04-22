@@ -380,7 +380,7 @@ def _load_watch_settings() -> dict:
                 'auto_apply': False, 'minimize_to_tray': True}
     if os.path.isfile(_WATCH_SETTINGS_FILE):
         try:
-            with open(_WATCH_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            with open(_WATCH_SETTINGS_FILE, encoding='utf-8') as f:
                 data = json.load(f)
             defaults.update(data)
         except Exception:
@@ -774,7 +774,7 @@ class FilePreviewPanel(QWidget):
                      '.yaml', '.yml', '.csv', '.log', '.ini', '.cfg', '.sh', '.bat'}
         if ext in text_exts:
             try:
-                with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+                with open(filepath, encoding='utf-8', errors='replace') as f:
                     excerpt = f.read(500)
                 self.txt_preview_text.setPlainText(excerpt[:200])
                 self.txt_preview_text.show()

@@ -957,7 +957,7 @@ class TagLibrary:
         if pack is None:
             try:
                 import json
-                with open(filepath, 'r', encoding='utf-8') as f:
+                with open(filepath, encoding='utf-8') as f:
                     pack = json.load(f)
             except Exception as exc:
                 logger.error("import_tag_pack: failed to parse %s — %s", filepath, exc)
