@@ -2,6 +2,33 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.1] — Test consolidation: smoke scripts → parameterized pytest
+
+### Tests
+- **Smoke scripts converted to pytest** — `tests/smoke_v86.py` through
+  `tests/smoke_v89.py` were manual exit-code scripts: each wrote to stdout,
+  tallied pass/fail counters, and returned a non-zero exit on failure. They
+  never ran as part of `pytest`, so v8.6–v8.9 archive-inference coverage
+  (marketplace rules, design-tool rules, Motion Array / Envato Elements /
+  Shutterstock / UI8 rules, LUT extension fix, AI-art / 3D-marketplace /
+  game-asset / music-production rules, plus extension maps) was effectively
+  dead to CI. All 165 cases migrated to `tests/test_archive_inference.py`
+  as `pytest.mark.parametrize` blocks with historical ID labels preserved
+  so CHANGELOG refs stay greppable.
+- **`tests/check_cats.py` formalized** — the debug utility that sanity-
+  checked `EXTENSION_CATEGORY_MAP`, `FILENAME_ASSET_MAP`, and
+  `archive_inference._RAW_RULES` against `get_all_category_names()` is now
+  `tests/test_category_consistency.py`, three real assertions that fail CI
+  if a rule ever points at a category that no longer exists.
+- **Deleted**: `smoke_v86.py`, `smoke_v87.py`, `smoke_v88.py`,
+  `smoke_v89.py`, `check_cats.py`, `audit_out.txt` (one-off debug dump).
+- **Total: 294 tests passing** (up from 129).
+
+### Build
+- `pyproject.toml` — dropped the `python_files` smoke-script comment and
+  the `tests/smoke_v*.py` / `tests/audit_out.txt` entries from
+  `[tool.ruff].extend-exclude`, since those paths no longer exist.
+
 ## [v9.3.0] — Deferred-item pass: Settings Hub, Audio-Dup UX, helper extraction
 
 ### New features
