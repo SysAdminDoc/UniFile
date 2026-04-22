@@ -1,7 +1,25 @@
 """UniFile — Metadata extraction from files (EXIF, audio, documents, archives)."""
-import os, re, json, hashlib, base64, io, zipfile, gzip
+import os, re, json, hashlib, base64, io, zipfile, gzip, shutil, subprocess
+from collections import Counter
 from pathlib import Path
 import xml.etree.ElementTree as ET
+
+# Extension sets — kept here instead of files.py so metadata.py stays
+# self-contained even when files.py hasn't been imported yet.
+_META_IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff',
+                    '.webp', '.heic', '.heif', '.avif', '.jxl',
+                    '.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2',
+                    '.pef', '.srw', '.raw'}
+_META_AUDIO_EXTS = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a',
+                    '.opus', '.aiff', '.aif', '.ape', '.mka', '.wv', '.tta',
+                    '.dsf', '.dff', '.caf', '.mid', '.midi'}
+_META_VIDEO_EXTS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm',
+                    '.m4v', '.mpg', '.mpeg', '.3gp', '.ts', '.mts', '.m2ts',
+                    '.vob', '.ogv', '.asf', '.f4v', '.h264', '.h265', '.hevc'}
+_META_PDF_EXTS = {'.pdf'}
+_META_DOCX_EXTS = {'.docx'}
+_META_XLSX_EXTS = {'.xlsx'}
+_META_PPTX_EXTS = {'.pptx'}
 
 from unifile.bootstrap import (
     HAS_PILLOW, HAS_PILLOW_HEIF, HAS_EXIFREAD, HAS_MUTAGEN,

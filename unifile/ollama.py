@@ -52,21 +52,16 @@ def _normalize_ollama_url(url: str) -> str:
 
 
 def load_ollama_settings() -> dict:
-    try:
-        with open(_OLLAMA_SETTINGS_FILE, 'r') as f:
-            s = json.load(f)
-        merged = {**_OLLAMA_DEFAULTS, **s}
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
-        merged = dict(_OLLAMA_DEFAULTS)
+    from unifile.config import load_json_safe
+    saved = load_json_safe(_OLLAMA_SETTINGS_FILE, {}, expected_type=dict)
+    merged = {**_OLLAMA_DEFAULTS, **saved}
     merged['url'] = _normalize_ollama_url(merged.get('url', ''))
     return merged
 
+
 def save_ollama_settings(settings: dict):
-    try:
-        with open(_OLLAMA_SETTINGS_FILE, 'w') as f:
-            json.dump(settings, f, indent=2)
-    except OSError:
-        pass
+    from unifile.config import save_json_safe
+    save_json_safe(_OLLAMA_SETTINGS_FILE, settings)
 
 _MODEL_CATALOG = [
     # ── Qwen3.5 (latest, recommended) ─────────────────────────────────────────
@@ -1301,35 +1296,34 @@ def _ollama_pull_model_streaming(model: str, url: str = None, progress_cb=None, 
         body = json.dumps({"name": model, "stream": True}).encode()
         req = urllib.request.Request(f"{url}/api/pull", data=body, method='POST',
                                      headers={'Content-Type': 'application/json'})
-        resp = urllib.request.urlopen(req, timeout=600)
-        buf = b''
-        while True:
-            chunk = resp.read(1)
-            if not chunk:
-                break
-            buf += chunk
-            if chunk == b'\n':
-                line = buf.strip()
-                buf = b''
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                status = obj.get('status', '')
-                if log_cb:
-                    log_cb(status)
-                if progress_cb:
-                    completed = obj.get('completed', 0)
-                    total = obj.get('total', 0)
-                    progress_cb(completed, total, status)
-                if obj.get('error'):
+        # `with` guarantees connection cleanup even if we raise mid-stream.
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            buf = b''
+            while True:
+                chunk = resp.read(1)
+                if not chunk:
+                    break
+                buf += chunk
+                if chunk == b'\n':
+                    line = buf.strip()
+                    buf = b''
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    status = obj.get('status', '')
                     if log_cb:
-                        log_cb(f"Error: {obj['error']}")
-                    resp.close()
-                    return False
-        resp.close()
+                        log_cb(status)
+                    if progress_cb:
+                        completed = obj.get('completed', 0)
+                        total = obj.get('total', 0)
+                        progress_cb(completed, total, status)
+                    if obj.get('error'):
+                        if log_cb:
+                            log_cb(f"Error: {obj['error']}")
+                        return False
         return True
     except Exception as e:
         if log_cb:

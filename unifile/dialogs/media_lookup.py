@@ -120,6 +120,7 @@ class MediaLookupPanel(QWidget):
         self._build_ui()
 
     def _build_ui(self):
+        _t = get_active_theme()
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 16, 16, 16)
         lay.setSpacing(12)

@@ -173,8 +173,8 @@ class AIProvider:
             headers={'Content-Type': 'application/json'},
             method='POST',
         )
-        resp = urllib.request.urlopen(req, timeout=self.timeout)
-        data = json.loads(resp.read())
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            data = json.loads(resp.read())
         self._cost_tracker['requests'] += 1
         return data.get('response', '').strip()
 
@@ -196,8 +196,8 @@ class AIProvider:
             headers={'Content-Type': 'application/json'},
             method='POST',
         )
-        resp = urllib.request.urlopen(req, timeout=self.timeout * 2)
-        data = json.loads(resp.read())
+        with urllib.request.urlopen(req, timeout=self.timeout * 2) as resp:
+            data = json.loads(resp.read())
         self._cost_tracker['requests'] += 1
         return data.get('response', '').strip()
 
@@ -223,8 +223,8 @@ class AIProvider:
             headers=headers,
             method='POST',
         )
-        resp = urllib.request.urlopen(req, timeout=self.timeout)
-        data = json.loads(resp.read())
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            data = json.loads(resp.read())
         self._cost_tracker['requests'] += 1
         usage = data.get('usage', {})
         self._cost_tracker['input_tokens'] += usage.get('prompt_tokens', 0)
@@ -265,8 +265,8 @@ class AIProvider:
             headers=headers,
             method='POST',
         )
-        resp = urllib.request.urlopen(req, timeout=self.timeout * 2)
-        data = json.loads(resp.read())
+        with urllib.request.urlopen(req, timeout=self.timeout * 2) as resp:
+            data = json.loads(resp.read())
         self._cost_tracker['requests'] += 1
         choices = data.get('choices', [])
         if choices:

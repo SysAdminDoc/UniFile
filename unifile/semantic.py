@@ -74,8 +74,8 @@ class SemanticIndex:
                 headers={'Content-Type': 'application/json'},
                 method='POST',
             )
-            resp = urllib.request.urlopen(req, timeout=15)
-            data = json.loads(resp.read())
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
             embeddings = data.get('embeddings', [])
             if embeddings:
                 return embeddings[0]

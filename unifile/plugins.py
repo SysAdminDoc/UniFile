@@ -291,14 +291,6 @@ class CloudPathResolver:
         return True
 
 
-def append_csv_log(operations):
-    """Append operations to CSV audit log."""
-    exists = os.path.exists(_CSV_LOG_FILE)
-    with open(_CSV_LOG_FILE, 'a', newline='', encoding='utf-8') as f:
-        w = csv.writer(f)
-        if not exists:
-            w.writerow(['Timestamp', 'Operation', 'Source', 'Destination', 'Category', 'Confidence', 'Status'])
-        for op in operations:
-            w.writerow([op.get('timestamp',''), op.get('type',''), op.get('src',''),
-                        op.get('dst',''), op.get('category',''), op.get('confidence',''), op.get('status','')])
+# Note: append_csv_log() used to live here as duplicate code. The canonical
+# implementation is in unifile.cache — import it from there instead.
 
