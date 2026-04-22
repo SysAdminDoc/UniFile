@@ -5,7 +5,8 @@ from pathlib import Path
 
 from unifile.config import (
     _APP_DATA_DIR, _UNDO_LOG_FILE, _UNDO_STACK_FILE, _CSV_LOG_FILE,
-    _LAST_CONFIG_FILE, _PROFILES_DIR, _CUSTOM_CATS_FILE, CONF_FUZZY_CAP
+    _LAST_CONFIG_FILE, _PROFILES_DIR, _CUSTOM_CATS_FILE, CONF_FUZZY_CAP,
+    register_sqlite_connection,
 )
 
 from unifile.bootstrap import HAS_RAPIDFUZZ
@@ -94,6 +95,7 @@ def _get_cache_conn():
         ')')
         conn.commit()
         _cache_local.conn = conn
+        register_sqlite_connection(conn)
     return conn
 
 def _close_cache_conn():

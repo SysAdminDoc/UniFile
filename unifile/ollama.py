@@ -979,22 +979,68 @@ def _llm_cache_clear():
     _llm_name_cache.clear()
 
 
-def ollama_classify_batch(folders: list, url: str = None, model: str = None) -> list:
-    """Classify multiple folders in a single Ollama request (batching).
+# Maximum folders per single Ollama /api/chat request. Larger values risk
+# runaway timeouts and one failure wiping the whole batch; smaller values add
+# request overhead. 25 is a sweet spot for qwen3.5:9b on typical hardware.
+_OLLAMA_BATCH_CHUNK_LIMIT = 25
+
+
+def ollama_classify_batch(folders: list, url: str = None, model: str = None,
+                          chunk_limit: int = _OLLAMA_BATCH_CHUNK_LIMIT,
+                          log_cb=None) -> list:
+    """Classify multiple folders via Ollama, chunking to bound request time.
+
+    When `folders` exceeds `chunk_limit`, the list is split into successive
+    chunks each sent as its own /api/chat request. Failures in one chunk do
+    not poison the other chunks — they simply yield empty/invalid entries
+    for the affected folders so the caller can fall back per-folder.
 
     Args:
-        folders: list of dicts with keys 'folder_name', 'folder_path', 'context' (str)
-        url, model: Ollama connection params
+        folders:     list of dicts with keys 'folder_name', 'folder_path', 'context'
+        url, model:  Ollama connection params (defaults to saved settings)
+        chunk_limit: max folders per request. Default 25.
+        log_cb:      optional progress callback(message: str)
 
     Returns:
-        list of result dicts (same structure as ollama_classify_folder), one per input folder.
-        Failed entries have category=None.
+        list of result dicts (same structure as ollama_classify_folder), one
+        per input folder, in input order. Failed entries have category=None.
     """
+    if not folders:
+        return []
+    # Chunk dispatch: preserves original output order by concatenating results.
+    if len(folders) > chunk_limit:
+        if log_cb:
+            log_cb(f"  [batch] chunking {len(folders)} folders into "
+                   f"{(len(folders) + chunk_limit - 1) // chunk_limit} × {chunk_limit}")
+        results: list = []
+        for i in range(0, len(folders), chunk_limit):
+            chunk = folders[i:i + chunk_limit]
+            try:
+                chunk_out = _ollama_classify_batch_chunk(chunk, url=url, model=model)
+            except Exception as e:
+                # Should never propagate here (inner function swallows), but be safe.
+                if log_cb:
+                    log_cb(f"  [batch] chunk {i // chunk_limit + 1} error: {e}")
+                chunk_out = [{'name': None, 'category': None, 'confidence': 0,
+                              'method': 'llm_batch', 'detail': f'chunk:error:{e}'}
+                             for _ in chunk]
+            results.extend(chunk_out)
+            if log_cb:
+                ok = sum(1 for r in chunk_out if r.get('category'))
+                log_cb(f"  [batch] chunk {i // chunk_limit + 1}: "
+                       f"{ok}/{len(chunk)} classified")
+        return results
+    return _ollama_classify_batch_chunk(folders, url=url, model=model)
+
+
+def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = None) -> list:
+    """Classify a single chunk (already bounded to a safe size)."""
     import urllib.request, urllib.error
     s = load_ollama_settings()
     url = url or s['url']
     model = model or s['model']
-    timeout = max(s.get('timeout', 30), 120) + 30 * len(folders)  # generous per-folder budget
+    # Per-folder budget, bounded by a hard 10-minute ceiling per chunk.
+    timeout = min(max(s.get('timeout', 30), 120) + 20 * len(folders), 600)
     valid_cats = get_all_category_names()
 
     # Build multi-folder prompt

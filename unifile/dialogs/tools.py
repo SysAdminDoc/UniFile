@@ -24,11 +24,18 @@ from unifile.plugins import PluginManager, ProfileManager, _PLUGINS_DIR
 
 
 class UndoBatchDialog(QDialog):
-    """Shows undo batches and lets user select which to undo."""
+    """Shows undo batches and lets user select which to undo.
+
+    Selecting a batch reveals a preview list of up to 10 operations (from -> to)
+    so the user can see exactly what will be reversed before confirming.
+    """
+
+    _PREVIEW_LIMIT = 10
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Undo Operations")
-        self.setMinimumSize(560, 420)
+        self.setMinimumSize(780, 520)
         self.setStyleSheet(get_active_stylesheet())
         self.selected_indices = []
         self.stack = _load_undo_stack()
@@ -41,7 +48,8 @@ class UndoBatchDialog(QDialog):
             _t,
             "Recovery",
             "Undo Operations",
-            "Review recent organize batches before restoring them. The newest batch appears first so you can reverse the last change quickly."
+            "Select one or more recent batches, then review which files will be "
+            "restored in the preview panel below. The newest batch appears first."
         ))
 
         self.lbl_summary = QLabel("")
@@ -49,18 +57,38 @@ class UndoBatchDialog(QDialog):
         self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
         lay.addWidget(self.lbl_summary)
 
+        # Split: batch list on the left, operation preview on the right.
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
         self.lst = QListWidget()
         self.lst.setAlternatingRowColors(True)
         self.lst.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.lst.itemSelectionChanged.connect(self._update_selection_state)
+        self.lst.itemSelectionChanged.connect(self._update_preview)
         for batch in reversed(self.stack):
             ts = batch.get('timestamp', '?')[:19].replace('T', ' ')
             count = batch.get('count', len(batch.get('ops', [])))
-            self.lst.addItem(f"{ts}  -  {count} operation{'s' if count != 1 else ''}")
-        lay.addWidget(self.lst, 1)
+            mode = batch.get('mode', '')
+            status = batch.get('status', 'applied')
+            tag = f" [{status}]" if status != 'applied' else ''
+            mode_tag = f"  ·  {mode}" if mode else ''
+            self.lst.addItem(f"{ts}  ·  {count} op{'s' if count != 1 else ''}{mode_tag}{tag}")
+        splitter.addWidget(self.lst)
+
+        # Preview panel — operation sample
+        self.preview_tree = QTreeWidget()
+        self.preview_tree.setHeaderLabels(["From → To"])
+        self.preview_tree.setAlternatingRowColors(True)
+        self.preview_tree.header().setStretchLastSection(True)
+        splitter.addWidget(self.preview_tree)
+        splitter.setSizes([320, 440])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        lay.addWidget(splitter, 1)
 
         btn_row = QHBoxLayout()
         self.btn_sel = QPushButton("Undo Selected Batches")
+        self.btn_sel.setProperty("class", "primary")
         self.btn_sel.clicked.connect(self._undo_selected)
         self.btn_all = QPushButton("Undo Entire History")
         self.btn_all.clicked.connect(self._undo_all)
@@ -71,6 +99,7 @@ class UndoBatchDialog(QDialog):
         btn_row.addStretch(); btn_row.addWidget(btn_cancel)
         lay.addLayout(btn_row)
         self._update_selection_state()
+        self._update_preview()
 
     def _update_selection_state(self):
         total = len(self.stack)
@@ -84,6 +113,53 @@ class UndoBatchDialog(QDialog):
             self.lbl_summary.setText("No undo history is available yet.")
         self.btn_sel.setEnabled(selected > 0)
         self.btn_all.setEnabled(total > 0)
+
+    def _update_preview(self):
+        """Show a sample of operations that would be reversed by the current selection."""
+        self.preview_tree.clear()
+        if not self.stack:
+            placeholder = QTreeWidgetItem(["No operations to preview."])
+            placeholder.setDisabled(True)
+            self.preview_tree.addTopLevelItem(placeholder)
+            return
+        indices = [r.row() for r in self.lst.selectedIndexes()]
+        total = len(self.stack)
+        if not indices:
+            placeholder = QTreeWidgetItem(["Select a batch above to preview the files it will restore."])
+            placeholder.setDisabled(True)
+            self.preview_tree.addTopLevelItem(placeholder)
+            return
+        _t = get_active_theme()
+        shown_total = 0
+        for row in indices:
+            stack_idx = total - 1 - row
+            if not (0 <= stack_idx < total):
+                continue
+            batch = self.stack[stack_idx]
+            ops = batch.get('ops', [])
+            ts = batch.get('timestamp', '?')[:19].replace('T', ' ')
+            root = QTreeWidgetItem(self.preview_tree, [f"{ts}  ·  {len(ops)} op(s)"])
+            root.setExpanded(True)
+            # Take a representative slice: first N / 2 and last N / 2 — helps
+            # the user see where a large batch started and ended.
+            sample = ops[: self._PREVIEW_LIMIT // 2]
+            if len(ops) > self._PREVIEW_LIMIT:
+                sample += ops[-self._PREVIEW_LIMIT // 2:]
+            for op in sample:
+                src = op.get('src', '?')   # current location (post-move)
+                dst = op.get('dst', '?')   # original location (where undo restores to)
+                # Display as "restored-from -> restored-to" so the user reads
+                # it in the direction the undo will go.
+                label = f"{os.path.basename(src)} → {os.path.basename(dst) or dst}"
+                node = QTreeWidgetItem(root, [label])
+                node.setToolTip(0, f"FROM: {src}\n  TO: {dst}")
+                shown_total += 1
+            if len(ops) > self._PREVIEW_LIMIT:
+                more = QTreeWidgetItem(
+                    root,
+                    [f"… and {len(ops) - self._PREVIEW_LIMIT} more operation(s)"]
+                )
+                more.setDisabled(True)
 
     def _undo_selected(self):
         total = len(self.stack)

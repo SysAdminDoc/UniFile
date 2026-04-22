@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/SysAdminDoc/UniFile/security/advisories/new
+    about: Please report security issues privately via a GitHub Security Advisory.
+  - name: Question / discussion
+    url: https://github.com/SysAdminDoc/UniFile/discussions
+    about: Usage questions and general discussion go here, not as issues.

@@ -1538,8 +1538,8 @@ class ScanFilesWorker(QThread):
                                 if arc_conf > conf:
                                     cat, conf, method = arc_cat, arc_conf, 'archive_peek'
                                     self.log.emit(f"    [ARCHIVE] Reclassified via contents → {cat} ({conf}%)")
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            self.log.emit(f"    [ARCHIVE] Peek failed for {name}: {e}")
 
                 # Rule Engine — evaluate user-defined rules
                 if not is_folder:
@@ -1558,8 +1558,8 @@ class ScanFilesWorker(QThread):
                                 if r_conf > conf:
                                     cat, conf, method = r_cat, r_conf, 'rule'
                                     self.log.emit(f"    [RULE] Matched → {cat} ({conf}%)")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.log.emit(f"    [RULE] Evaluation error on {name}: {e}")
 
                 # Plugin classifiers
                 if not is_folder:
@@ -1570,8 +1570,8 @@ class ScanFilesWorker(QThread):
                             if p_conf > conf:
                                 cat, conf, method = p_cat, p_conf, 'plugin'
                                 self.log.emit(f"    [PLUGIN] Classified → {cat} ({conf}%)")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.log.emit(f"    [PLUGIN] Error on {name}: {e}")
 
                 # Adaptive learning — check if user corrections suggest a category
                 if not is_folder and conf < 80:
@@ -1583,8 +1583,8 @@ class ScanFilesWorker(QThread):
                             conf = learned['confidence']
                             method = 'learned'
                             self.log.emit(f"    [LEARNED] {cat} ({conf:.0f}%) — {learned['detail']}")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.log.emit(f"    [LEARNED] Prediction error on {name}: {e}")
 
                 # Store in cache for next scan
                 if not is_folder and fsize > 0:
