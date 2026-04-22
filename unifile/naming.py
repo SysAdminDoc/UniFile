@@ -1,9 +1,10 @@
 """UniFile — Name normalization, beautification, and smart naming."""
-import os, re, math, unicodedata
-from pathlib import Path
+import os
+import re
 from functools import lru_cache
 
-from unifile.bootstrap import HAS_RAPIDFUZZ, HAS_UNIDECODE
+from unifile.bootstrap import HAS_UNIDECODE
+
 try:
     from rapidfuzz import fuzz as _rfuzz
 except ImportError:

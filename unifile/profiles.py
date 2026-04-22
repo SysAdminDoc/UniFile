@@ -1,5 +1,7 @@
 """UniFile — Scan Profiles: switchable behavior sets for different organizing scenarios."""
-import os, json
+import json
+import os
+
 from unifile.config import _APP_DATA_DIR
 
 _PROFILES_FILE = os.path.join(_APP_DATA_DIR, 'active_profile.json')

@@ -7,11 +7,10 @@ from pathlib import Path
 
 import pytest
 
-
 # ── Connection registry (atexit cleanup) ──────────────────────────────────────
 
 def test_register_sqlite_connection_is_idempotent(tmp_path):
-    from unifile.config import register_sqlite_connection, _sqlite_registry
+    from unifile.config import _sqlite_registry, register_sqlite_connection
     conn = sqlite3.connect(str(tmp_path / 't.db'))
     before = len(_sqlite_registry)
     register_sqlite_connection(conn)
@@ -22,7 +21,7 @@ def test_register_sqlite_connection_is_idempotent(tmp_path):
 
 def test_close_all_sqlite_connections_is_best_effort():
     """Closing an already-closed connection should not propagate."""
-    from unifile.config import register_sqlite_connection, _close_all_sqlite_connections
+    from unifile.config import _close_all_sqlite_connections, register_sqlite_connection
     conn = sqlite3.connect(":memory:")
     register_sqlite_connection(conn)
     conn.close()
@@ -143,8 +142,9 @@ def test_write_scan_json_serializes_file_items(tmp_path):
 
 def test_classify_subcommand_pdf(tmp_path, capsys):
     """The CLI `classify` subcommand produces JSON with a usable category."""
-    from unifile.__main__ import _cmd_classify
     import argparse
+
+    from unifile.__main__ import _cmd_classify
 
     pdf = tmp_path / 'report.pdf'
     pdf.write_bytes(b'%PDF-1.4\n' + b'x' * 100)
@@ -159,8 +159,9 @@ def test_classify_subcommand_pdf(tmp_path, capsys):
 
 
 def test_classify_subcommand_missing_path(tmp_path, capsys):
-    from unifile.__main__ import _cmd_classify
     import argparse
+
+    from unifile.__main__ import _cmd_classify
     ns = argparse.Namespace(path=str(tmp_path / 'does_not_exist.foo'), json=False)
     rc = _cmd_classify(ns)
     assert rc == 2
@@ -170,8 +171,9 @@ def test_classify_subcommand_missing_path(tmp_path, capsys):
 
 def test_classify_subcommand_folder(tmp_path, capsys):
     """Folder classification returns the 'folder' kind and a tuple-like result."""
-    from unifile.__main__ import _cmd_classify
     import argparse
+
+    from unifile.__main__ import _cmd_classify
     (tmp_path / 'sub').mkdir()
     (tmp_path / 'sub' / 'document.pdf').write_bytes(b'%PDF-1.4\n')
     ns = argparse.Namespace(path=str(tmp_path / 'sub'), json=True)

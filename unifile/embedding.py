@@ -5,14 +5,14 @@ Writes classification results, tags, and AI descriptions into file metadata:
   - Audio: ID3 Genre, Comment via mutagen
   - PDF: metadata via PyPDF2
 """
-import os
 import json
 import logging
+import os
 from datetime import datetime
 
 _log = logging.getLogger(__name__)
 
-from unifile.config import _APP_DATA_DIR
+from unifile.config import _APP_DATA_DIR  # noqa: E402  -- logger set up first
 
 _EMBED_LOG = os.path.join(_APP_DATA_DIR, 'embed_log.json')
 
@@ -140,8 +140,7 @@ class MetadataEmbedder:
         mutagen = _try_import('mutagen')
         if not mutagen:
             return False
-        from mutagen.id3 import ID3, COMM, TXXX
-        from mutagen.id3 import ID3NoHeaderError
+        from mutagen.id3 import COMM, ID3, TXXX, ID3NoHeaderError
 
         try:
             audio = ID3(filepath)

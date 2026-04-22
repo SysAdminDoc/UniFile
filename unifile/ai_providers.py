@@ -1,9 +1,7 @@
 """UniFile -- Multi-provider AI backend (Ollama, OpenAI-compatible, Groq)."""
-import os
-import json
-import time
 import base64
-from datetime import datetime
+import json
+import os
 
 from unifile.config import _APP_DATA_DIR
 
@@ -365,15 +363,16 @@ def classify_folder_via_chain(folder_name: str, folder_path: str | None,
     """
     import json as _json
     import os as _os
+
+    from unifile.categories import get_all_category_names
     from unifile.ollama import (
         _build_llm_system_prompt,
-        _is_id_only_folder,
         _extract_name_hints,
         _is_generic_name,
+        _is_id_only_folder,
         _llm_cache_get,
         _llm_cache_set,
     )
-    from unifile.categories import get_all_category_names
 
     def _log(msg: str):
         if log_cb:

@@ -1,8 +1,13 @@
 """UniFile — Metadata extraction from files (EXIF, audio, documents, archives)."""
-import os, re, json, hashlib, base64, io, zipfile, gzip, shutil, subprocess
+import gzip
+import json
+import os
+import re
+import shutil
+import subprocess
+import zipfile
 from collections import Counter
 from pathlib import Path
-import xml.etree.ElementTree as ET
 
 # Extension sets — kept here instead of files.py so metadata.py stays
 # self-contained even when files.py hasn't been imported yet.
@@ -21,15 +26,23 @@ _META_DOCX_EXTS = {'.docx'}
 _META_XLSX_EXTS = {'.xlsx'}
 _META_PPTX_EXTS = {'.pptx'}
 
-from unifile.bootstrap import (
-    HAS_PILLOW, HAS_PILLOW_HEIF, HAS_EXIFREAD, HAS_MUTAGEN,
-    HAS_PYPDF, HAS_PYTHON_DOCX, HAS_OPENPYXL, HAS_PYTHON_PPTX,
-    HAS_PSD_TOOLS, HAS_RARFILE, HAS_PY7ZR
+from unifile.bootstrap import (  # noqa: E402  -- constants block above needs to land first
+    HAS_EXIFREAD,
+    HAS_MUTAGEN,
+    HAS_OPENPYXL,
+    HAS_PILLOW,
+    HAS_PSD_TOOLS,
+    HAS_PY7ZR,
+    HAS_PYPDF,
+    HAS_PYTHON_DOCX,
+    HAS_PYTHON_PPTX,
+    HAS_RARFILE,
 )
-from unifile.config import _APP_DATA_DIR
+from unifile.config import _APP_DATA_DIR  # noqa: E402
+
 try:
     from PIL import Image as _PILImage
-    from PIL.ExifTags import TAGS as _EXIF_TAGS, GPSTAGS as _GPS_TAGS
+    from PIL.ExifTags import TAGS as _EXIF_TAGS
 except ImportError:
     pass
 try:
@@ -38,11 +51,6 @@ except ImportError:
     pass
 try:
     import mutagen as _mutagen
-    from mutagen.easyid3 import EasyID3 as _EasyID3
-    from mutagen.mp3 import MP3 as _MP3
-    from mutagen.flac import FLAC as _FLAC
-    from mutagen.mp4 import MP4 as _MP4
-    from mutagen.oggvorbis import OggVorbis as _OggVorbis
 except ImportError:
     pass
 try:
@@ -266,7 +274,8 @@ def _envato_api_classify(item_id: str) -> tuple:
         return _envato_cache[item_id]
 
     try:
-        import urllib.request, urllib.error
+        import urllib.error
+        import urllib.request
         url = f"https://api.envato.com/v3/market/catalog/item?id={item_id}"
         req = urllib.request.Request(url, headers={
             'Authorization': f'Bearer {api_key}',
@@ -562,7 +571,6 @@ class MetadataExtractor:
         if not meta:
             return ""
         lines = []
-        mt = meta.get('_type', '')
         skip = {'_type'}
         _LABELS = {
             'width': 'Width', 'height': 'Height', 'camera_make': 'Camera Make',
@@ -1002,7 +1010,6 @@ class ArchivePeeker:
         exts = peek_result.get('extensions', Counter())
         if not exts:
             return ('Archives', 50)
-        top_ext = exts.most_common(1)[0][0] if exts else ''
         # Map dominant extension to category
         code_exts = {'.py', '.js', '.ts', '.java', '.c', '.cpp', '.go', '.rs', '.rb', '.php', '.html', '.css'}
         img_exts = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.psd', '.svg'}

@@ -3,16 +3,27 @@ import os
 import subprocess
 import sys
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox,
-    QCheckBox, QDialog, QDialogButtonBox, QSpinBox,
-    QSlider, QFrame, QGroupBox, QTextEdit,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
 
-from unifile.config import get_active_theme, get_active_stylesheet
+from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 
 

@@ -1,26 +1,40 @@
 """UniFile — Miscellaneous tool dialogs (undo, events, schedule, plugins, etc.)."""
-import os, re, sys, subprocess, math
+import math
+import os
+import re
+import subprocess
+import sys
 from collections import Counter
-from datetime import datetime
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, QTableWidgetItem,
-    QCheckBox, QHeaderView, QAbstractItemView,
-    QTreeWidget, QTreeWidgetItem, QDialog, QFrame,
-    QListWidget, QSplitter, QMessageBox
-)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
-
-from unifile.config import (
-    get_active_theme, get_active_stylesheet,
-    load_watch_history, clear_watch_history
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
-from unifile.dialogs.common import build_dialog_header
+
 from unifile.cache import _load_undo_stack, _save_undo_stack
-from unifile.engine import ScheduleManager, EventGrouper
-from unifile.plugins import PluginManager, ProfileManager, _PLUGINS_DIR
+from unifile.config import clear_watch_history, get_active_stylesheet, get_active_theme, load_watch_history
+from unifile.dialogs.common import build_dialog_header
+from unifile.engine import EventGrouper, ScheduleManager
+from unifile.plugins import _PLUGINS_DIR, PluginManager, ProfileManager
 
 
 class UndoBatchDialog(QDialog):
@@ -262,7 +276,6 @@ class BeforeAfterDialog(QDialog):
                 parts = rel.replace('\\', '/').split('/')
                 self._insert_tree(before_tree, parts)
             # After: destination paths
-            dst = getattr(it, 'full_dst', '') or getattr(it, 'full_dest_path', '')
             name = getattr(it, 'display_name', '') or getattr(it, 'name', '')
             cat = getattr(it, 'category', '')
             if cat and name:
@@ -526,7 +539,7 @@ class RelationshipGraphWidget(QWidget):
                 n2['y'] -= dy / dist * force
 
     def paintEvent(self, event):
-        from PyQt6.QtGui import QPainter, QBrush, QPen, QFont
+        from PyQt6.QtGui import QBrush, QFont, QPainter, QPen
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
@@ -866,8 +879,8 @@ class UndoTimelineDialog(QDialog):
         self._perform_undo(indices)
 
     def _perform_undo(self, indices):
-        import shutil as _shutil
         import os as _os
+        import shutil as _shutil
         ok = err = skipped = 0
         for idx in indices:
             if idx >= len(self.stack):
@@ -1089,7 +1102,7 @@ class CsvRulesDialog(QDialog):
         self._load()
 
     def _build_ui(self):
-        from unifile.csv_rules import get_rules_for_editor, rules_file_exists, get_rules_file
+        from unifile.csv_rules import get_rules_file, get_rules_for_editor, rules_file_exists
         self._get_rules_for_editor = get_rules_for_editor
         self._rules_file_exists = rules_file_exists
         self._get_rules_file = get_rules_file

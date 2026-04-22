@@ -7,8 +7,7 @@ from typing import override
 from sqlalchemy import ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from unifile.tagging.db import Base, PathType, TAG_ARCHIVED, TAG_FAVORITE
-
+from unifile.tagging.db import TAG_ARCHIVED, TAG_FAVORITE, Base, PathType
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 

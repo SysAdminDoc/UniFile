@@ -1,8 +1,10 @@
 """UniFile — Plugins, profiles, category presets, cloud path resolution."""
-import os, re, json, importlib.util, subprocess, sys
-from pathlib import Path
+import importlib.util
+import json
+import os
 
-from unifile.config import _APP_DATA_DIR, _PROFILES_DIR, _PRESETS_DIR
+from unifile.config import _APP_DATA_DIR, _PRESETS_DIR, _PROFILES_DIR
+
 
 class ProfileManager:
     """Manages saved scan configuration profiles."""

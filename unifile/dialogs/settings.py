@@ -1,38 +1,52 @@
 """UniFile dialogs — Settings dialogs (Ollama, Photo, Face, Model Manager)."""
-import os, re, base64
+import base64
 
+from PyQt6.QtCore import QSize, Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox,
-    QCheckBox, QDialog, QDialogButtonBox, QSpinBox,
-    QListWidget, QListWidgetItem, QInputDialog, QSlider, QFrame,
-    QTreeWidget, QTreeWidgetItem, QHeaderView, QProgressBar
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QProgressBar,
+    QPushButton,
+    QSlider,
+    QSpinBox,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
-from PyQt6.QtGui import QColor, QPixmap, QIcon
 
-from unifile.config import (
-    get_active_theme, get_active_stylesheet
-)
+from unifile.bootstrap import HAS_CV2, HAS_FACE_RECOGNITION, HAS_REVERSE_GEOCODER
+from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
-from unifile.ollama import (
-    load_ollama_settings, save_ollama_settings, ollama_test_connection,
-    _MODEL_CATALOG, _MODEL_CATALOG_MAP,
-    _OLLAMA_DEFAULTS, _ollama_list_models, _ollama_pull_model,
-    _is_ollama_server_running
-)
-from unifile.photos import (
-    load_photo_settings, save_photo_settings, FaceDB,
-    _PHOTO_FOLDER_PRESETS
-)
-from unifile.bootstrap import (
-    HAS_REVERSE_GEOCODER, HAS_FACE_RECOGNITION, HAS_CV2
-)
-from unifile.workers import ModelListWorker, ModelPullWorker, ModelDeleteWorker, format_size
 from unifile.nexa_backend import (
-    load_nexa_settings, save_nexa_settings, is_nexa_available,
-    _NEXA_MODEL_CATALOG, _NEXA_DEFAULTS,
+    _NEXA_MODEL_CATALOG,
+    is_nexa_available,
+    load_nexa_settings,
+    save_nexa_settings,
 )
+from unifile.ollama import (
+    _MODEL_CATALOG,
+    _MODEL_CATALOG_MAP,
+    _OLLAMA_DEFAULTS,
+    _is_ollama_server_running,
+    _ollama_list_models,
+    _ollama_pull_model,
+    load_ollama_settings,
+    ollama_test_connection,
+    save_ollama_settings,
+)
+from unifile.photos import _PHOTO_FOLDER_PRESETS, FaceDB, load_photo_settings, save_photo_settings
+from unifile.workers import ModelDeleteWorker, ModelListWorker, ModelPullWorker, format_size
 
 
 class OllamaSettingsDialog(QDialog):

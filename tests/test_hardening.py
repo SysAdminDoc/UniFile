@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-
 # ── Module-level import smoke tests ───────────────────────────────────────────
 # These catch missing imports that would only surface under rare code paths.
 

@@ -1,8 +1,8 @@
 """Theme application mixin for UniFile main window."""
 
-from PyQt6.QtWidgets import QWidget, QSystemTrayIcon
+from PyQt6.QtWidgets import QWidget
 
-from unifile.config import THEMES, DARK_STYLE, _build_theme_qss
+from unifile.config import DARK_STYLE, THEMES, _build_theme_qss
 
 
 class ThemeMixin:
