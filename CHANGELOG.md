@@ -2,6 +2,41 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.9] — FilterMixin extracted (3 more methods out of main_window.py)
+
+### Architecture
+Continuing the mixin sweep started in v9.3.7. New module:
+
+- `unifile/filter_mixin.py` — `FilterMixin` with three tightly-coupled
+  methods moved together because they share state
+  (`txt_search` / `cmb_face_filter` / `sld_conf` → `tbl`):
+  - `_populate_face_filter` — builds the face filter dropdown from
+    scanned metadata, auto-hides when empty or out of PC Files mode.
+  - `_apply_filter` — search + face filter row-visibility pass.
+  - `_on_conf_changed` — confidence slider handler; auto-selects/
+    deselects rows based on the threshold, sort-safe via
+    `_item_idx_from_row`.
+
+- `UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin, QMainWindow)`
+  — mixin order preserved.
+- `main_window.py` shrank by another 70+ lines.
+
+### Tests
+`tests/test_main_window_smoke.py`:
+- MRO assertion extended to include `FilterMixin`.
+- Method-resolution parametrization covers the three filter slots.
+- Total slow-suite tests now **14**.
+
+**Total: 337 tests passing** (up from 334).
+
+### Status
+Ruff: still 0 violations across `unifile/` and `tests/`.
+Pyflakes undefined-name set: still empty.
+
+Three mixins extracted so far (UndoMixin, FilterMixin, and the pre-existing
+trio of ScanMixin/ApplyMixin/ThemeMixin). Next candidates from the
+continuation prompt: TrayMixin, WatchMixin.
+
 ## [v9.3.8] — Per-folder rule overrides
 
 ### Feature
