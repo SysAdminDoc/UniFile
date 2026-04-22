@@ -1,9 +1,7 @@
 """UniFile -- .unifile_ignore file support (gitignore-style pattern matching)."""
 import os
 import re
-import fnmatch
 from pathlib import Path
-from typing import Optional
 
 
 class IgnoreFilter:

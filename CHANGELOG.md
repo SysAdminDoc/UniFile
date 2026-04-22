@@ -2,6 +2,74 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.6] — Ruff-clean across the codebase; CI flips to hard-fail
+
+### Cleanup — 379 → 0 ruff violations
+Continuing the sweep from v9.3.4 (942 → 379). All remaining categories
+addressed:
+
+- **I001** (97): isort-style import reordering — applied via `ruff --fix`.
+- **F401** (257): unused imports. 243 auto-fixed. Manual pass for the
+  14 that ruff left alone:
+  - `unifile/duplicates.py` — removed dead `_PILImage` / `_cv2` probes;
+    availability is tracked via the `HAS_PILLOW` flag imported from
+    `bootstrap.py`, so the local try/imports never set a flag and went
+    unreferenced for several releases.
+  - `unifile/widgets.py` — same treatment.
+  - `unifile/files.py`, `unifile/ollama.py` — kept `import magic as _magic`
+    behind `# noqa: F401` (these are meaningful availability probes used
+    elsewhere in each module).
+  - `unifile/metadata.py` — removed dead aliases
+    (`_GPS_TAGS`, `_EasyID3`, `_FLAC`, `_MP3`, `_MP4`, `_OggVorbis`) and
+    kept `_PILImage` / `_EXIF_TAGS` / `_exifread` / `_mutagen` (used at
+    lines 428, 623, 656). `_EXIF_TAGS` was flagged by ruff but is
+    genuinely referenced through a late try/except path — pyflakes caught
+    that during regression, prompting the restore.
+  - `unifile/nexa_backend.py`, `unifile/whisper_backend.py` — legitimate
+    availability probes; added targeted `# noqa: F401` with a comment
+    explaining the intent.
+- **B905** (4): `zip()` without explicit `strict=`. All four sites
+  reviewed and annotated:
+  - `duplicates.py:126` and `semantic.py:20`: length-equality is asserted
+    immediately above → `strict=True`.
+  - `photos.py:233`: face_recognition returns parallel `locations` and
+    `encodings` arrays → `strict=True`.
+  - `workers.py:1034`: a malformed LLM response can return fewer results
+    than the batch size → `strict=False` with an explanatory comment.
+- **F841** (10): unused-variable. Each reviewed; mostly stale scratch
+  names from earlier refactors (`gf`, `waste`, `dst`, `paths`, `uncat`,
+  `mt`, `top_ext`, `appeared`, `ext`). Removed.
+- **F811** (1): `unifile/categories.py:661` redefined
+  `_CUSTOM_CATS_FILE` that was already imported from `unifile.config`.
+  Removed the redefinition.
+- **E402** (6): module-level import after code. Four sites kept behind
+  `# noqa: E402` because ordering is meaningful (sentinel/logger set up
+  first, then dependent imports).
+- **E731** (3): my own `action_cb = lambda:` assignments from v9.3.5.
+  Converted each to a named inner `def` for readability.
+- **E741** (1): `main_window.py:2554` used `l = QHBoxLayout(...)`
+  (ambiguous name). Renamed to `lay`.
+
+### CI
+- `.github/workflows/tests.yml` — dropped `continue-on-error: true` from
+  the ruff step. Lint is now a hard gate: any new violation fails CI.
+
+### Impact
+| Metric | Before v9.3.4 | After v9.3.6 |
+|--------|---------------|--------------|
+| Ruff (unifile/) | 942 | **0** |
+| Ruff (tests/) | 24 | **0** |
+| CI lint gate | soft | **hard** |
+| Tests passing | 302 | 308 |
+| Pyflakes undefined-name | 0 | 0 |
+
+### Tests
+- All **308 tests passing** (unchanged count). No behavior change — every
+  removal was of a genuinely unused name, every `strict=` decision was
+  justified from context, every `noqa` annotates a deliberate pattern.
+- The full-repo check ran successfully against a planted canary (unused
+  variable added and then reverted) to confirm the hard-fail gate trips.
+
 ## [v9.3.5] — Accessible empty states: primary recovery action button
 
 ### UX

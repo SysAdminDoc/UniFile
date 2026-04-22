@@ -10,14 +10,13 @@ from pathlib import Path
 
 import pytest
 
-
 # ── cache.py ──────────────────────────────────────────────────────────────────
 
 def test_cache_undo_log_roundtrip(tmp_path, monkeypatch):
     """save_undo_log -> load_undo_log preserves ops + batch metadata."""
     # Point cache module at an isolated temp dir so we don't pollute the real
     # APPDATA store.
-    from unifile import config, cache
+    from unifile import cache, config
     monkeypatch.setattr(cache, '_UNDO_LOG_FILE',
                         str(tmp_path / 'undo_log.json'))
     monkeypatch.setattr(cache, '_UNDO_STACK_FILE',
@@ -191,9 +190,7 @@ def test_classifier_matches_known_keyword():
 
 
 def test_classifier_pc_item_classifies_pdf(tmp_path):
-    from unifile.files import (
-        _load_pc_categories, _build_ext_map, _classify_pc_item
-    )
+    from unifile.files import _build_ext_map, _classify_pc_item, _load_pc_categories
     pdf = tmp_path / 'invoice_march.pdf'
     pdf.write_bytes(b'%PDF-1.4\n' + b'x' * 200)
     cats = _load_pc_categories()

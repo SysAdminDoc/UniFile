@@ -1,18 +1,30 @@
 """UniFile — Duplicate finder dialogs and panels."""
-import os, shutil
+import os
+import shutil
 from datetime import datetime
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, QTableWidgetItem,
-    QCheckBox, QHeaderView, QFileDialog, QAbstractItemView,
-    QTreeWidget, QTreeWidgetItem, QDialog, QMessageBox,
-    QProgressBar, QScrollArea
-)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from unifile.config import get_active_theme, get_active_stylesheet
+from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.workers import format_size
 
@@ -496,10 +508,8 @@ class DuplicateFinderDialog(QDialog):
             # Group header
             try:
                 group_size = sum(os.path.getsize(p) for p, _ in members)
-                waste = sum(os.path.getsize(p) for p, i in members if not i.is_original)
             except OSError:
                 group_size = 0
-                waste = 0
 
             header = QTreeWidgetItem([
                 "", f"Group {gid} — {len(members)} files",
@@ -923,10 +933,8 @@ class DuplicatePanel(QWidget):
                          "Visual" if first[1].is_perceptual else "Exact"
             try:
                 group_size = sum(os.path.getsize(p) for p, _ in members)
-                waste = sum(os.path.getsize(p) for p, i in members if not i.is_original)
             except OSError:
                 group_size = 0
-                waste = 0
             header = QTreeWidgetItem([
                 "", f"Group {gid} — {len(members)} files",
                 format_size(group_size), "", match_type
@@ -1036,8 +1044,9 @@ class DuplicatePanel(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if confirm != QMessageBox.StandardButton.Yes:
             return
-        from unifile.workers import action_delete, action_hardlink
         import shutil
+
+        from unifile.workers import action_delete, action_hardlink
         success = 0
         failed = 0
         if action_idx in (0, 1):

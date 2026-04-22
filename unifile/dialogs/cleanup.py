@@ -1,17 +1,26 @@
 """UniFile dialogs — Cleanup tools (scanner worker, dialog, and panel)."""
 import os
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, QTableWidgetItem,
-    QCheckBox, QHeaderView, QFileDialog, QAbstractItemView,
-    QDialog, QSpinBox, QMessageBox, QProgressBar
-)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-
-from unifile.config import (
-    get_active_theme, get_active_stylesheet
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
+
+from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 
 
@@ -55,7 +64,7 @@ class CleanupToolsDialog(QDialog):
         layout.setContentsMargins(18, 18, 18, 18)
 
         # Tab widget
-        from PyQt6.QtWidgets import QTabWidget, QDoubleSpinBox
+        from PyQt6.QtWidgets import QDoubleSpinBox, QTabWidget
         _t = get_active_theme()
         layout.addWidget(build_dialog_header(
             _t,
@@ -278,8 +287,12 @@ class CleanupToolsDialog(QDialog):
 
     def _start_scan(self):
         from unifile.cleanup import (
-            scan_empty_folders, scan_empty_files, scan_temp_files,
-            scan_broken_files, scan_big_files, scan_old_downloads
+            scan_big_files,
+            scan_broken_files,
+            scan_empty_files,
+            scan_empty_folders,
+            scan_old_downloads,
+            scan_temp_files,
         )
 
         tab_idx = self.tabs.currentIndex()
@@ -332,8 +345,9 @@ class CleanupToolsDialog(QDialog):
 
     def _on_item_found(self, item):
         """Add a single discovered item to the table immediately."""
-        from unifile.cleanup import _fmt_size
         from datetime import datetime
+
+        from unifile.cleanup import _fmt_size
 
         row = len(self._results)
         self._results.append(item)
@@ -390,7 +404,7 @@ class CleanupToolsDialog(QDialog):
         if not selected:
             return
 
-        from unifile.cleanup import delete_items, _fmt_size
+        from unifile.cleanup import _fmt_size, delete_items
         total = sum(i.size for i in selected)
         confirm = QMessageBox.question(
             self, "Confirm Deletion",
@@ -435,7 +449,7 @@ class CleanupPanel(QWidget):
         layout.setSpacing(8)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        from PyQt6.QtWidgets import QTabWidget, QDoubleSpinBox
+        from PyQt6.QtWidgets import QDoubleSpinBox, QTabWidget
 
         _t = get_active_theme()
         header = QWidget()
@@ -661,8 +675,12 @@ class CleanupPanel(QWidget):
 
     def _start_scan(self):
         from unifile.cleanup import (
-            scan_empty_folders, scan_empty_files, scan_temp_files,
-            scan_broken_files, scan_big_files, scan_old_downloads
+            scan_big_files,
+            scan_broken_files,
+            scan_empty_files,
+            scan_empty_folders,
+            scan_old_downloads,
+            scan_temp_files,
         )
         tab_idx = self.tabs.currentIndex()
         tab_map = {
@@ -711,8 +729,9 @@ class CleanupPanel(QWidget):
 
     def _on_item_found(self, item):
         """Add a single discovered item to the table immediately."""
-        from unifile.cleanup import _fmt_size
         from datetime import datetime
+
+        from unifile.cleanup import _fmt_size
 
         row = len(self._results)
         self._results.append(item)
@@ -770,7 +789,7 @@ class CleanupPanel(QWidget):
         selected = [item for item in self._results if item.selected]
         if not selected:
             return
-        from unifile.cleanup import delete_items, _fmt_size
+        from unifile.cleanup import _fmt_size, delete_items
         total = sum(i.size for i in selected)
         confirm = QMessageBox.question(
             self, "Confirm Deletion",

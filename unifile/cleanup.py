@@ -5,12 +5,11 @@ Inspired by Czkawka, DropIt, File Juggler, and Duplicate Cleaner Pro."""
 
 import os
 import re
-import struct
-import zipfile
 import tarfile
 import time
-from dataclasses import dataclass, field
+import zipfile
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from unifile.config import is_protected
 

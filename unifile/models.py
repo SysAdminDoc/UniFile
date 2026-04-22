@@ -1,5 +1,5 @@
 """UniFile — Data model classes for scan items."""
-import os
+
 
 # ── Data structures ────────────────────────────────────────────────────────────
 class RenameItem:

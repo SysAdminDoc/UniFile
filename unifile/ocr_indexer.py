@@ -2,14 +2,20 @@
 import os
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox, QFormLayout, QLabel, QLineEdit, QPushButton,
-    QSpinBox, QVBoxLayout, QWidget,
+    QComboBox,
+    QFormLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 from sqlalchemy.orm import Session
 
-from unifile.config import get_active_theme, get_active_stylesheet
+from unifile.config import get_active_stylesheet, get_active_theme
 
 _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.webp', '.gif'}
 _PDF_EXTS   = {'.pdf'}
@@ -95,7 +101,7 @@ class OcrWorker(QThread):
         if self._engine == 'easyocr':
             return False
         try:
-            import pytesseract   # noqa: F401
+            import pytesseract  # noqa: F401
             return True
         except ImportError:
             return False
@@ -104,7 +110,7 @@ class OcrWorker(QThread):
         if self._engine == 'tesseract':
             return False
         try:
-            import easyocr       # noqa: F401
+            import easyocr  # noqa: F401
             return True
         except ImportError:
             return False

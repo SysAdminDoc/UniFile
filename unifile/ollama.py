@@ -1,27 +1,38 @@
 """UniFile — Ollama LLM integration, model catalog, and AI classification."""
-import os, re, json, subprocess, sys, time, math, base64, io
+import base64
+import io
+import json
+import os
+import re
+import sys
+import time
 from pathlib import Path
 
-from unifile.bootstrap import HAS_PILLOW, HAS_MAGIC
+from unifile.bootstrap import HAS_PILLOW
+
 try:
     from PIL import Image as _PILImage
 except ImportError:
     pass
 try:
-    import magic as _magic
+    import magic as _magic  # noqa: F401  -- availability probe for MIME fallback
 except ImportError:
     pass
 
-from unifile.config import _APP_DATA_DIR
-from unifile.categories import get_all_categories, get_all_category_names, CATEGORIES
 from unifile.bootstrap import HAS_RAPIDFUZZ
+from unifile.categories import get_all_category_names
+from unifile.config import _APP_DATA_DIR
+
 try:
     from rapidfuzz import fuzz as _rfuzz
 except ImportError:
     _rfuzz = None
 from unifile.naming import (
-    _is_id_only_folder, _extract_name_hints, _smart_name,
-    _is_generic_name, _normalize, _beautify_name, _ASSET_FOLDER_NAMES
+    _ASSET_FOLDER_NAMES,
+    _extract_name_hints,
+    _is_generic_name,
+    _is_id_only_folder,
+    _smart_name,
 )
 
 _OLLAMA_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'ollama_settings.json')
@@ -342,7 +353,8 @@ class ModelRouter:
 def ollama_test_connection(url: str = None, model: str = None) -> tuple:
     """Test Ollama connection and model availability.
     Returns (success: bool, message: str, models: list)."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     s = load_ollama_settings()
     url = url or s['url']
     model = model or s['model']
@@ -381,7 +393,8 @@ def _ollama_generate(prompt: str, system: str = '', url: str = None,
     template (the /api/generate endpoint ignores this option for Qwen3.x).
     Raises on connection/timeout errors.
     """
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     s = load_ollama_settings()
     url = url or s['url']
     model = model or s['model']
@@ -1030,7 +1043,8 @@ def ollama_classify_batch(folders: list, url: str = None, model: str = None,
 
 def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = None) -> list:
     """Classify a single chunk (already bounded to a safe size)."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     s = load_ollama_settings()
     url = url or s['url']
     model = model or s['model']
@@ -1156,7 +1170,8 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
 
 def _ollama_list_models(url: str = None) -> list:
     """Fetch list of locally installed Ollama models. Returns list of name strings."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
         req = urllib.request.Request(f"{url}/api/tags", method='GET')
@@ -1234,7 +1249,8 @@ def _find_ollama_binary() -> str:
 
 def _is_ollama_server_running(url: str = None) -> bool:
     """Check if Ollama server is responding."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
         req = urllib.request.Request(f"{url}/api/tags", method='GET')
@@ -1246,7 +1262,8 @@ def _is_ollama_server_running(url: str = None) -> bool:
 
 def _ollama_has_model(model: str, url: str = None) -> bool:
     """Check if a specific model is already pulled (exact match)."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
         req = urllib.request.Request(f"{url}/api/tags", method='GET')
@@ -1261,7 +1278,8 @@ def _ollama_has_model(model: str, url: str = None) -> bool:
 
 def _ollama_list_models_detailed(url: str = None) -> list:
     """Fetch installed models with full metadata (name, size, modified_at, details)."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
         req = urllib.request.Request(f"{url}/api/tags", method='GET')
@@ -1274,7 +1292,8 @@ def _ollama_list_models_detailed(url: str = None) -> list:
 
 def _ollama_delete_model(model: str, url: str = None) -> bool:
     """Delete a model via Ollama API. Returns True on success."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
         body = json.dumps({"name": model}).encode()
@@ -1290,7 +1309,8 @@ def _ollama_delete_model(model: str, url: str = None) -> bool:
 
 def _ollama_pull_model_streaming(model: str, url: str = None, progress_cb=None, log_cb=None) -> bool:
     """Pull a model via Ollama API with streaming progress. Falls back to CLI on failure."""
-    import urllib.request, urllib.error
+    import urllib.error
+    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
         body = json.dumps({"name": model, "stream": True}).encode()

@@ -6,7 +6,6 @@ movie/episode metadata from filenames.
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import date, datetime
 from enum import Enum
 from typing import Any
 

@@ -1,16 +1,15 @@
 """UniFile — PC file classification, scan cache, MIME detection, filename intelligence."""
-import os, re, json, sqlite3, time
+import json
 import mimetypes as _mimetypes
-from pathlib import Path
-from datetime import datetime
+import os
+import re
+import sqlite3
+import time
 
-from unifile.bootstrap import HAS_PILLOW, HAS_MAGIC, HAS_RAPIDFUZZ
+from unifile.bootstrap import HAS_MAGIC, HAS_RAPIDFUZZ
+
 try:
-    from PIL import Image as _PILImage
-except ImportError:
-    pass
-try:
-    import magic as _magic
+    import magic as _magic  # noqa: F401  -- availability probe for content-type detection
 except ImportError:
     pass
 try:

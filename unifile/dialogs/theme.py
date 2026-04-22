@@ -1,18 +1,30 @@
 """UniFile — Theme picker and protected paths dialogs."""
-import os
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QCheckBox,
-    QFileDialog, QAbstractItemView,
-    QDialog, QDialogButtonBox,
-    QListWidget, QInputDialog, QFrame
-)
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from unifile.config import (
-    THEMES, load_protected_paths, save_protected_paths,
-    load_theme_name, save_theme_name, get_active_theme, get_active_stylesheet
+    THEMES,
+    get_active_stylesheet,
+    get_active_theme,
+    load_protected_paths,
+    load_theme_name,
+    save_protected_paths,
+    save_theme_name,
 )
 from unifile.dialogs.common import build_dialog_header
 

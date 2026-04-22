@@ -1,15 +1,14 @@
 """UniFile -- Semantic / Natural Language Search using embeddings."""
-import os
-import json
-import math
 import hashlib
+import json
 import logging
+import math
+import os
 import sqlite3
-from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-from unifile.config import _APP_DATA_DIR, register_sqlite_connection
+from unifile.config import _APP_DATA_DIR, register_sqlite_connection  # noqa: E402
 
 _EMBED_DB = os.path.join(_APP_DATA_DIR, 'semantic_embeddings.db')
 
@@ -18,7 +17,7 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
     if len(a) != len(b) or not a:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
     if norm_a == 0 or norm_b == 0:

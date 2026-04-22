@@ -17,7 +17,6 @@ from types import SimpleNamespace
 
 import pytest
 
-
 # ── Signature check — catches accidental removal of the new kwargs ─────────────
 
 def test_show_empty_state_accepts_action_kwargs():

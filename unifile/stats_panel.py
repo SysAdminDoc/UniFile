@@ -3,15 +3,22 @@ import os
 from collections import Counter, defaultdict
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, QRect, QThread, pyqtSignal
+from PyQt6.QtCore import QRect, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
 
 from unifile.config import DARK_STYLE, get_active_stylesheet, get_active_theme  # noqa: F401
-
 
 # ── Stats worker ───────────────────────────────────────────────────────────────
 
@@ -53,7 +60,8 @@ class _StatsWorker(QThread):
     def _collect(self, session) -> dict:
         from sqlalchemy import func, select
         from sqlalchemy.orm import joinedload
-        from unifile.tagging.models import Entry, Tag, Folder, TagEntry
+
+        from unifile.tagging.models import Entry, Folder, Tag, TagEntry
 
         # Aggregate counts in SQL — no Python-side iteration for totals
         total_entries = session.execute(select(func.count(Entry.id))).scalar() or 0

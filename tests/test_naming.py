@@ -1,7 +1,7 @@
 """Tests for naming normalization and beautification."""
 import pytest
 
-from unifile.naming import _normalize, _beautify_name, _smart_name
+from unifile.naming import _beautify_name, _normalize, _smart_name
 
 
 class TestNormalize:

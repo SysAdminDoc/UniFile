@@ -1,28 +1,32 @@
 """Scan logic mixin for UniFile main window."""
-import os, re, json, time
+import json
+import os
+import re
+import time
 from collections import Counter
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QTimer
 
-from unifile.config import _LAST_CONFIG_FILE
+from unifile.bootstrap import HAS_MAGIC, HAS_RAPIDFUZZ
 from unifile.cache import compute_file_fingerprint
 from unifile.categories import is_generic_aep
-from unifile.naming import _beautify_name, _smart_name, _extract_name_hints
 from unifile.classifier import _SCAN_FILTERS
-from unifile.bootstrap import HAS_MAGIC, HAS_RAPIDFUZZ
-from unifile.metadata import MetadataExtractor
-from unifile.engine import RenameTemplateEngine
-from unifile.photos import load_photo_settings, _PHOTO_FOLDER_PRESETS
+from unifile.config import _LAST_CONFIG_FILE
 from unifile.duplicates import ConflictResolver
+from unifile.engine import CategoryBalancer, RenameTemplateEngine
+from unifile.metadata import MetadataExtractor
+from unifile.models import CategorizeItem, FileItem, RenameItem
+from unifile.naming import _beautify_name, _extract_name_hints, _smart_name
+from unifile.photos import _PHOTO_FOLDER_PRESETS, load_photo_settings
 from unifile.plugins import PluginManager
-from unifile.models import RenameItem, CategorizeItem, FileItem
-from unifile.engine import CategoryBalancer
 from unifile.workers import (
-    ScanAepWorker, ScanCategoryWorker, ScanLLMWorker,
-    ScanFilesWorker, ScanFilesLLMWorker, format_size
+    ScanAepWorker,
+    ScanCategoryWorker,
+    ScanFilesLLMWorker,
+    ScanFilesWorker,
+    ScanLLMWorker,
+    format_size,
 )
-from unifile.config import get_active_theme
 
 
 class ScanMixin:
@@ -316,7 +320,9 @@ class ScanMixin:
             action_cb = None
             if depth > 0:
                 action_label = f"Reset scan depth ({depth} → 0)"
-                action_cb = lambda: self.spn_depth.setValue(0)
+                def _reset_depth():
+                    self.spn_depth.setValue(0)
+                action_cb = _reset_depth
             self._show_empty_state(
                 "No eligible folders found",
                 "Try a different source folder or lower the scan depth if your projects are nested more deeply.",
@@ -516,10 +522,14 @@ class ScanMixin:
             action_cb = None
             if conf_threshold > 0:
                 action_label = f"Lower confidence filter ({conf_threshold}% → 0%)"
-                action_cb = lambda: self.sld_conf.setValue(0)
+                def _lower_conf():
+                    self.sld_conf.setValue(0)
+                action_cb = _lower_conf
             elif not llm_on and hasattr(self, 'chk_llm'):
                 action_label = "Enable AI mode for next scan"
-                action_cb = lambda: self.chk_llm.setChecked(True)
+                def _enable_llm():
+                    self.chk_llm.setChecked(True)
+                action_cb = _enable_llm
             self._show_empty_state(
                 "No folders could be categorized",
                 "Try enabling AI, lowering the confidence filter, or choosing a source with clearer folder contents.",

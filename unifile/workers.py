@@ -1,11 +1,16 @@
 """UniFile — Background worker threads for scanning, applying, and LLM tasks."""
-import os, re, json, shutil, time, math, hashlib, base64, sys, subprocess
+import base64
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
-from collections import Counter
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QRunnable, QThreadPool, QMutex, QMutexLocker, QObject
-from PyQt6.QtGui import QImage
+from PyQt6.QtCore import QMutex, QObject, QRunnable, QThread, pyqtSignal
 
 # Optional image library — imported here so the face-recognition /
 # _detect_faces_full code path can reference _cv2 / _face_recognition directly.
@@ -18,64 +23,91 @@ try:
 except (ImportError, SystemExit):
     _face_recognition = None
 
-from unifile.config import _APP_DATA_DIR, CONF_HIGH, CONF_MEDIUM, is_protected
+from unifile.bootstrap import (
+    HAS_CV2,
+    HAS_FACE_RECOGNITION,
+    HAS_PILLOW,
+    HAS_PSD_TOOLS,
+    HAS_RAPIDFUZZ,
+)
 from unifile.cache import (
-    cache_lookup, cache_store, cache_clear, _preload_corrections,
-    _close_cache_conn, _init_cache_db, save_correction, save_undo_log,
-    append_csv_log, hash_file, create_backup_snapshot,
+    _close_cache_conn,
+    _preload_corrections,
+    cache_lookup,
+    cache_store,
     check_corrections,
+    hash_file,
 )
 from unifile.categories import (
-    get_all_categories, get_all_category_names, is_generic_aep, _score_aep,
     _CategoryIndex,
+    _score_aep,
 )
-from unifile.naming import (
-    _normalize, _beautify_name, _smart_name, _ASSET_FOLDER_NAMES,
-    _is_id_only_folder, _extract_name_hints,
-)
-from unifile.bootstrap import (
-    HAS_RAPIDFUZZ, HAS_PSD_TOOLS, HAS_CV2, HAS_FACE_RECOGNITION, HAS_PILLOW,
-)
-from unifile.classifier import (
-    categorize_folder, classify_by_extensions, tiered_classify
-)
-from unifile.metadata import (
-    extract_folder_metadata, _extract_file_content,
-    MetadataExtractor, ArchivePeeker,
-)
-from unifile.ollama import (
-    ollama_classify_folder, ollama_classify_batch, load_ollama_settings, save_ollama_settings,
-    ollama_test_connection,
-    _find_ollama_binary, _is_ollama_server_running, _ollama_has_model,
-    _ollama_pull_model_streaming, _ollama_list_models_detailed, _ollama_delete_model,
-    _ollama_pull_model, _ollama_generate,
-    _find_vision_model, _prepare_image_base64, _is_vision_model,
-    _llm_cache_get, _llm_cache_set,
-    _EVIDENCE_CONFIDENCE_THRESHOLD, _escalate_classification,
-    ModelRouter,
-)
-from unifile.photos import (
-    load_photo_settings, _detect_faces_full, _detect_faces_count_only,
-    _reverse_geocode, _compute_blur_score, FaceDB, _convert_image_to_jpg,
-    _PHOTO_SCENES,
-)
-from unifile.duplicates import ProgressiveDuplicateDetector, ConflictResolver
-from unifile.nexa_backend import (
-    is_nexa_available, nexa_classify_folder, nexa_classify_file,
-    load_nexa_settings,
-)
+from unifile.classifier import tiered_classify
+from unifile.config import is_protected
+from unifile.csv_rules import check_csv_rules, preload_csv_rules
+from unifile.duplicates import _PHASH_IMAGE_EXTS, ProgressiveDuplicateDetector
+from unifile.engine import RuleEngine
 from unifile.files import (
-    _load_pc_categories, _build_ext_map, _classify_pc_item, _classify_pc_folder,
-    _ScanCache, _JUNK_PATTERNS, _JUNK_SUFFIXES, _extract_filename_date,
-    _detect_mime_category, load_directory_config, merge_categories,
+    _JUNK_PATTERNS,
+    _JUNK_SUFFIXES,
+    _build_ext_map,
+    _classify_pc_item,
+    _extract_filename_date,
+    _ScanCache,
+    load_directory_config,
+    merge_categories,
 )
-from unifile.duplicates import _PHASH_IMAGE_EXTS
-from unifile.engine import RuleEngine, RenameTemplateEngine
-from unifile.plugins import PluginManager
-from unifile.models import RenameItem, CategorizeItem, FileItem
 from unifile.ignore import IgnoreFilter
 from unifile.learning import get_learner
-from unifile.csv_rules import preload_csv_rules, check_csv_rules
+from unifile.metadata import (
+    ArchivePeeker,
+    MetadataExtractor,
+    _extract_file_content,
+)
+from unifile.naming import (
+    _ASSET_FOLDER_NAMES,
+    _beautify_name,
+    _extract_name_hints,
+    _is_id_only_folder,
+)
+from unifile.nexa_backend import (
+    is_nexa_available,
+    load_nexa_settings,
+    nexa_classify_folder,
+)
+from unifile.ollama import (
+    _EVIDENCE_CONFIDENCE_THRESHOLD,
+    ModelRouter,
+    _escalate_classification,
+    _find_ollama_binary,
+    _find_vision_model,
+    _is_ollama_server_running,
+    _is_vision_model,
+    _llm_cache_get,
+    _llm_cache_set,
+    _ollama_delete_model,
+    _ollama_generate,
+    _ollama_has_model,
+    _ollama_list_models_detailed,
+    _ollama_pull_model,
+    _ollama_pull_model_streaming,
+    _prepare_image_base64,
+    load_ollama_settings,
+    ollama_classify_batch,
+    ollama_classify_folder,
+    ollama_test_connection,
+)
+from unifile.photos import (
+    _PHOTO_SCENES,
+    FaceDB,
+    _compute_blur_score,
+    _convert_image_to_jpg,
+    _detect_faces_count_only,
+    _detect_faces_full,
+    _reverse_geocode,
+    load_photo_settings,
+)
+from unifile.plugins import PluginManager
 
 
 def _get_ai_backend() -> str:
@@ -286,7 +318,8 @@ def action_compress(paths: list, archive_path: str, *,
                     format: str = 'zip') -> tuple:
     """Compress one or more files/folders into an archive.
     Supported formats: zip, tar.gz, tar.bz2, tar.xz."""
-    import zipfile, tarfile
+    import tarfile
+    import zipfile
     try:
         os.makedirs(os.path.dirname(archive_path), exist_ok=True)
         if format == 'zip':
@@ -998,7 +1031,8 @@ class ScanLLMWorker(QThread):
                             consecutive_llm_failures += 1
                 else:
                     consecutive_llm_failures = 0
-                    for folder, llm_result in zip(batch, batch_results):
+                    # strict=False: a malformed LLM response can return fewer results than batch size
+                    for folder, llm_result in zip(batch, batch_results, strict=False):
                         if self._cancelled:
                             break
                         _emit_llm_result(folder, llm_result)
@@ -1057,7 +1091,6 @@ class OllamaSetupWorker(QThread):
         self.url = url or s['url']
 
     def run(self):
-        import time
         try:
             self._setup()
         except Exception as e:
@@ -2593,7 +2626,6 @@ class ScanFilesLLMWorker(QThread):
             # Skip LLM if it has been failing repeatedly
             if llm_disabled:
                 for bd in text_batch_data:
-                    ext = os.path.splitext(bd['name'])[1].lower()
                     cat, conf, method = _classify_pc_item(str(bd['item_path']), ext_map,
                                                            bd['is_folder'], self.categories)
                     _extract_and_emit(bd, cat, conf, method or 'rule_fallback', 'LLM disabled after repeated failures')
@@ -2632,7 +2664,6 @@ class ScanFilesLLMWorker(QThread):
             for i, bd in enumerate(text_batch_data):
                 cat = conf = reason = method = None
                 content_data = None
-                ext = os.path.splitext(bd['name'])[1].lower()
                 if classifications[i]:
                     try:
                         cat = classifications[i].get('category', '')

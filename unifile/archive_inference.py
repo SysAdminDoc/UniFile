@@ -15,7 +15,6 @@ Rules are applied in order; FIRST match per archive wins.
 
 import re
 from collections import Counter
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # AE subcategory collapse set

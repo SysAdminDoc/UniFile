@@ -9,13 +9,11 @@ against the folder name.  First matching rule wins.
 Set the UNIFILE_RULES_CSV environment variable to a semicolon-separated list
 of additional CSV paths to layer on top of the primary rules file.
 """
+import csv
 import os
 import re
-import csv
-from typing import Optional
 
 from unifile.config import _APP_DATA_DIR
-
 
 _RULES_FILE = os.path.join(_APP_DATA_DIR, 'sort_rules.csv')
 _rules_cache: list | None = None  # [(compiled_regex, category, raw_pattern), ...]

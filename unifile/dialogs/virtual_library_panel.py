@@ -1,14 +1,24 @@
 """UniFile -- Virtual Library panel (non-destructive overlay organization)."""
 import os
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QTreeWidget, QTreeWidgetItem,
-    QLineEdit, QFileDialog, QProgressBar, QHeaderView,
-    QMenu, QInputDialog, QSplitter, QFrame,
-)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QProgressBar,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from unifile.config import get_active_theme
 from unifile.virtual_library import VirtualLibrary

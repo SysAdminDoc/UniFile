@@ -5,13 +5,11 @@ virtually without moving them. Files can be viewed in a virtual folder
 structure and exported to a real structure on demand.
 """
 import os
-import json
-import sqlite3
 import shutil
+import sqlite3
 from datetime import datetime
-from pathlib import Path
 
-from unifile.config import _APP_DATA_DIR, register_sqlite_connection
+from unifile.config import register_sqlite_connection
 
 
 class VirtualLibrary:

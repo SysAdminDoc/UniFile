@@ -1,14 +1,28 @@
 """UniFile — Dependency bootstrap and optional imports."""
 
 #!/usr/bin/env python3
-"""UniFile v9.3.5 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
+"""UniFile v9.3.6 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
 
-import sys, os, subprocess, re, shutil, json, csv, hashlib, gzip, sqlite3, time, math, base64, io
+import base64
+import csv
+import gzip
+import hashlib
 import importlib.util
+import io
+import json
+import math
+import os
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
 from functools import lru_cache
-import xml.etree.ElementTree as ET
+
 
 def _bootstrap():
     """Auto-install dependencies before any imports."""
@@ -119,7 +133,8 @@ except ImportError:
 # ── Optional metadata extraction libraries (Phase 1: MetadataExtractor) ──────
 try:
     from PIL import Image as _PILImage
-    from PIL.ExifTags import TAGS as _EXIF_TAGS, GPSTAGS as _GPS_TAGS
+    from PIL.ExifTags import GPSTAGS as _GPS_TAGS
+    from PIL.ExifTags import TAGS as _EXIF_TAGS
     HAS_PILLOW = True
 except ImportError:
     HAS_PILLOW = False
@@ -132,9 +147,10 @@ except ImportError:
     HAS_PILLOW_HEIF = False
 
 try:
-    import exifread as _exifread
     # Suppress exifread's noisy "File format not recognized" / "does not have exif" warnings
     import logging as _logging
+
+    import exifread as _exifread
     _logging.getLogger('exifread').setLevel(_logging.CRITICAL)
     HAS_EXIFREAD = True
 except ImportError:
@@ -143,8 +159,8 @@ except ImportError:
 try:
     import mutagen as _mutagen
     from mutagen.easyid3 import EasyID3 as _EasyID3
-    from mutagen.mp3 import MP3 as _MP3
     from mutagen.flac import FLAC as _FLAC
+    from mutagen.mp3 import MP3 as _MP3
     from mutagen.mp4 import MP4 as _MP4
     from mutagen.oggvorbis import OggVorbis as _OggVorbis
     HAS_MUTAGEN = True

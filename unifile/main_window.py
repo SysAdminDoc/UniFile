@@ -1,85 +1,132 @@
 """UniFile — Main application window."""
-import os, re, json, shutil, csv, time, math, subprocess, sys
-from datetime import datetime
-from pathlib import Path
+import csv
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
 from collections import Counter
 
+from PyQt6.QtCore import QSettings, Qt, QThread, QThreadPool, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QPixmap, QTextCursor
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, QTableWidgetItem,
-    QCheckBox, QTextEdit, QHeaderView, QFileDialog, QAbstractItemView,
-    QSlider, QMenu, QTreeWidget, QTreeWidgetItem, QDialog, QDialogButtonBox, QSpinBox,
-    QListWidget, QListWidgetItem, QInputDialog, QSplitter, QMessageBox, QFrame,
-    QProgressBar, QScrollArea, QSystemTrayIcon, QStackedWidget, QTabWidget
+    QAbstractItemView,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QSpinBox,
+    QSplitter,
+    QStackedWidget,
+    QSystemTrayIcon,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QMimeData, QUrl, QTimer, QSize, QThreadPool
-from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QAction, QPixmap, QImage, QTextCursor, QIcon
 
-from unifile.config import (
-    _APP_DATA_DIR, _CUSTOM_CATS_FILE, _LAST_CONFIG_FILE,
-    CONF_HIGH, CONF_MEDIUM, DARK_STYLE,
-    THEMES, get_active_theme, get_active_stylesheet, load_theme_name, _build_theme_qss
-)
+from unifile import __version__
+from unifile.apply_mixin import ApplyMixin
 from unifile.cache import (
-    cache_lookup, cache_store, cache_clear, cache_count,
-    save_correction, check_corrections, load_corrections,
-    save_undo_log, load_undo_log, clear_undo_log, _load_undo_stack, _save_undo_stack,
-    append_csv_log, create_backup_snapshot,
-    export_rules_bundle, import_rules_bundle
+    _load_undo_stack,
+    _save_undo_stack,
+    cache_clear,
+    cache_count,
+    export_rules_bundle,
+    import_rules_bundle,
+    load_corrections,
+    load_undo_log,
+    save_correction,
 )
 from unifile.categories import (
-    CATEGORIES, BUILTIN_CATEGORIES, get_all_categories, get_all_category_names,
-    load_custom_categories, save_custom_categories, _CategoryIndex
+    get_all_category_names,
+    load_custom_categories,
+    save_custom_categories,
 )
-from unifile.naming import _beautify_name, _smart_name
-from unifile.classifier import tiered_classify, _SCAN_FILTERS
-from unifile.ollama import load_ollama_settings, save_ollama_settings
-from unifile.photos import (
-    load_photo_settings, save_photo_settings, FaceDB,
-    load_face_db, save_face_db, _convert_image_to_jpg,
-    _PHOTO_FOLDER_PRESETS
-)
-from unifile.duplicates import ProgressiveDuplicateDetector, ConflictResolver
-from unifile.files import _load_pc_categories, _save_pc_categories
-from unifile.engine import RuleEngine, EventGrouper, ScheduleManager, RenameTemplateEngine
-from unifile.metadata import MetadataExtractor, _load_envato_api_key, _save_envato_api_key
-from unifile.plugins import PluginManager, ProfileManager, CategoryPresetManager, CloudPathResolver
-from unifile.models import RenameItem, CategorizeItem, FileItem
-from unifile.workers import (
-    ScanAepWorker, ScanCategoryWorker, ScanLLMWorker, OllamaSetupWorker,
-    ApplyAepWorker, ApplyCatWorker, ApplyFilesWorker,
-    ScanFilesWorker, ScanFilesLLMWorker,
-    safe_merge_move, format_size
+from unifile.classifier import _SCAN_FILTERS, tiered_classify
+from unifile.config import (
+    _LAST_CONFIG_FILE,
+    CONF_HIGH,
+    CONF_MEDIUM,
+    get_active_stylesheet,
+    get_active_theme,
 )
 from unifile.dialogs import (
-    CustomCategoriesDialog, DestTreeDialog, OllamaSettingsDialog,
-    PhotoSettingsDialog, FaceManagerDialog, ModelManagerDialog,
-    TemplateBuilderWidget, PCCategoryEditorDialog, _FileBrowserDialog,
-    UndoBatchDialog, BeforeAfterDialog, DuplicateCompareDialog,
-    EventGroupDialog, RuleEditorDialog, ScheduleDialog,
-    UndoTimelineDialog, PluginManagerDialog, CleanupToolsDialog,
+    BeforeAfterDialog,
+    CleanupPanel,
     CsvRulesDialog,
-    DuplicateFinderDialog, CleanupPanel, DuplicatePanel,
-    ProtectedPathsDialog, ThemePickerDialog, WatchHistoryDialog
+    CustomCategoriesDialog,
+    DestTreeDialog,
+    DuplicateCompareDialog,
+    DuplicatePanel,
+    EventGroupDialog,
+    OllamaSettingsDialog,
+    PCCategoryEditorDialog,
+    PhotoSettingsDialog,
+    PluginManagerDialog,
+    ProtectedPathsDialog,
+    RelationshipGraphWidget,
+    RuleEditorDialog,
+    ScheduleDialog,
+    ThemePickerDialog,
+    UndoBatchDialog,
+    UndoTimelineDialog,
+    WatchHistoryDialog,
+    _FileBrowserDialog,
 )
-from unifile.dialogs.tag_library import TagLibraryPanel
 from unifile.dialogs.media_lookup import MediaLookupPanel
-from unifile.widgets import (
-    CategoryBarChart, FlowLayout, ThumbnailLoader, ThumbnailCard,
-    _ThumbSignals, PhotoMapWidget, WatchSettingsDialog, WatchModeManager,
-    FilePreviewPanel, _load_watch_settings, _save_watch_settings
-)
-from unifile.dialogs import RelationshipGraphWidget
+from unifile.dialogs.tag_library import TagLibraryPanel
+from unifile.duplicates import ConflictResolver
+from unifile.engine import EventGrouper, RenameTemplateEngine, RuleEngine
+from unifile.files import _load_pc_categories, _save_pc_categories
+from unifile.learning import get_learner
+from unifile.metadata import MetadataExtractor, _load_envato_api_key, _save_envato_api_key
+from unifile.models import FileItem
+from unifile.ollama import load_ollama_settings
+from unifile.plugins import CategoryPresetManager, CloudPathResolver, ProfileManager
 from unifile.profiles import (
-    get_active_profile, get_active_profile_name, get_profile_names,
-    set_active_profile, BUILTIN_PROFILES
+    get_active_profile,
+    get_active_profile_name,
+    get_profile_names,
+    set_active_profile,
 )
 from unifile.scan_mixin import ScanMixin
-from unifile.apply_mixin import ApplyMixin
 from unifile.theme_mixin import ThemeMixin
-from unifile.learning import get_learner
-from unifile.engine import CategoryBalancer
-from unifile import __version__
+from unifile.widgets import (
+    CategoryBarChart,
+    FilePreviewPanel,
+    FlowLayout,
+    PhotoMapWidget,
+    ThumbnailCard,
+    ThumbnailLoader,
+    WatchModeManager,
+    WatchSettingsDialog,
+    _load_watch_settings,
+    _save_watch_settings,
+)
+from unifile.workers import (
+    OllamaSetupWorker,
+    format_size,
+)
+
 
 class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
     OP_AEP   = 0
@@ -2504,10 +2551,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         return self._NumericItem(str(text), sort_value)
 
     def _make_cb(self, checked, callback, idx):
-        w = QWidget(); l = QHBoxLayout(w); l.setContentsMargins(0,0,0,0); l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        w = QWidget(); lay = QHBoxLayout(w); lay.setContentsMargins(0,0,0,0); lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         cb = QCheckBox(); cb.setChecked(checked)
         cb.stateChanged.connect(lambda st, i=idx: callback(i, st))
-        l.addWidget(cb); return w
+        lay.addWidget(cb); return w
 
     def _make_arrow(self):
         a = self._it("\u2192"); a.setTextAlignment(Qt.AlignmentFlag.AlignCenter); return a
@@ -2623,7 +2670,6 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
     def _stats_cat(self):
         items = self.cat_items
         dupes = sum(1 for it in items if 'Possible duplicate' in (it.detail or ''))
-        uncat = sum(1 for it in items if it.category == '[Uncategorized]')
         sel = sum(1 for it in items if it.selected)
         done = sum(1 for it in items if it.status == "Done")
         cats = len(set(it.category for it in items))
@@ -4015,8 +4061,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, QMainWindow):
         dlg.exec()
 
     def _open_ocr_indexer(self):
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout
+
         from unifile.ocr_indexer import OcrSettingsPanel
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
         dlg = QDialog(self)
         dlg.setWindowTitle("OCR Indexer")
         dlg.setMinimumWidth(420)

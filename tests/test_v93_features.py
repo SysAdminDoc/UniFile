@@ -2,7 +2,6 @@
 Audio-Duplicates filter, and the _apply_type_filter logic."""
 import pytest
 
-
 # ── ui_helpers: confidence colors + truncate_middle ───────────────────────────
 
 def test_ui_helpers_confidence_text_color_extremes():
@@ -25,8 +24,9 @@ def test_ui_helpers_confidence_text_color_clamps_out_of_range():
 
 
 def test_ui_helpers_confidence_bg_returns_qcolor():
-    from unifile.ui_helpers import confidence_bg
     from PyQt6.QtGui import QColor
+
+    from unifile.ui_helpers import confidence_bg
     c = confidence_bg(50, alpha=30)
     assert isinstance(c, QColor)
     assert c.alpha() == 30
@@ -111,6 +111,7 @@ def test_apply_aep_rollback_logs_on_failure():
     (used to silently pass)."""
     # This is a static source-level check — verify the pattern is present.
     import inspect
+
     from unifile.workers import ApplyAepWorker
     src = inspect.getsource(ApplyAepWorker.run)
     # Either: rollback uses shutil.move and logs on failure

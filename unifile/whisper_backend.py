@@ -1,7 +1,7 @@
 """UniFile -- Audio transcription via Whisper for content-based classification."""
-import os
-import json
 import hashlib
+import json
+import os
 from pathlib import Path
 
 from unifile.config import _APP_DATA_DIR
@@ -83,7 +83,7 @@ class WhisperTranscriber:
         """Check if Whisper is installed."""
         if self._available is None:
             try:
-                import whisper
+                import whisper  # noqa: F401  -- availability probe
                 self._available = True
             except ImportError:
                 self._available = False

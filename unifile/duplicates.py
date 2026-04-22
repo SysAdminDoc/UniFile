@@ -2,21 +2,16 @@
 audio fingerprinting, and similar-content detection.
 
 Inspired by Czkawka, Duplicate Cleaner Pro, dupeGuru, and pHash."""
-import os, hashlib, math, subprocess, struct
-from pathlib import Path
-from collections import Counter, defaultdict
+import hashlib
+import os
+import subprocess
+from collections import defaultdict
 
-from unifile.bootstrap import HAS_PILLOW, HAS_CV2
-try:
-    from PIL import Image as _PILImage
-except ImportError:
-    pass
-try:
-    import cv2 as _cv2
-except ImportError:
-    pass
+from unifile.bootstrap import HAS_PILLOW
 
-from unifile.cache import hash_file
+# PIL/cv2 availability is tracked via HAS_PILLOW (imported from bootstrap);
+# the earlier try-imports here never set a flag and went unused.
+
 
 # ── Audio fingerprint support (optional: chromaprint/fpcalc) ─────────────────
 _HAS_FPCALC = None  # lazy-detected
@@ -128,7 +123,7 @@ def _hamming_distance(hash1: str, hash2: str) -> int:
     """Compute Hamming distance between two binary hash strings."""
     if len(hash1) != len(hash2):
         return 999
-    return sum(c1 != c2 for c1, c2 in zip(hash1, hash2))
+    return sum(c1 != c2 for c1, c2 in zip(hash1, hash2, strict=True))
 
 class _BKTree:
     """BK-tree for efficient nearest-neighbor search under Hamming distance.
@@ -444,7 +439,6 @@ class ProgressiveDuplicateDetector:
             return
 
         # Compare all pairs (audio collections are typically smaller than image sets)
-        paths = list(fingerprints.keys())
         assigned = set()
         n_audio_dups = 0
 

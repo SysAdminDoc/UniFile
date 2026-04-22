@@ -5,7 +5,6 @@ import os
 
 import pytest
 
-
 # ── Defensive JSON helpers (config.load_json_safe / save_json_safe) ───────────
 
 def test_load_json_safe_returns_default_when_missing(tmp_path):
@@ -63,9 +62,10 @@ def test_save_json_safe_returns_false_on_non_serializable(tmp_path):
 # ── CLI: list-profiles / list-models ──────────────────────────────────────────
 
 def test_list_profiles_empty(capsys, tmp_path, monkeypatch):
+    import argparse
+
     from unifile import plugins
     from unifile.__main__ import _cmd_list_profiles
-    import argparse
     monkeypatch.setattr(plugins, '_PROFILES_DIR', str(tmp_path))
     rc = _cmd_list_profiles(argparse.Namespace(json=False))
     assert rc == 0
@@ -73,9 +73,10 @@ def test_list_profiles_empty(capsys, tmp_path, monkeypatch):
 
 
 def test_list_profiles_json(capsys, tmp_path, monkeypatch):
+    import argparse
+
     from unifile import plugins
     from unifile.__main__ import _cmd_list_profiles
-    import argparse
     monkeypatch.setattr(plugins, '_PROFILES_DIR', str(tmp_path))
     plugins.ProfileManager.save('alpha', {'name': 'alpha'})
     plugins.ProfileManager.save('bravo', {'name': 'bravo'})
@@ -88,9 +89,10 @@ def test_list_profiles_json(capsys, tmp_path, monkeypatch):
 def test_list_models_unreachable_returns_empty_list(capsys, monkeypatch):
     """When Ollama is unreachable, list-models should print an empty list
     (or '(no models installed)'), not crash."""
-    from unifile.__main__ import _cmd_list_models
-    from unifile import ollama as _ol
     import argparse
+
+    from unifile import ollama as _ol
+    from unifile.__main__ import _cmd_list_models
     # Force the helper to return an empty list (simulates unreachable server)
     monkeypatch.setattr(_ol, '_ollama_list_models', lambda url=None: [])
     rc = _cmd_list_models(argparse.Namespace(json=False, url='http://x'))
@@ -99,9 +101,10 @@ def test_list_models_unreachable_returns_empty_list(capsys, monkeypatch):
 
 
 def test_list_models_json(capsys, monkeypatch):
-    from unifile.__main__ import _cmd_list_models
-    from unifile import ollama as _ol
     import argparse
+
+    from unifile import ollama as _ol
+    from unifile.__main__ import _cmd_list_models
     monkeypatch.setattr(_ol, '_ollama_list_models',
                         lambda url=None: ['qwen3.5:9b', 'llama3.2:3b'])
     rc = _cmd_list_models(argparse.Namespace(

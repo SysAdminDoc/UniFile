@@ -1,6 +1,7 @@
 """Tests for the adaptive learning engine."""
-import os
 import json
+import os
+
 import pytest
 
 from unifile.learning import PatternLearner

@@ -5,18 +5,25 @@ import uuid
 from datetime import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload
 
 # Sentinel for "not passed" (distinct from None, which means "clear the field")
 _UNSET = object()
 
-from unifile.tagging.db import Base, make_engine, make_tables
-from unifile.tagging.models import (
-    Tag, TagAlias, TagEntry, TagParent, Entry, Folder,
-    ValueType, TextField, DatetimeField, BooleanField,
-    DEFAULT_FIELDS, FieldTypeEnum,
-    EntryGroup, EntryGroupMember,
+from unifile.tagging.db import make_engine, make_tables  # noqa: E402  -- sentinel above
+from unifile.tagging.models import (  # noqa: E402
+    DEFAULT_FIELDS,
+    Entry,
+    EntryGroup,
+    EntryGroupMember,
+    Folder,
+    Tag,
+    TagAlias,
+    TagEntry,
+    TagParent,
+    TextField,
+    ValueType,
 )
 
 logger = logging.getLogger(__name__)

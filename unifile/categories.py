@@ -1,9 +1,11 @@
 """UniFile — Category definitions, keyword index, and AEP scoring."""
-import os, re, math, json
-from pathlib import Path
-from functools import lru_cache
+import json
+import math
+import os
+import re
 
-from unifile.config import _APP_DATA_DIR, _CUSTOM_CATS_FILE
+from unifile.config import _CUSTOM_CATS_FILE
+
 
 # Late imports to avoid circular dependency with unifile.naming
 def _get_normalize():
@@ -656,7 +658,7 @@ TOPIC_CATEGORIES.update({
 
 
 # ── Custom categories persistence ─────────────────────────────────────────────
-_CUSTOM_CATS_FILE = os.path.join(_APP_DATA_DIR, 'custom_categories.json')
+# _CUSTOM_CATS_FILE is imported from unifile.config above; do not redefine.
 
 def load_custom_categories():
     """Load user-defined categories from JSON file."""

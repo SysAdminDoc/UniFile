@@ -1,9 +1,11 @@
 """UniFile — Configuration, paths, thresholds, themes, and protection."""
 import atexit
-import os, sys, re, json, shutil, time
+import json
+import os
+import shutil
+import sys
 import weakref
 from datetime import datetime
-from pathlib import Path
 
 # ── Connection registry ──────────────────────────────────────────────────────
 # Long-lived SQLite connections scattered across the codebase register
