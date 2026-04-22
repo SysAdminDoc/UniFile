@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-9.0.1-58A6FF?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-9.1.0-58A6FF?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Python%20GUI-58A6FF?style=for-the-badge">
 </p>
@@ -14,7 +14,7 @@
 
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.0.1-blue)
+![Version](https://img.shields.io/badge/version-9.1.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -258,11 +258,40 @@ Click **Settings > Ollama LLM** to configure:
 ## CLI Usage
 
 ```bash
-python run.py                                    # Launch GUI
-python run.py --source "C:/Users/You/Downloads"  # Auto-scan a folder
-python run.py --profile MyProfile --auto-apply   # Automated profile scan
-python run.py --dry-run --profile MyProfile      # Simulate without moving
-python -m unifile                                 # Alternative launch
+python run.py                                          # Launch GUI
+python run.py --source "C:/Users/You/Downloads"        # Auto-scan a folder
+python run.py --profile MyProfile --auto-apply         # Automated profile scan
+python run.py --dry-run --profile MyProfile            # Simulate without moving
+python run.py --source DIR --output-json plan.json     # Export scan plan as JSON
+python -m unifile                                      # Alternative launch
+python -m unifile --version                            # Print version
+
+# Headless classification (no GUI, no Qt)
+python -m unifile classify path/to/file.pdf --json
+python -m unifile classify path/to/folder --json
+```
+
+The `classify` subcommand is safe to use in cron jobs and CI — it loads
+**zero Qt modules** and runs purely against the rule-based classifier.
+
+### JSON scan plan format
+
+`--output-json <path>` writes a plan file after the scan completes. Use it
+to integrate UniFile with other tooling (e.g. feed plans into `jq` / an
+approval queue / a CI job):
+
+```json
+{
+  "version": "1",
+  "timestamp": "2026-04-22T14:30:00",
+  "source": "C:/Users/You/Downloads",
+  "mode": "PC File Organizer",
+  "items": [
+    { "name": "invoice.pdf", "src": "...", "dst": "...",
+      "category": "Documents", "confidence": 90, "method": "extension",
+      "size": 45312, "selected": true, "status": "Pending" }
+  ]
+}
 ```
 
 ## Prerequisites

@@ -1,8 +1,15 @@
-"""UniFile — Application entry point."""
-import os, sys, time
+"""UniFile — Application entry point.
+
+Usage:
+    python -m unifile                              Launch the GUI.
+    python -m unifile --source <path>              Auto-scan a folder.
+    python -m unifile --profile <name> --auto-apply
+    python -m unifile classify <path> [--json]     Headless classify one path.
+    python -m unifile --version                    Print version + exit.
+"""
+import os, sys, time, json
 from datetime import datetime
 from pathlib import Path
-from PyQt6.QtGui import QIcon
 
 
 # codex-branding:start
@@ -15,7 +22,9 @@ def _branding_icon_path() -> Path:
         if meipass:
             candidates.append(Path(meipass) / "icon.png")
     current = Path(__file__).resolve()
-    candidates.extend([current.parent / "icon.png", current.parent.parent / "icon.png", current.parent.parent.parent / "icon.png"])
+    candidates.extend([current.parent / "icon.png",
+                       current.parent.parent / "icon.png",
+                       current.parent.parent.parent / "icon.png"])
     for candidate in candidates:
         if candidate.exists():
             return candidate
@@ -23,10 +32,111 @@ def _branding_icon_path() -> Path:
 # codex-branding:end
 
 
+def _cmd_classify(args) -> int:
+    """Headless classification of a single file or folder.
+
+    Writes either a human-readable summary or (with --json) a JSON object to
+    stdout. No GUI is imported — safe to use in scripts and cron jobs.
+    """
+    target = os.path.abspath(args.path)
+    if not os.path.exists(target):
+        print(f"error: path does not exist: {target}", file=sys.stderr)
+        return 2
+    # Route based on whether it's a file or folder, using rule-based classification
+    # (no LLM) so headless runs are fast and deterministic.
+    try:
+        if os.path.isfile(target):
+            from unifile.files import _load_pc_categories, _build_ext_map, _classify_pc_item
+            cats = _load_pc_categories()
+            ext_map = _build_ext_map(cats)
+            category, confidence, method = _classify_pc_item(
+                target, ext_map, is_folder=False, categories=cats
+            )
+            result = {
+                "kind": "file",
+                "path": target,
+                "category": category,
+                "confidence": confidence,
+                "method": method,
+            }
+        else:
+            from unifile.classifier import tiered_classify
+            tr = tiered_classify(os.path.basename(target), target)
+            result = {
+                "kind": "folder",
+                "path": target,
+                "category": tr.get("category"),
+                "confidence": tr.get("confidence", 0),
+                "method": tr.get("method", ""),
+                "cleaned_name": tr.get("cleaned_name", ""),
+                "detail": tr.get("detail", ""),
+            }
+    except Exception as e:
+        err = {"error": str(e), "type": type(e).__name__, "path": target}
+        if args.json:
+            print(json.dumps(err, indent=2))
+        else:
+            print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        cat = result.get("category") or "(unclassified)"
+        conf = result.get("confidence", 0)
+        method = result.get("method", "")
+        print(f"{result['kind']}: {target}")
+        print(f"  category:   {cat}")
+        print(f"  confidence: {conf}")
+        print(f"  method:     {method}")
+        if result.get("cleaned_name"):
+            print(f"  cleaned:    {result['cleaned_name']}")
+    return 0
+
+
+def _write_scan_json(window, output_path: str) -> None:
+    """Serialize the current scan results to a JSON plan file.
+
+    Call this after a scan completes. Covers all three op modes by reading
+    whichever item list is populated.
+    """
+    plan: dict = {
+        "version": "1",
+        "timestamp": datetime.now().isoformat(),
+        "source": getattr(window, '_cli_source', '') or window.txt_src.text(),
+        "mode": window.cmb_op.currentText() if hasattr(window, 'cmb_op') else '',
+        "items": [],
+    }
+    # Pick the populated list
+    items = (getattr(window, 'file_items', None)
+             or getattr(window, 'cat_items', None)
+             or getattr(window, 'aep_items', None) or [])
+    for it in items:
+        entry = {
+            "name": getattr(it, 'name', '') or getattr(it, 'folder_name', '') or getattr(it, 'current_name', ''),
+            "src":  getattr(it, 'full_src', '') or getattr(it, 'full_source_path', '') or getattr(it, 'full_current_path', ''),
+            "dst":  getattr(it, 'full_dst', '') or getattr(it, 'full_dest_path', '') or getattr(it, 'full_new_path', ''),
+            "category":  getattr(it, 'category', ''),
+            "confidence": getattr(it, 'confidence', 0),
+            "method":    getattr(it, 'method', ''),
+            "size":      getattr(it, 'size', 0) or getattr(it, 'file_size', 0),
+            "selected":  getattr(it, 'selected', True),
+            "status":    getattr(it, 'status', 'Pending'),
+        }
+        plan['items'].append(entry)
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)) or '.', exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(plan, f, indent=2, ensure_ascii=False)
+        window._log(f"Scan plan exported: {output_path}  ({len(plan['items'])} items)")
+    except OSError as e:
+        window._log(f"Failed to export scan plan: {e}")
+
+
 def main():
-    """Launch the UniFile application."""
-    # Crash handler
+    """Launch the UniFile application or dispatch a CLI subcommand."""
     from unifile.config import _APP_DATA_DIR
+    from unifile import __version__
 
     _CRASH_LOG = os.path.join(_APP_DATA_DIR, 'crash.log')
     _CRASH_LOG_MAX = 512 * 1024  # 500 KB
@@ -62,9 +172,12 @@ def main():
         sys.__excepthook__(exc_type, exc_value, exc_tb)
 
     import argparse
-    sys.excepthook = _crash_handler
 
-    parser = argparse.ArgumentParser(description="UniFile — Context-Aware File Organizer")
+    parser = argparse.ArgumentParser(
+        prog="unifile",
+        description="UniFile — Context-Aware File Organizer",
+    )
+    parser.add_argument("--version", action="version", version=f"UniFile {__version__}")
     parser.add_argument("--source", type=str, default=None,
                         help="Source folder to auto-scan (used by shell integration)")
     parser.add_argument("--profile", type=str, default=None,
@@ -73,9 +186,31 @@ def main():
                         help="Automatically apply after scan (for scheduled tasks)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Simulate apply without moving/renaming files")
+    parser.add_argument("--output-json", type=str, default=None,
+                        help="After scan completes, write a machine-readable "
+                             "scan plan to this path (JSON).")
+
+    subparsers = parser.add_subparsers(dest="subcommand")
+
+    p_classify = subparsers.add_parser(
+        "classify",
+        help="Headless classify a file or folder and print the result",
+    )
+    p_classify.add_argument("path", type=str, help="File or folder to classify")
+    p_classify.add_argument("--json", action="store_true",
+                            help="Emit JSON instead of human-readable output")
+
     args, qt_args = parser.parse_known_args()
 
+    # Headless subcommand — no GUI at all.
+    if args.subcommand == "classify":
+        sys.exit(_cmd_classify(args))
+
+    # GUI path — install crash handler before touching Qt.
+    sys.excepthook = _crash_handler
+
     from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtGui import QIcon
     from PyQt6.QtCore import QTimer
     from unifile.config import get_active_stylesheet
     from unifile.main_window import UniFile
@@ -90,13 +225,12 @@ def main():
     app.setStyleSheet(get_active_stylesheet())
     window = UniFile()
     window._cli_dry_run = args.dry_run
+    window._cli_source = args.source or ''
 
     if args.profile:
         try:
             profile = ProfileManager.load(args.profile)
             if profile:
-                # Profile is a scan-config dict; main window expects
-                # _apply_profile_config, not _apply_profile.
                 apply_cfg = getattr(window, '_apply_profile_config', None)
                 if apply_cfg is None:
                     apply_cfg = getattr(window, '_apply_profile', None)
@@ -117,12 +251,29 @@ def main():
         if hasattr(window, 'txt_pc_src'):
             window.txt_pc_src.setText(args.source)
         QTimer.singleShot(200, window._on_scan)
+
+        if args.output_json:
+            _deadline_out = [time.time() + 30 * 60]
+            def _wait_and_dump():
+                if time.time() > _deadline_out[0]:
+                    window._log("Scan-plan export aborted: 30 minute deadline exceeded")
+                    return
+                scan_worker = getattr(window, 'worker', None)
+                still_scanning = (
+                    getattr(window, '_scanning', False)
+                    or (scan_worker is not None and scan_worker.isRunning())
+                )
+                if not still_scanning:
+                    _write_scan_json(window, args.output_json)
+                else:
+                    QTimer.singleShot(500, _wait_and_dump)
+            QTimer.singleShot(1000, _wait_and_dump)
+
     elif args.profile and args.auto_apply:
         def _auto_scan_apply():
             window._on_scan()
             _deadline = [time.time() + 30 * 60]  # 30-minute safety ceiling
             def _check_and_apply():
-                # Bail out if scan has exceeded deadline (prevents infinite polling on stuck scans)
                 if time.time() > _deadline[0]:
                     window._log("Auto-apply aborted: scan exceeded 30 minute deadline")
                     return
@@ -132,7 +283,8 @@ def main():
                     or (scan_worker is not None and scan_worker.isRunning())
                 )
                 if not still_scanning:
-                    # Route to the correct apply based on the active op mode
+                    if args.output_json:
+                        _write_scan_json(window, args.output_json)
                     op_idx = window.cmb_op.currentIndex()
                     if op_idx == UniFile.OP_FILES:
                         window._apply_files(dry_run=args.dry_run)

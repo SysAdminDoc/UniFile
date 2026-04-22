@@ -11,7 +11,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from unifile.config import _APP_DATA_DIR
+from unifile.config import _APP_DATA_DIR, register_sqlite_connection
 
 
 class VirtualLibrary:
@@ -43,13 +43,17 @@ class VirtualLibrary:
 
         db_path = os.path.join(db_dir, 'library.sqlite')
         self._conn = sqlite3.connect(db_path, timeout=30)
+        register_sqlite_connection(self._conn)
         self._conn.execute('PRAGMA journal_mode=WAL')
         self._create_tables()
         return True
 
     def close(self):
         if self._conn:
-            self._conn.close()
+            try:
+                self._conn.close()
+            except Exception:
+                pass
             self._conn = None
         self._root = ""
 
