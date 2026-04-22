@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unifile"
-version = "9.3.9"
+version = "9.3.10"
 description = "Unified AI-powered file organization platform — tag library, 7-level classification, LLM intelligence, cleanup, dedup, photo library."
 readme = "README.md"
 requires-python = ">=3.10"

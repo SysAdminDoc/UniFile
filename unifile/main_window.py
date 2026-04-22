@@ -108,7 +108,9 @@ from unifile.profiles import (
 )
 from unifile.scan_mixin import ScanMixin
 from unifile.theme_mixin import ThemeMixin
+from unifile.tray_mixin import TrayMixin
 from unifile.undo_mixin import UndoMixin
+from unifile.watch_mixin import WatchMixin
 from unifile.widgets import (
     CategoryBarChart,
     FilePreviewPanel,
@@ -116,10 +118,7 @@ from unifile.widgets import (
     PhotoMapWidget,
     ThumbnailCard,
     ThumbnailLoader,
-    WatchModeManager,
-    WatchSettingsDialog,
     _load_watch_settings,
-    _save_watch_settings,
 )
 from unifile.workers import (
     OllamaSetupWorker,
@@ -127,7 +126,8 @@ from unifile.workers import (
 )
 
 
-class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin, QMainWindow):
+class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
+              TrayMixin, WatchMixin, QMainWindow):
     OP_AEP   = 0
     OP_CAT   = 1
     OP_SMART = 2   # Categorize + rename from project files (combined)
@@ -2318,7 +2318,6 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin, QMainWi
         self.lbl_toast.show()
         self._position_table_overlays()
         # Flash taskbar if the window isn't focused
-        from PyQt6.QtWidgets import QApplication
         if not self.isActiveWindow():
             QApplication.alert(self, 0)
         self._toast_timer.start(duration_ms)
@@ -3373,101 +3372,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin, QMainWi
             self.btn_map_toggle.setVisible(False)
 
     # ═══ WATCH FOLDER MODE ═══════════════════════════════════════════════════
-    def _setup_tray(self):
-        """Set up the system tray icon for watch mode."""
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            return
-        self._tray = QSystemTrayIcon(self)
-        self._tray.setToolTip("UniFile — Watch Mode")
-        # Use app icon if available
-        icon = self.windowIcon()
-        if not icon.isNull():
-            self._tray.setIcon(icon)
-        else:
-            self._tray.setIcon(self.style().standardIcon(
-                self.style().StandardPixmap.SP_ComputerIcon))
-        # Tray menu
-        tray_menu = QMenu()
-        tray_menu.setStyleSheet(get_active_stylesheet())
-        act_show = tray_menu.addAction("Show UniFile")
-        act_show.triggered.connect(self._tray_show)
-        act_pause = tray_menu.addAction("Pause Watch")
-        act_pause.triggered.connect(self._watch_pause)
-        tray_menu.addSeparator()
-        act_exit = tray_menu.addAction("Exit")
-        act_exit.triggered.connect(self._tray_exit)
-        self._tray.setContextMenu(tray_menu)
-        self._tray.activated.connect(self._on_tray_activated)
-
-    def _on_tray_activated(self, reason):
-        """Show window on tray icon double-click."""
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self._tray_show()
-
-    def _tray_show(self):
-        """Restore window from system tray."""
-        self.showNormal()
-        self.activateWindow()
-
-    def _tray_exit(self):
-        """Exit the application from tray."""
-        if self._watch_manager and self._watch_manager.is_active:
-            self._watch_manager.stop()
-        self._save_settings()
-        QApplication.instance().quit()
-
-    def _watch_pause(self):
-        """Pause/resume watch mode from tray."""
-        if self._watch_manager and self._watch_manager.is_active:
-            self._watch_manager.stop()
-            self.btn_watch.setChecked(False)
-            self._log("Watch mode paused")
-            if self._tray:
-                self._tray.showMessage("UniFile", "Watch mode paused",
-                                       QSystemTrayIcon.MessageIcon.Information, 2000)
-
-    def _toggle_watch_mode(self):
-        """Toggle watch folder auto-organize mode."""
-        if self.btn_watch.isChecked():
-            # Open settings dialog
-            settings = _load_watch_settings()
-            dlg = WatchSettingsDialog(settings, self)
-            if dlg.exec():
-                new_settings = dlg.get_settings()
-                _save_watch_settings(new_settings)
-                # Start watching
-                if not self._watch_manager:
-                    self._watch_manager = WatchModeManager(self)
-                folders = new_settings.get('folders', [])
-                if folders:
-                    self._watch_manager.start(folders, new_settings.get('delay_seconds', 5))
-                    self._log(f"Watch mode active: monitoring {len(folders)} folder(s)")
-                    _t = get_active_theme()
-                    self.btn_watch.setStyleSheet(
-                        f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {_t['sidebar_profile_fg']};"
-                        f"color: {_t['sidebar_brand']}; border: 1px solid {_t['sidebar_profile_fg']}; border-radius: 4px; font-weight: bold; }}"
-                        f"QPushButton:hover {{ background: {_t['accent_hover']}; }}")
-                    if self._tray:
-                        self._tray.show()
-                        self._tray.showMessage("UniFile", f"Watching {len(folders)} folder(s)",
-                                               QSystemTrayIcon.MessageIcon.Information, 3000)
-                else:
-                    self._log("No folders configured for watch mode")
-                    self.btn_watch.setChecked(False)
-            else:
-                self.btn_watch.setChecked(False)
-        else:
-            # Stop watching
-            if self._watch_manager and self._watch_manager.is_active:
-                self._watch_manager.stop()
-            self._log("Watch mode stopped")
-            _t = get_active_theme()
-            self.btn_watch.setStyleSheet(
-                f"QPushButton {{ font-size: 11px; padding: 2px 10px; background: {_t['sidebar_profile_border']};"
-                f"color: {_t['sidebar_profile_fg']}; border: 1px solid {_t['border']}; border-radius: 4px; }}"
-                f"QPushButton:hover {{ background: {_t['btn_hover']}; }}")
-            if self._tray:
-                self._tray.hide()
+    # Tray setup/lifecycle moved to unifile.tray_mixin.TrayMixin in v9.3.10.
+    # Watch-mode slots moved to unifile.watch_mixin.WatchMixin in v9.3.10.
 
     # ═══ FILE PREVIEW PANEL ═════════════════════════════════════════════════
     def _on_row_selected(self, row, col, prev_row, prev_col):
