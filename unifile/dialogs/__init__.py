@@ -16,7 +16,7 @@ from unifile.dialogs.duplicates import (
 from unifile.dialogs.tools import (
     BeforeAfterDialog, EventGroupDialog, ScheduleDialog,
     UndoTimelineDialog, UndoBatchDialog, PluginManagerDialog,
-    RelationshipGraphWidget, WatchHistoryDialog
+    RelationshipGraphWidget, WatchHistoryDialog, CsvRulesDialog
 )
 from unifile.dialogs.theme import (
     ThemePickerDialog, ProtectedPathsDialog
@@ -35,7 +35,7 @@ __all__ = [
     '_DupScanWorker', 'DuplicateFinderDialog', 'DuplicatePanel', 'DuplicateCompareDialog',
     'BeforeAfterDialog', 'EventGroupDialog', 'ScheduleDialog',
     'UndoTimelineDialog', 'UndoBatchDialog', 'PluginManagerDialog',
-    'RelationshipGraphWidget', 'WatchHistoryDialog',
+    'RelationshipGraphWidget', 'WatchHistoryDialog', 'CsvRulesDialog',
     'ThemePickerDialog', 'ProtectedPathsDialog',
     'AIProviderSettingsDialog', 'WhisperSettingsDialog',
     'SemanticSearchSettingsDialog', 'EmbeddingSettingsDialog',
