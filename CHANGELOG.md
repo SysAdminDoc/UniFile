@@ -2,6 +2,53 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.4] — Ruff cleanup pass: 942 → 379 violations, modernized annotations
+
+### Correctness — safe auto-fixes (85 sites across 31 files)
+- **`F541` (22 sites)** — `f"..."` strings that had no `{}` placeholders. Pure
+  correctness: the `f` prefix was a no-op. Removed.
+- **`UP015` (46 sites)** — `open(path, 'r')` is redundant; `'r'` is the
+  default mode. Dropped the explicit mode argument.
+- **`UP006` (9 sites)** — `List[X]` / `Dict[X,Y]` / `Tuple[…]` → built-in
+  `list[X]` / `dict[X,Y]` / `tuple[…]` (PEP 585, available since Python 3.9
+  and 3.10 is our min).
+- **`UP045` (7 sites)** — `Optional[X]` → `X | None` (PEP 604, Python 3.10+).
+- **`UP035`** — removed unused `typing.List/Optional` imports in cleanup.py
+  (dead code, not used anywhere in the module).
+- **`UP031`** — one remaining `%`-format sheet in `dialogs/duplicates.py`
+  rewritten as an f-string.
+- **`UP036`** — `bootstrap.py`'s Python-version gate bumped `< (3, 8)` →
+  `< (3, 10)` to match `requires-python`. The check is kept behind a
+  `noqa: UP036` because pip's `requires-python` only enforces on install;
+  git-clone users hitting the wrong interpreter still benefit from the
+  friendly error.
+
+### Ruff config — align with "dense output" preference
+Added to `[tool.ruff.lint].ignore` (matches the `CLAUDE.md` project rule):
+  - `E701` — multiple-statements-on-one-line-colon  (e.g. `if x: return`)
+  - `E702` — multiple-statements-on-one-line-semicolon  (e.g. `a = 1; b = 2`)
+  - `E401` — multiple-imports-on-one-line  (e.g. `import os, sys, json`)
+  - `B007` — unused-loop-control-variable  (noisy false-positives for
+    intentional enumerate patterns)
+
+These were the dominant stylistic noise (408 + 36 + 25 sites). They fight
+the hand-crafted compact style in `bootstrap.py`, `scan_mixin.py`, and
+friends. Ignoring them as policy is cleaner than per-line `noqa`.
+
+### Impact
+| Before | After |
+|--------|-------|
+| 942 violations | 379 violations (**-60%**) |
+| 8 `invalid-syntax` diagnostics (v9.3.3 fixed) | 0 |
+| UP category | clean |
+
+**Remaining debt** is mostly `F401` unused imports (257) and `I001` import
+ordering (97) — both are per-file fixes that deserve a dedicated pass.
+
+### Tests
+- All **302 tests passing** (unchanged). Pyflakes undefined-name set
+  still empty. No behavior change — all fixes are semantic no-ops.
+
 ## [v9.3.3] — Python 3.10/3.11 f-string compat: three latent `SyntaxError`s
 
 ### Correctness

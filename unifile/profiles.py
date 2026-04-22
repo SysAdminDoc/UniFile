@@ -445,7 +445,7 @@ def _load_active_profile():
     """Load the last-used profile from disk."""
     global _active_profile_name
     try:
-        with open(_PROFILES_FILE, 'r') as f:
+        with open(_PROFILES_FILE) as f:
             data = json.load(f)
         name = data.get('active_profile', 'Design Assets')
         if name in BUILTIN_PROFILES:

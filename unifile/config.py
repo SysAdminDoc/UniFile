@@ -57,7 +57,7 @@ def load_json_safe(path: str, default, *, expected_type: type | None = None):
     if not path or not os.path.exists(path):
         return default
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return default
@@ -523,7 +523,7 @@ def load_theme_name() -> str:
     if _cached_theme_name is not None:
         return _cached_theme_name
     try:
-        with open(_THEME_SETTINGS_FILE, 'r') as f:
+        with open(_THEME_SETTINGS_FILE) as f:
             _cached_theme_name = json.load(f).get('theme', 'Steam Dark')
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         _cached_theme_name = 'Steam Dark'
@@ -591,7 +591,7 @@ def load_protected_paths() -> dict:
         return _cached_protected_paths
     system = _default_protected_paths()
     try:
-        with open(_PROTECTED_PATHS_FILE, 'r') as f:
+        with open(_PROTECTED_PATHS_FILE) as f:
             data = json.load(f)
         _cached_protected_paths = {
             'system': system,
@@ -685,7 +685,7 @@ def append_watch_event(event: dict):
 
 def load_watch_history() -> list:
     try:
-        with open(_WATCH_HISTORY_FILE, 'r', encoding='utf-8') as f:
+        with open(_WATCH_HISTORY_FILE, encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return []

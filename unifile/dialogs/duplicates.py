@@ -98,9 +98,10 @@ class DuplicateCompareDialog(QDialog):
         _t = get_active_theme()
         for it in items:
             row_w = QWidget()
+            _border = _t['green'] if it is best else _t['btn_bg']
             row_w.setStyleSheet(
-                "QWidget { background: %s; border: 1px solid %s; border-radius: 6px; padding: 6px; margin: 2px; }"
-                % (_t['bg'], _t['green'] if it is best else _t['btn_bg']))
+                f"QWidget {{ background: {_t['bg']}; border: 1px solid {_border}; "
+                "border-radius: 6px; padding: 6px; margin: 2px; }}")
             row_lay = QHBoxLayout(row_w)
             row_lay.setContentsMargins(8, 6, 8, 6)
             # Thumbnail

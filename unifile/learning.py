@@ -41,7 +41,7 @@ class PatternLearner:
         if not os.path.isfile(_LEARNING_DB):
             return
         try:
-            with open(_LEARNING_DB, 'r', encoding='utf-8') as f:
+            with open(_LEARNING_DB, encoding='utf-8') as f:
                 data = json.load(f)
             self._ext_patterns = defaultdict(Counter, {
                 k: Counter(v) for k, v in data.get('ext', {}).items()

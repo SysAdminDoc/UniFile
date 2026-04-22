@@ -28,7 +28,7 @@ class ProfileManager:
     def load(name: str) -> dict:
         """Load a profile from disk."""
         path = os.path.join(_PROFILES_DIR, f"{name}.json")
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             return json.load(f)
 
     @staticmethod
@@ -90,7 +90,7 @@ class CategoryPresetManager:
     @staticmethod
     def load(name) -> list:
         path = os.path.join(_PRESETS_DIR, f"{name}.json")
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             return json.load(f)
 
     @staticmethod
@@ -136,7 +136,7 @@ class PluginManager:
             meta = {'file': fname, 'path': fpath, 'name': fname[:-3],
                     'hooks': [], 'description': '', 'enabled': True}
             try:
-                with open(fpath, 'r', encoding='utf-8') as f:
+                with open(fpath, encoding='utf-8') as f:
                     src = f.read()
                 # Parse docstring for Hook: lines
                 import ast
@@ -254,7 +254,7 @@ class CloudPathResolver:
         db_info = os.path.join(os.environ.get('APPDATA', ''), 'Dropbox', 'info.json')
         if os.path.isfile(db_info):
             try:
-                with open(db_info, 'r') as f:
+                with open(db_info) as f:
                     info = json.load(f)
                 db_path = info.get('personal', {}).get('path', '')
                 if db_path and os.path.isdir(db_path):

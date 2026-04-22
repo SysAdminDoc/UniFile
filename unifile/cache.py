@@ -20,7 +20,7 @@ _CORRECTIONS_FILE = os.path.join(_APP_DATA_DIR, 'corrections.json')
 def load_corrections():
     """Load user corrections: {folder_name_pattern: category}"""
     try:
-        with open(_CORRECTIONS_FILE, 'r', encoding='utf-8') as f:
+        with open(_CORRECTIONS_FILE, encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
@@ -222,7 +222,7 @@ def export_rules_bundle(filepath):
 def import_rules_bundle(filepath):
     """Import custom categories + corrections from a JSON bundle."""
     from unifile.categories import save_custom_categories
-    with open(filepath, 'r', encoding='utf-8') as f:
+    with open(filepath, encoding='utf-8') as f:
         bundle = json.load(f)
     if 'custom_categories' in bundle:
         save_custom_categories(bundle['custom_categories'])
@@ -239,7 +239,7 @@ def _load_undo_stack() -> list:
     # Migration: convert old flat undo_log.json into a single batch
     if os.path.exists(_UNDO_LOG_FILE) and not os.path.exists(_UNDO_STACK_FILE):
         try:
-            with open(_UNDO_LOG_FILE, 'r', encoding='utf-8') as f:
+            with open(_UNDO_LOG_FILE, encoding='utf-8') as f:
                 old_ops = json.load(f)
             if old_ops:
                 batch = {'timestamp': datetime.now().isoformat(), 'ops': old_ops,
@@ -251,7 +251,7 @@ def _load_undo_stack() -> list:
             pass
     if os.path.exists(_UNDO_STACK_FILE):
         try:
-            with open(_UNDO_STACK_FILE, 'r', encoding='utf-8') as f:
+            with open(_UNDO_STACK_FILE, encoding='utf-8') as f:
                 return json.load(f)
         except Exception:
             pass

@@ -18,7 +18,7 @@ from unifile.config import _APP_DATA_DIR
 
 
 _RULES_FILE = os.path.join(_APP_DATA_DIR, 'sort_rules.csv')
-_rules_cache: Optional[list] = None  # [(compiled_regex, category, raw_pattern), ...]
+_rules_cache: list | None = None  # [(compiled_regex, category, raw_pattern), ...]
 
 
 def get_rules_file() -> str:
@@ -42,7 +42,7 @@ def load_rules(extra_paths: list | None = None) -> list:
             continue
         seen.add(path)
         try:
-            with open(path, 'r', encoding='utf-8', newline='') as f:
+            with open(path, encoding='utf-8', newline='') as f:
                 for row in csv.reader(f):
                     if not row:
                         continue
@@ -77,7 +77,7 @@ def invalidate_csv_rules_cache() -> None:
     _rules_cache = None
 
 
-def check_csv_rules(folder_name: str) -> Optional[str]:
+def check_csv_rules(folder_name: str) -> str | None:
     """Check folder name against loaded CSV rules.  Returns first matching category or None."""
     rules = _rules_cache if _rules_cache is not None else load_rules()
     for compiled, category, _ in rules:

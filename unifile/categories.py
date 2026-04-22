@@ -662,7 +662,7 @@ def load_custom_categories():
     """Load user-defined categories from JSON file."""
     if os.path.exists(_CUSTOM_CATS_FILE):
         try:
-            with open(_CUSTOM_CATS_FILE, 'r', encoding='utf-8') as f:
+            with open(_CUSTOM_CATS_FILE, encoding='utf-8') as f:
                 data = json.load(f)
             return [(c['name'], c['keywords']) for c in data]
         except Exception:

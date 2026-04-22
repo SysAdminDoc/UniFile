@@ -10,7 +10,7 @@ import zipfile
 import tarfile
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional, Callable
+from collections.abc import Callable
 
 from unifile.config import is_protected
 
@@ -32,7 +32,7 @@ class CleanupItem:
 def scan_empty_folders(root: str, *, ignore_hidden: bool = True,
                        ignore_system: bool = True,
                        progress_cb: Callable = None,
-                       item_cb: Callable = None) -> List[CleanupItem]:
+                       item_cb: Callable = None) -> list[CleanupItem]:
     """Find all empty directories (recursively) under root.
     A folder is 'empty' if it contains no files — only other empty folders.
     Returns deepest-first order so deletion is safe top-down."""
@@ -97,7 +97,7 @@ def scan_empty_folders(root: str, *, ignore_hidden: bool = True,
 
 def scan_empty_files(root: str, *, depth: int = 99,
                      progress_cb: Callable = None,
-                     item_cb: Callable = None) -> List[CleanupItem]:
+                     item_cb: Callable = None) -> list[CleanupItem]:
     """Find all zero-byte files under root."""
     results = []
     root_depth = root.rstrip(os.sep).count(os.sep)
@@ -176,7 +176,7 @@ _TEMP_PATTERNS = [
 def scan_temp_files(root: str, *, depth: int = 99, include_logs: bool = False,
                     min_age_days: int = 0,
                     progress_cb: Callable = None,
-                    item_cb: Callable = None) -> List[CleanupItem]:
+                    item_cb: Callable = None) -> list[CleanupItem]:
     """Find temporary, junk, and incomplete download files under root."""
     results = []
     root_depth = root.rstrip(os.sep).count(os.sep)
@@ -278,7 +278,7 @@ _MAGIC_HEADERS = {
 _ARCHIVE_EXTS = frozenset({'.zip', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tar.xz'})
 
 
-def _check_magic(fpath: str, ext: str) -> Optional[str]:
+def _check_magic(fpath: str, ext: str) -> str | None:
     """Check if file magic bytes match expected format. Returns error string or None."""
     headers = _MAGIC_HEADERS.get(ext.lower())
     if not headers:
@@ -303,7 +303,7 @@ def _check_magic(fpath: str, ext: str) -> Optional[str]:
                     return None
             except OSError:
                 pass
-            return f"Invalid tar header (expected 'ustar' at offset 257)"
+            return "Invalid tar header (expected 'ustar' at offset 257)"
 
         # Check if any expected header matches
         for header in headers:
@@ -316,7 +316,7 @@ def _check_magic(fpath: str, ext: str) -> Optional[str]:
         return f"Cannot read: {e}"
 
 
-def _check_archive_integrity(fpath: str, ext: str) -> Optional[str]:
+def _check_archive_integrity(fpath: str, ext: str) -> str | None:
     """Validate archive integrity. Returns error string or None."""
     ext_lower = ext.lower()
     try:
@@ -343,7 +343,7 @@ def _check_archive_integrity(fpath: str, ext: str) -> Optional[str]:
 def scan_broken_files(root: str, *, depth: int = 99,
                       check_archives: bool = True,
                       progress_cb: Callable = None,
-                      item_cb: Callable = None) -> List[CleanupItem]:
+                      item_cb: Callable = None) -> list[CleanupItem]:
     """Find files with invalid headers (wrong magic bytes) or corrupt archives."""
     results = []
     root_depth = root.rstrip(os.sep).count(os.sep)
@@ -407,7 +407,7 @@ def scan_broken_files(root: str, *, depth: int = 99,
 def scan_big_files(root: str, *, min_size_mb: float = 100.0, depth: int = 99,
                    limit: int = 500,
                    progress_cb: Callable = None,
-                   item_cb: Callable = None) -> List[CleanupItem]:
+                   item_cb: Callable = None) -> list[CleanupItem]:
     """Find the largest files under root, above min_size_mb threshold."""
     results = []
     root_depth = root.rstrip(os.sep).count(os.sep)
@@ -446,7 +446,7 @@ def scan_big_files(root: str, *, min_size_mb: float = 100.0, depth: int = 99,
 # ── Duplicate Folder Scanner ─────────────────────────────────────────────────
 
 def scan_duplicate_folders(root: str, *, depth: int = 3,
-                           progress_cb: Callable = None) -> List[tuple]:
+                           progress_cb: Callable = None) -> list[tuple]:
     """Find folders with identical content (same files by hash).
     Returns list of (canonical_folder, [duplicate_folders]) tuples."""
     import hashlib
@@ -506,7 +506,7 @@ def scan_duplicate_folders(root: str, *, depth: int = 3,
 # ── Orphaned Shortcut Scanner (Windows) ──────────────────────────────────────
 
 def scan_orphaned_shortcuts(root: str, *, depth: int = 99,
-                            progress_cb: Callable = None) -> List[CleanupItem]:
+                            progress_cb: Callable = None) -> list[CleanupItem]:
     """Find .lnk shortcuts pointing to non-existent targets (Windows only)."""
     import sys
     if sys.platform != 'win32':
@@ -554,7 +554,7 @@ def scan_orphaned_shortcuts(root: str, *, depth: int = 99,
 
 def scan_old_downloads(root: str, *, days_old: int = 90,
                        progress_cb: Callable = None,
-                       item_cb: Callable = None) -> List[CleanupItem]:
+                       item_cb: Callable = None) -> list[CleanupItem]:
     """Find files not accessed/modified in N days. Useful for Downloads cleanup."""
     results = []
     cutoff = time.time() - (days_old * 86400)
@@ -595,7 +595,7 @@ def _fmt_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} PB"
 
 
-def delete_items(items: List[CleanupItem], *, use_trash: bool = True,
+def delete_items(items: list[CleanupItem], *, use_trash: bool = True,
                  progress_cb: Callable = None) -> tuple:
     """Delete selected cleanup items. Returns (success_count, fail_count, freed_bytes)."""
     success = 0
