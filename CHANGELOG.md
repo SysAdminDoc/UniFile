@@ -2,6 +2,43 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.12] — Tab-order / initial-focus audit (keyboard UX)
+
+### Accessibility
+Three of the most-visited dialogs got explicit `setTabOrder(...)` chains
+and `setFocus()` on the widget a keyboard user is most likely to use
+first:
+
+- `ProtectedPathsDialog` — enable toggle → custom list → add-folder →
+  add-file → protect-by-name → remove → Save/Cancel. Initial focus on
+  the master enable toggle so `Space` immediately locks/unlocks the
+  protection layer.
+- `PhotoSettingsDialog` — master enable → folder preset → geocoding →
+  blur + threshold → scene → face + library button → enhanced
+  descriptions → Save/Cancel. Focus on the master toggle.
+- `OllamaSettingsDialog` — URL input → model list. Focus on the URL
+  input so users can immediately paste / edit the endpoint.
+
+Widget creation order already matched visual order in all three
+dialogs, so the explicit `setTabOrder` calls are redundant *today*. The
+value is defensive: future layout refactors can shuffle widget creation
+without accidentally breaking keyboard nav.
+
+### Tests
+- `tests/test_tab_order.py` — three source-level parametrized assertions
+  that each audited dialog retains its expected `setTabOrder` and
+  `setFocus` calls. Grep-based rather than Qt-live because the
+  pytest-qt suite already covers live instantiation; adding another
+  expensive per-dialog fixture would just slow the suite down.
+
+### Impact
+| Metric | Before | After |
+|--------|--------|-------|
+| Tests | 354 | **359** |
+| Dialogs with explicit tab order | 0 | 3 |
+| Ruff violations | 0 | 0 |
+| Pyflakes undefined-name | 0 | 0 |
+
 ## [v9.3.11] — DialogsMixin: 13 dialog-launcher methods out of main_window.py
 
 ### Architecture
