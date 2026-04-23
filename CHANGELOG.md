@@ -2,6 +2,26 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.13] — Release packaging: PyInstaller spec refreshed for new mixins
+
+`UniFile.spec` was last updated before the mixin sweep that started in
+v9.3.7. PyInstaller's static analyzer normally picks up
+`from unifile.xxx_mixin import XxxMixin` in `main_window.py`, but
+explicit `hiddenimports` are the fail-safe — missing entries cause
+`ImportError` at first launch of the frozen exe, not at build time.
+
+Added to `hiddenimports`:
+- `unifile.theme_mixin`, `unifile.undo_mixin`, `unifile.filter_mixin`,
+  `unifile.tray_mixin`, `unifile.watch_mixin`, `unifile.dialogs_mixin`
+  — the six mixins extracted between v9.3.7 and v9.3.11.
+- `unifile.ui_helpers` (added in v9.3.0).
+- `unifile.dialogs.advanced_settings`, `unifile.dialogs.settings_hub`
+  — the modules `DialogsMixin` imports lazily inside its methods.
+- `unifile.semantic`, `unifile.embedding` — referenced through lazy
+  imports in several dialogs.
+
+No code changes. No test changes. Pure packaging metadata catch-up.
+
 ## [v9.3.12] — Tab-order / initial-focus audit (keyboard UX)
 
 ### Accessibility
