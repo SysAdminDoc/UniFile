@@ -2,6 +2,26 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.15] — Commit `icon.ico` so PyInstaller `EXE(icon=...)` resolves
+
+v9.3.14's release workflow failed with
+`FileNotFoundError: Icon input file D:\a\UniFile\UniFile\icon.ico not found`
+during the PyInstaller EXE-assembly step. `UniFile.spec` has declared
+`icon='icon.ico'` from the start, but the file was never checked in —
+only `icon.png` exists in the repo. Local builds on developer machines
+had been succeeding because either an `icon.ico` had been generated
+manually at some point, or PyInstaller had been launched from a spec
+variant that pointed at the PNG.
+
+Fixed:
+- Generated a multi-size Windows `.ico` from `icon.png` using Pillow
+  (256/128/64/48/32/24/16). Letterboxed because the source is 1024×516
+  rather than square — fine for a first cut; a later pass can crop or
+  resvg the source to a square if taskbar clarity suffers.
+- Committed `icon.ico` alongside the existing `icon.png`.
+- v9.3.14's tag remains on GitHub but has no release attached.
+  v9.3.15 triggers the workflow with all assets now present.
+
 ## [v9.3.14] — Track `UniFile.spec` in git (v9.3.13 release workflow fix)
 
 The v9.3.13 release workflow failed because `UniFile.spec` — the
