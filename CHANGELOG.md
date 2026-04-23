@@ -2,6 +2,26 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.14] — Track `UniFile.spec` in git (v9.3.13 release workflow fix)
+
+The v9.3.13 release workflow failed because `UniFile.spec` — the
+PyInstaller entry point — wasn't actually checked into git. The
+project's `.gitignore` inherited the generic Python `*.spec` pattern,
+which was silently catching the only spec file the release pipeline
+needs. The file existed locally across every machine that built a
+release manually, but never made it into the repo.
+
+Fixed:
+- `.gitignore` — added `!UniFile.spec` negation so the one tracked
+  spec file is never re-ignored, even if someone else drops more
+  `.spec` files into the repo root.
+- `UniFile.spec` — tracked for the first time, carrying the mixin-aware
+  `hiddenimports` list staged in v9.3.13.
+
+v9.3.13's tag still exists on GitHub but has no release attached. A
+fresh v9.3.14 tag triggers the same workflow with the spec file now
+actually present on checkout.
+
 ## [v9.3.13] — Release packaging: PyInstaller spec refreshed for new mixins
 
 `UniFile.spec` was last updated before the mixin sweep that started in

@@ -6,6 +6,7 @@ CLAUDE.md
 build/
 dist/
 *.spec
+!UniFile.spec
 .venv/
 venv/
 *.egg-info/
