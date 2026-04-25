@@ -40,24 +40,46 @@ class FilterMixin:
             self.cmb_op.currentIndex() == self.OP_FILES and len(persons) > 0)
 
     def _apply_filter(self):
-        text = self.txt_search.text().lower()
+        from unifile.search_parser import parse_query, item_matches
+        raw = self.txt_search.text()
         face = self.cmb_face_filter.currentText() if self.cmb_face_filter.isVisible() else "All Persons"
+        spec = parse_query(raw)
+        all_items = self._items()
+
         for row in range(self.tbl.rowCount()):
-            # Check if any cell in the row contains the search text
             show = True
-            if text:
-                show = False
-                for col in range(self.tbl.columnCount()):
-                    item = self.tbl.item(row, col)
-                    if item and text in item.text().lower():
-                        show = True; break
+            if raw.strip():
+                if spec.is_chainable:
+                    # Structured token match against the item object
+                    idx = self._item_idx_from_row(row)
+                    if idx is not None and 0 <= idx < len(all_items):
+                        show = item_matches(spec, all_items[idx])
+                    else:
+                        # Fallback: plain substring scan across cell text
+                        tl = spec.text
+                        show = False
+                        for col in range(self.tbl.columnCount()):
+                            cell = self.tbl.item(row, col)
+                            if cell and tl in cell.text().lower():
+                                show = True
+                                break
+                else:
+                    tl = spec.text  # already lower-cased
+                    show = False
+                    for col in range(self.tbl.columnCount()):
+                        cell = self.tbl.item(row, col)
+                        if cell and tl in cell.text().lower():
+                            show = True
+                            break
+
             # Face filter (PC Files mode only)
             if show and face != "All Persons" and self.cmb_op.currentIndex() == self.OP_FILES:
-                if row < len(self.file_items):
-                    it = self.file_items[row]
-                    persons = it.metadata.get('_photo_face_persons', [])
+                idx = self._item_idx_from_row(row)
+                if idx is not None and 0 <= idx < len(self.file_items):
+                    persons = self.file_items[idx].metadata.get('_photo_face_persons', [])
                     if face not in persons:
                         show = False
+
             self.tbl.setRowHidden(row, not show)
 
     def _on_conf_changed(self, val):
