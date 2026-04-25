@@ -348,6 +348,20 @@ def main():
     p_validate_rules.add_argument("--json", action="store_true",
                                   help="Emit a JSON report instead of human-readable output")
 
+    p_shell = subparsers.add_parser(
+        "install-shell",
+        help="Install Windows Explorer shell integration (context menu + Send To)",
+    )
+    p_shell.add_argument("--context-menu", action="store_true", default=False,
+                         help="Install context menu only (omit to install both)")
+    p_shell.add_argument("--sendto", action="store_true", default=False,
+                         help="Install Send To shortcut only (omit to install both)")
+
+    p_unshell = subparsers.add_parser(
+        "uninstall-shell",
+        help="Remove Windows Explorer shell integration",
+    )
+
     args, qt_args = parser.parse_known_args()
 
     # Headless subcommands — no GUI at all.
@@ -359,6 +373,25 @@ def main():
         sys.exit(_cmd_list_models(args))
     if args.subcommand == "validate-rules":
         sys.exit(_cmd_validate_rules(args))
+
+    if args.subcommand == "install-shell":
+        from unifile import shell_integration as si
+        both = not args.context_menu and not args.sendto
+        results = {}
+        if both or args.context_menu:
+            results["context_menu"] = si.install_context_menu()
+        if both or args.sendto:
+            results["sendto"] = si.install_sendto()
+        for k, ok in results.items():
+            print(f"{'OK' if ok else 'FAILED'}: {k}")
+        sys.exit(0 if all(results.values()) else 1)
+
+    if args.subcommand == "uninstall-shell":
+        from unifile import shell_integration as si
+        results = si.uninstall()
+        for k, ok in results.items():
+            print(f"{'Removed' if ok else 'Not found'}: {k}")
+        sys.exit(0)
 
     # GUI path — install crash handler before touching Qt.
     sys.excepthook = _crash_handler
