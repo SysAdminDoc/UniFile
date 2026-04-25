@@ -130,13 +130,22 @@ DARK_STYLE = ""
 # Each theme is a dict of color tokens → hex values. _build_theme_qss() renders
 # them into a full QSS stylesheet. DARK_STYLE above is the "Steam Dark" default.
 
-def _build_theme_qss(t: dict) -> str:
-    """Generate a full QSS stylesheet from a theme color token dict."""
+def _build_theme_qss(t: dict, font_size: int = 13) -> str:
+    """Generate a full QSS stylesheet from a theme color token dict.
+
+    Args:
+        t:         Theme color token dict.
+        font_size: Base font size in pixels (default 13). Scales the main
+                   widget rule; explicit per-widget rules retain their sizes.
+    """
+    # Derived sizes used in the generated QSS below.
+    fs_sm = max(9,  font_size - 1)   # buttons, tables, menus
+    fs_xs = max(8,  font_size - 2)   # tabs, group-box, small labels
     return f"""
 QMainWindow, QWidget {{
     background-color: {t['bg']}; color: {t['fg']};
     font-family: 'Segoe UI';
-    font-size: 13px;
+    font-size: {font_size}px;
     selection-background-color: {t['accent']};
     selection-color: #ffffff;
 }}
@@ -150,7 +159,7 @@ QPushButton {{
     padding: 0 16px;
     border-radius: 12px;
     font-weight: 600;
-    font-size: 12px;
+    font-size: {fs_sm}px;
     outline: none;
 }}
 QPushButton:hover {{ background-color: {t['btn_hover']}; color: {t['fg_bright']}; border-color: {t['border_hover']}; }}
@@ -164,7 +173,7 @@ QPushButton[class="primary"] {{
     min-height: 40px;
     padding: 0 18px;
     font-weight: 700;
-    font-size: 13px;
+    font-size: {font_size}px;
 }}
 QPushButton[class="primary"]:hover {{ background-color: {t['accent_hover']}; border-color: {t['accent_hover']}; }}
 QPushButton[class="primary"]:pressed {{ background-color: {t['accent_pressed']}; }}
@@ -175,7 +184,7 @@ QPushButton[class="apply"] {{
     min-height: 40px;
     padding: 0 18px;
     font-weight: 700;
-    font-size: 13px;
+    font-size: {font_size}px;
 }}
 QPushButton[class="apply"]:hover {{ background-color: {t['green_hover']}; border-color: {t['green_hover']}; }}
 QPushButton[class="apply"]:pressed {{ background-color: {t['green_pressed']}; }}
@@ -215,7 +224,7 @@ QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
     border: 1px solid {t['border']};
     border-radius: 12px;
     padding: 8px 12px;
-    font-size: 13px;
+    font-size: {font_size}px;
 }}
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
     border-color: {t['accent']};
@@ -256,7 +265,7 @@ QSpinBox:hover, QDoubleSpinBox:hover {{ border-color: {t['border_hover']}; }}
 QTableWidget, QTreeWidget, QListWidget {{
     background-color: {t['input_bg']}; alternate-background-color: {t['bg_alt']};
     color: {t['fg']}; border: 1px solid {t['border']}; border-radius: 12px;
-    gridline-color: transparent; font-size: 12px; outline: none;
+    gridline-color: transparent; font-size: {fs_sm}px; outline: none;
     selection-background-color: {t['selection']}; selection-color: {t['fg_bright']};
 }}
 QTableWidget::item, QTreeWidget::item, QListWidget::item {{
@@ -307,7 +316,7 @@ QTabBar::tab {{
     border: 1px solid transparent;
     border-radius: 12px;
     margin-right: 6px;
-    font-size: 11px;
+    font-size: {fs_xs}px;
     font-weight: 600;
 }}
 QTabBar::tab:selected {{
@@ -349,7 +358,7 @@ QMenuBar {{
     color: {t['muted']};
     border-bottom: 1px solid {t['btn_bg']};
     padding: 4px 6px;
-    font-size: 12px;
+    font-size: {fs_sm}px;
 }}
 QMenuBar::item {{ padding: 6px 12px; border-radius: 8px; }}
 QMenuBar::item:selected {{ background-color: {t['bg_alt']}; color: {t['fg']}; }}
@@ -505,6 +514,26 @@ THEME_DRACULA = {
     'muted': '#6272a4', 'disabled': '#44475a',
 }
 
+# High Contrast (WCAG AA — all foreground/background pairs exceed 4.5:1)
+THEME_HIGH_CONTRAST = {
+    'name': 'High Contrast',
+    'sidebar_bg': '#000000', 'sidebar_brand': '#000000',
+    'sidebar_border': '#ffffff', 'sidebar_section': '#ffff00',
+    'sidebar_btn': '#ffffff', 'sidebar_btn_hover_bg': '#1a1a1a',
+    'sidebar_btn_hover_border': '#ffff00', 'sidebar_btn_active_bg': '#002800',
+    'sidebar_btn_active_fg': '#00ff00', 'sidebar_btn_active_border': '#00ff00',
+    'sidebar_profile_bg': '#111111', 'sidebar_profile_fg': '#ffff00',
+    'sidebar_profile_border': '#ffffff',
+    'bg': '#000000', 'bg_alt': '#111111', 'fg': '#ffffff', 'fg_bright': '#ffffff',
+    'btn_bg': '#222222', 'btn_fg': '#ffffff', 'btn_hover': '#333333',
+    'btn_pressed': '#444444', 'border': '#ffffff', 'border_hover': '#ffff00',
+    'input_bg': '#111111', 'header_bg': '#0a0a0a',
+    'accent': '#ffff00', 'accent_hover': '#ffff55', 'accent_pressed': '#cccc00',
+    'green': '#00ff00', 'green_hover': '#44ff44', 'green_pressed': '#00cc00',
+    'selection': '#003300', 'row_hover': '#1a1a1a',
+    'muted': '#cccccc', 'disabled': '#888888',
+}
+
 # Registry: name → palette dict
 THEMES = {
     'Steam Dark':        THEME_STEAM_DARK,
@@ -513,6 +542,7 @@ THEMES = {
     'GitHub Dark':       THEME_GITHUB_DARK,
     'Nord':              THEME_NORD,
     'Dracula':           THEME_DRACULA,
+    'High Contrast':     THEME_HIGH_CONTRAST,
 }
 
 DARK_STYLE = _build_theme_qss(THEME_STEAM_DARK)
@@ -545,10 +575,42 @@ def get_active_theme() -> dict:
 
 def get_active_stylesheet() -> str:
     name = load_theme_name()
-    if name == 'Steam Dark':
+    fs = load_font_size()
+    if name == 'Steam Dark' and fs == 13:
         return DARK_STYLE
     theme = THEMES.get(name, THEME_STEAM_DARK)
-    return _build_theme_qss(theme)
+    return _build_theme_qss(theme, fs)
+
+# ── Font Size ─────────────────────────────────────────────────────────────────
+
+_FONT_SIZE_FILE = os.path.join(_APP_DATA_DIR, 'accessibility.json')
+_DEFAULT_FONT_SIZE = 13
+_cached_font_size: int | None = None
+
+def load_font_size() -> int:
+    """Return the saved UI font size (pixels, default 13)."""
+    global _cached_font_size
+    if _cached_font_size is not None:
+        return _cached_font_size
+    try:
+        with open(_FONT_SIZE_FILE) as f:
+            val = json.load(f).get('font_size', _DEFAULT_FONT_SIZE)
+            _cached_font_size = int(val)
+    except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
+        _cached_font_size = _DEFAULT_FONT_SIZE
+    return _cached_font_size
+
+def save_font_size(size: int) -> None:
+    """Persist font size and invalidate the cache."""
+    global _cached_font_size
+    size = max(8, min(24, int(size)))
+    _cached_font_size = size
+    try:
+        os.makedirs(_APP_DATA_DIR, exist_ok=True)
+        with open(_FONT_SIZE_FILE, 'w') as f:
+            json.dump({'font_size': size}, f)
+    except OSError:
+        pass
 
 # ── Protected Paths ──────────────────────────────────────────────────────────
 # System folders and important files that should NEVER be moved/deleted/renamed.

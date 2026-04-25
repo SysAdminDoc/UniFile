@@ -2,7 +2,7 @@
 
 from PyQt6.QtWidgets import QWidget
 
-from unifile.config import DARK_STYLE, THEMES, _build_theme_qss
+from unifile.config import DARK_STYLE, THEMES, _build_theme_qss, load_font_size
 
 
 class ThemeMixin:
@@ -13,10 +13,11 @@ class ThemeMixin:
         theme = THEMES.get(name)
         if not theme:
             return
-        if name == 'Steam Dark':
+        fs = load_font_size()
+        if name == 'Steam Dark' and fs == 13:
             qss = DARK_STYLE
         else:
-            qss = _build_theme_qss(theme)
+            qss = _build_theme_qss(theme, fs)
         self.setStyleSheet(qss)
         self._apply_theme_to_widgets(theme)
         self._log(f"Theme changed to: {name}")
