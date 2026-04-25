@@ -100,6 +100,7 @@ from unifile.profiles import (
     get_profile_names,
     set_active_profile,
 )
+from unifile.ratings import bulk_load as ratings_bulk_load, get_rating, set_rating, clear_rating
 from unifile.scan_mixin import ScanMixin
 from unifile.theme_mixin import ThemeMixin
 from unifile.tray_mixin import TrayMixin
@@ -1424,10 +1425,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.setStyleSheet(get_active_stylesheet())
         self._apply_sidebar_theme(get_active_theme())
 
-        # Tab order: source → scan → apply → table
+        # Tab order: source → scan → apply → search → confidence slider → table
         self.setTabOrder(self.txt_src, self.btn_scan)
         self.setTabOrder(self.btn_scan, self.btn_apply)
-        self.setTabOrder(self.btn_apply, self.tbl)
+        self.setTabOrder(self.btn_apply, self.txt_search)
+        self.setTabOrder(self.txt_search, self.sld_conf)
+        self.setTabOrder(self.sld_conf, self.tbl)
 
         self._mode_labels = [self.cmb_op.itemText(i) for i in range(self.cmb_op.count())]
         self._refresh_workspace_copy()
@@ -1651,6 +1654,45 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         if is_files and _ctx_idx < len(self.file_items):
             act_create_rule = menu.addAction("📏 Create Rule from This File…")
 
+        # Star rating + review flag (files mode only)
+        rating_actions: dict = {}
+        flag_actions: dict = {}
+        _ctx_path = (
+            self.file_items[_ctx_idx].full_src
+            if is_files and _ctx_idx < len(self.file_items)
+            else None
+        )
+        if _ctx_path:
+            cur_stars, cur_flag = get_rating(_ctx_path)
+            star_bar = "★" * cur_stars + "☆" * (5 - cur_stars)
+            menu.addSeparator()
+            rate_sub = menu.addMenu(f"Rate  {star_bar}")
+            for n, lbl in [
+                (0, "☆  Clear rating"),
+                (1, "★☆☆☆☆  Poor"),
+                (2, "★★☆☆☆  Fair"),
+                (3, "★★★☆☆  Good"),
+                (4, "★★★★☆  Great"),
+                (5, "★★★★★  Excellent"),
+            ]:
+                a = rate_sub.addAction(lbl)
+                if cur_stars == n and n > 0:
+                    a.setCheckable(True); a.setChecked(True)
+                rating_actions[a] = n
+            rate_sub.addSeparator()
+            cur_flag_label = cur_flag.title() if cur_flag else "None"
+            flag_sub = rate_sub.addMenu(f"Flag: {cur_flag_label}")
+            for f, lbl in [
+                ("", "None"),
+                ("pending",  "⏳  Pending"),
+                ("approved", "✅  Approved"),
+                ("rejected", "❌  Rejected"),
+            ]:
+                a = flag_sub.addAction(lbl)
+                if cur_flag == f:
+                    a.setCheckable(True); a.setChecked(True)
+                flag_actions[a] = f
+
         # Conflict resolution strategies
         conflict_actions = {}
         if is_files:
@@ -1694,6 +1736,29 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             self._show_dup_compare(self.file_items[_ctx_idx].dup_group)
         elif action == act_create_rule and is_files:
             self._create_rule_from_file(row)
+        elif action in rating_actions and _ctx_path:
+            new_stars = rating_actions[action]
+            _, existing_flag = get_rating(_ctx_path)
+            if new_stars == 0:
+                clear_rating(_ctx_path)
+                if _ctx_idx < len(self.file_items):
+                    self.file_items[_ctx_idx].metadata['_rating'] = 0
+                    self.file_items[_ctx_idx].metadata['_flag'] = ''
+            else:
+                set_rating(_ctx_path, new_stars, existing_flag)
+                if _ctx_idx < len(self.file_items):
+                    self.file_items[_ctx_idx].metadata['_rating'] = new_stars
+            self._log(
+                f"Rated {os.path.basename(_ctx_path)}: "
+                f"{'★' * new_stars + '☆' * (5 - new_stars) if new_stars else 'cleared'}"
+            )
+        elif action in flag_actions and _ctx_path:
+            new_flag = flag_actions[action]
+            existing_stars, _ = get_rating(_ctx_path)
+            set_rating(_ctx_path, existing_stars, new_flag)
+            if _ctx_idx < len(self.file_items):
+                self.file_items[_ctx_idx].metadata['_flag'] = new_flag
+            self._log(f"Flagged {os.path.basename(_ctx_path)}: {new_flag or 'none'}")
         elif action in conflict_actions:
             strat = conflict_actions[action]
             self.settings.setValue("conflict_strategy", strat)
@@ -1701,6 +1766,26 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             n = ConflictResolver.resolve(conflicts, strat, self.file_items)
             self._log(f"Resolved {n} conflict(s) via '{strat}'")
             self._stats_files()
+
+    # ═══ RATINGS ════════════════════════════════════════════════════════════
+
+    def _on_files_scan_done(self):
+        """Override scan completion to bulk-load ratings into file item metadata."""
+        super()._on_files_scan_done()
+        self._load_item_ratings()
+
+    def _load_item_ratings(self):
+        """Bulk-fetch star ratings for all current file_items and cache in metadata."""
+        if not self.file_items:
+            return
+        paths = [it.full_src for it in self.file_items if it.full_src]
+        rated = ratings_bulk_load(paths)
+        for it in self.file_items:
+            if it.full_src:
+                key = os.path.normcase(os.path.abspath(it.full_src))
+                stars, flag = rated.get(key, (0, ''))
+                it.metadata['_rating'] = stars
+                it.metadata['_flag'] = flag
 
     def _reassign_file_category(self, row: int):
         """Let the user manually reassign a file to a different category.
@@ -3229,6 +3314,22 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         elif (event.modifiers() == Qt.KeyboardModifier.ControlModifier
               and event.key() == Qt.Key.Key_K):
             self._open_command_palette()
+        elif (event.modifiers() == Qt.KeyboardModifier.ControlModifier
+              and event.key() == Qt.Key.Key_S):
+            if self.btn_scan.isEnabled():
+                self._on_scan()
+        elif (event.modifiers() == Qt.KeyboardModifier.ControlModifier
+              and event.key() == Qt.Key.Key_T):
+            self.txt_search.setFocus()
+            self.txt_search.selectAll()
+        elif event.modifiers() == Qt.KeyboardModifier.AltModifier:
+            key = event.key()
+            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
+                n = key - Qt.Key.Key_1  # 0-indexed
+                if n < self.cmb_profile.count():
+                    self.cmb_profile.setCurrentIndex(n)
+            else:
+                super().keyPressEvent(event)
         else:
             super().keyPressEvent(event)
 
