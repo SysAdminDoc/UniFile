@@ -136,3 +136,33 @@ class DialogsMixin:
         from unifile.dialogs.archive_indexer_dialog import ArchiveIndexerDialog
         dlg = ArchiveIndexerDialog(self)
         dlg.exec()
+
+    # Accessibility ------------------------------------------------------------
+
+    def _open_accessibility(self):
+        """Open the Accessibility dialog (font size)."""
+        from unifile.dialogs.accessibility import AccessibilityDialog
+        dlg = AccessibilityDialog(self)
+        if dlg.exec():
+            # Re-apply the newly saved font size via the theme mixin
+            from unifile.config import load_theme_name
+            self._on_theme_changed(load_theme_name())
+
+    # Saved searches -----------------------------------------------------------
+
+    def _open_saved_searches(self):
+        """Open the Saved Searches / Smart Views dialog."""
+        from unifile.dialogs.saved_searches_dialog import SavedSearchesDialog
+        dlg = SavedSearchesDialog(self)
+        dlg.exec()
+
+    # Inbox / Quick Capture ----------------------------------------------------
+
+    def _open_inbox(self):
+        """Open the Inbox configuration dialog."""
+        from unifile.dialogs.inbox_dialog import InboxDialog
+        dlg = InboxDialog(self)
+        dlg.exec()
+        # Refresh the inbox badge in the status bar if present
+        if hasattr(self, '_refresh_inbox_badge'):
+            self._refresh_inbox_badge()

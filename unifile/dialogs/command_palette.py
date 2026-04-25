@@ -361,6 +361,9 @@ def build_commands(main_window) -> list[_Command]:
     _add("Virtual Library",   "Non-destructive library overlay",      "_open_virtual_library")
     _add("Shell Integration", "Install / remove Explorer context menu",
          fn=lambda: _open_shell_integration(mw))
+    _add("Accessibility",     "Adjust UI font size",                  "_open_accessibility")
+    _add("Inbox",             "Configure or open the Inbox folder",   "_open_inbox")
+    _add("Saved Searches",    "Manage and apply Smart Views",         "_open_saved_searches")
 
     # ── Profiles ──────────────────────────────────────────────────────────────
     try:
@@ -396,6 +399,32 @@ def build_commands(main_window) -> list[_Command]:
 
             commands.append(_Command("Category", cat, "Filter results by category",
                                      _filter_by_cat))
+    except Exception:
+        pass
+
+    # ── Smart Views (saved searches) ──────────────────────────────────────────
+    try:
+        from unifile.saved_searches import load_saved_searches
+        for s in load_saved_searches():
+            search = s  # capture
+
+            def _run_saved(ss=search):
+                try:
+                    if hasattr(mw, 'txt_search'):
+                        mw.txt_search.setText(ss.query)
+                    if hasattr(mw, 'cmb_type_filter') and ss.category:
+                        idx = mw.cmb_type_filter.findText(ss.category)
+                        if idx >= 0:
+                            mw.cmb_type_filter.setCurrentIndex(idx)
+                    if hasattr(mw, 'sld_conf') and ss.conf_min:
+                        mw.sld_conf.setValue(ss.conf_min)
+                    if hasattr(mw, '_apply_filter'):
+                        mw._apply_filter()
+                except Exception:
+                    pass
+
+            hint = s.query or s.category or ""
+            commands.append(_Command("Smart View", s.name, hint, _run_saved))
     except Exception:
         pass
 

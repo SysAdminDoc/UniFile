@@ -191,12 +191,15 @@ class SettingsHubDialog(QDialog):
     def _tab_system(self, theme: dict) -> QWidget:
         return _section(
             "System & Safety",
-            "Color theme, protected system paths, plugin manager, and "
+            "Color theme, font size, protected system paths, plugin manager, and "
             "category presets (preset packs for different user profiles).",
             [
                 ("Color Theme…",
-                 "Switch between Steam Dark, Catppuccin, OLED Black, and more.",
+                 "Switch between Steam Dark, Catppuccin, OLED Black, High Contrast, and more.",
                  self._open_theme),
+                ("Accessibility…",
+                 "Adjust the base UI font size (8–24 px) with a live preview.",
+                 self._open_accessibility),
                 ("Protected Paths…",
                  "Folders and filenames that UniFile will never move or delete.",
                  self._open_protected),
@@ -218,6 +221,12 @@ class SettingsHubDialog(QDialog):
                 ("Archive Content Indexer…",
                  "Index files inside .zip / .7z / .rar / .tar archives for search.",
                  self._open_archive_indexer),
+                ("Saved Searches…",
+                 "Save named Smart Views — replaying a query in one click.",
+                 self._open_saved_searches),
+                ("Inbox / Quick Capture…",
+                 "Designate a folder as Inbox; files placed there appear as a badge.",
+                 self._open_inbox),
             ],
             theme,
         )
@@ -263,9 +272,12 @@ class SettingsHubDialog(QDialog):
 
     # System tab
     def _open_theme(self):            self._call('_open_theme_picker')
+    def _open_accessibility(self):    self._call('_open_accessibility')
     def _open_protected(self):        self._call('_open_protected_paths')
     def _open_plugins(self):          self._call('_open_plugin_manager')
     def _open_shell(self):            self._call('_open_shell_integration')
 
     # Tools tab
     def _open_archive_indexer(self):  self._call('_open_archive_indexer')
+    def _open_saved_searches(self):   self._call('_open_saved_searches')
+    def _open_inbox(self):            self._call('_open_inbox')

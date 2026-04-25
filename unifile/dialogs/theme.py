@@ -348,6 +348,7 @@ class ThemePickerDialog(QDialog):
             "GitHub Dark": "Neutral, practical contrast tuned for dense detail work.",
             "Nord": "Cool, composed contrast with a softer information rhythm.",
             "Dracula": "Bold accent energy with a richer editorial feel.",
+            "High Contrast": "WCAG AA compliant — pure black/white with yellow accents.",
         }
         return descriptions.get(name, "A focused dark theme for the UniFile workspace.")
 
