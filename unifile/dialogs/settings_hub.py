@@ -9,19 +9,23 @@ while giving users a single discoverable entry point for configuration.
 """
 from __future__ import annotations
 
+import sqlite3
+import os
+
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from unifile.config import get_active_stylesheet, get_active_theme
+from unifile.config import get_active_stylesheet, get_active_theme, _PC_SCAN_CACHE_DB
 from unifile.dialogs.common import build_dialog_header
 
 
@@ -227,6 +231,10 @@ class SettingsHubDialog(QDialog):
                 ("Inbox / Quick Capture…",
                  "Designate a folder as Inbox; files placed there appear as a badge.",
                  self._open_inbox),
+                ("Clear File Scan Cache…",
+                 "Delete cached classification results so the next scan re-evaluates "
+                 "all files from scratch.  Useful after changing profiles or rules.",
+                 self._clear_scan_cache),
             ],
             theme,
         )
@@ -281,3 +289,40 @@ class SettingsHubDialog(QDialog):
     def _open_archive_indexer(self):  self._call('_open_archive_indexer')
     def _open_saved_searches(self):   self._call('_open_saved_searches')
     def _open_inbox(self):            self._call('_open_inbox')
+
+    def _clear_scan_cache(self):
+        """Count entries then ask for confirmation before wiping the scan cache."""
+        count = 0
+        if os.path.isfile(_PC_SCAN_CACHE_DB):
+            try:
+                con = sqlite3.connect(_PC_SCAN_CACHE_DB, timeout=3)
+                row = con.execute("SELECT COUNT(*) FROM scan_cache").fetchone()
+                count = row[0] if row else 0
+                con.close()
+            except Exception:
+                pass
+
+        if count == 0:
+            QMessageBox.information(self, "Scan Cache", "The scan cache is already empty.")
+            return
+
+        answer = QMessageBox.question(
+            self, "Clear File Scan Cache",
+            f"Delete {count:,} cached classification result(s)?\n\n"
+            "The next scan will re-classify every file from scratch.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            con = sqlite3.connect(_PC_SCAN_CACHE_DB, timeout=5)
+            con.execute("DELETE FROM scan_cache")
+            con.commit()
+            con.close()
+            QMessageBox.information(
+                self, "Scan Cache Cleared",
+                f"Removed {count:,} cached result(s)."
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Error", f"Could not clear cache:\n{exc}")

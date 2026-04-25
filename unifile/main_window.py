@@ -101,6 +101,7 @@ from unifile.profiles import (
     set_active_profile,
 )
 from unifile.ratings import bulk_load as ratings_bulk_load, get_rating, set_rating, clear_rating
+from unifile.xmp_writer import write_sidecar as xmp_write_sidecar, read_sidecar as xmp_read_sidecar
 from unifile.scan_mixin import ScanMixin
 from unifile.theme_mixin import ThemeMixin
 from unifile.tray_mixin import TrayMixin
@@ -895,6 +896,15 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.chk_inc_folders.setStyleSheet("QCheckBox { background: transparent; }")
         self.chk_inc_folders.setVisible(False)
         opts_row.addWidget(self.chk_inc_folders)
+
+        self.chk_force_rescan = QCheckBox("Force rescan")
+        self.chk_force_rescan.setChecked(False)
+        self.chk_force_rescan.setToolTip(
+            "Bypass the incremental scan cache — reclassify every file from scratch.\n"
+            "Use this after changing profiles or when cached results look wrong.")
+        self.chk_force_rescan.setStyleSheet("QCheckBox { background: transparent; }")
+        self.chk_force_rescan.setVisible(False)
+        opts_row.addWidget(self.chk_force_rescan)
 
         lbl_depth = QLabel("Depth")
         lbl_depth.setStyleSheet(
@@ -1693,6 +1703,16 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                     a.setCheckable(True); a.setChecked(True)
                 flag_actions[a] = f
 
+        # XMP sidecar writer (files mode only)
+        act_xmp_sidecar = None
+        if _ctx_path:
+            sidecar_exists = os.path.isfile(_ctx_path + '.xmp')
+            xmp_label = "Update XMP Sidecar" if sidecar_exists else "Write XMP Sidecar"
+            act_xmp_sidecar = menu.addAction(f"🏷  {xmp_label}")
+            act_xmp_sidecar.setToolTip(
+                "Write category and rating to a .xmp sidecar file that Lightroom, "
+                "Adobe Bridge, and other tools can read.")
+
         # Conflict resolution strategies
         conflict_actions = {}
         if is_files:
@@ -1759,6 +1779,19 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             if _ctx_idx < len(self.file_items):
                 self.file_items[_ctx_idx].metadata['_flag'] = new_flag
             self._log(f"Flagged {os.path.basename(_ctx_path)}: {new_flag or 'none'}")
+        elif action == act_xmp_sidecar and _ctx_path and _ctx_idx < len(self.file_items):
+            it = self.file_items[_ctx_idx]
+            cur_stars, cur_flag = get_rating(_ctx_path)
+            ok = xmp_write_sidecar(
+                _ctx_path,
+                category=it.category or '',
+                rating=cur_stars,
+                flag=cur_flag,
+            )
+            if ok:
+                self._log(f"XMP sidecar written: {os.path.basename(_ctx_path)}.xmp")
+            else:
+                self._log(f"[WARN] Failed to write XMP sidecar for {os.path.basename(_ctx_path)}")
         elif action in conflict_actions:
             strat = conflict_actions[action]
             self.settings.setValue("conflict_strategy", strat)
@@ -2129,6 +2162,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_photo.setVisible(is_files)
         self.chk_inc_files.setVisible(is_files)
         self.chk_inc_folders.setVisible(is_files)
+        self.chk_force_rescan.setVisible(is_files)
         self.lbl_type_filter.setVisible(is_files)
         self.cmb_type_filter.setVisible(is_files)
         self.cmb_face_filter.hide()

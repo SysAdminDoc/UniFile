@@ -636,6 +636,28 @@ class _ScanCache:
         except Exception:
             pass
 
+    def count(self) -> int:
+        """Return the number of entries currently in the cache."""
+        if not self._conn:
+            return 0
+        try:
+            row = self._conn.execute("SELECT COUNT(*) FROM scan_cache").fetchone()
+            return row[0] if row else 0
+        except Exception:
+            return 0
+
+    def clear(self) -> int:
+        """Delete all entries.  Returns the number of rows removed."""
+        if not self._conn:
+            return 0
+        try:
+            n = self.count()
+            self._conn.execute("DELETE FROM scan_cache")
+            self._conn.commit()
+            return n
+        except Exception:
+            return 0
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # METADATA EXTRACTOR — Phase 1 (PC File Organizer)
