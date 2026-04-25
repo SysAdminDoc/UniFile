@@ -2,7 +2,38 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v9.3.15] — Commit `icon.ico` so PyInstaller `EXE(icon=...)` resolves
+## [v9.3.16] — Shell Integration, Ctrl+K Command Palette, Archive Indexer
+
+### Added
+- **Windows Shell Integration** (`unifile/shell_integration.py`):
+  - `Organize with UniFile` context menu on folder right-click (HKCU, no admin required)
+  - Background context menu entry (right-click on empty Explorer area)
+  - Send To shortcut in `%APPDATA%\Microsoft\Windows\SendTo`
+  - CLI: `python -m unifile install-shell` / `uninstall-shell`
+  - Settings Hub → System tab → `Shell Integration…` button
+  - New dialog (`dialogs/shell_integration_dialog.py`) with live install/uninstall status
+
+- **Ctrl+K Command Palette** (`unifile/dialogs/command_palette.py`):
+  - Spotlight-style floating launcher triggered by Ctrl+K or Settings → Command Palette
+  - Real-time search across: built-in commands, saved profiles, all categories
+  - Arrow-key navigation, Enter to execute, Escape to close
+  - Rebuilds command list each open to pick up new profiles/categories
+
+- **Archive Content Indexer** (`unifile/archive_indexer.py`):
+  - Indexes files inside `.zip`, `.7z`, `.rar`, `.tar.*` without extraction
+  - SQLite cache keyed by (path, mtime, size); only re-scans changed archives
+  - `scan_file()`, `scan_directory()`, `search()`, `index_stats()`, `clear_index()` API
+  - `ArchiveIndexWorker` QThread with progress/finished/error signals
+  - New dialog (`dialogs/archive_indexer_dialog.py`) with directory picker, progress bar, search
+  - Accessible via Settings Hub → Tools tab → `Archive Content Indexer…`
+
+### Changed
+- Settings Hub: added `Shell Integration…` to System tab; new `Tools` tab
+- `main_window.py`: Ctrl+K shortcut + `_open_command_palette()` slot; `Command Palette` menu item
+- `dialogs_mixin.py`: `_open_shell_integration()` and `_open_archive_indexer()` slots
+- `__main__.py`: `install-shell` and `uninstall-shell` CLI subcommands
+
+
 
 v9.3.14's release workflow failed with
 `FileNotFoundError: Icon input file D:\a\UniFile\UniFile\icon.ico not found`

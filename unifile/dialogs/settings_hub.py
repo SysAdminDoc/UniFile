@@ -108,6 +108,7 @@ class SettingsHubDialog(QDialog):
         self.tabs.addTab(self._tab_photo(_t), "Photo & Media")
         self.tabs.addTab(self._tab_rules(_t), "Rules & Learning")
         self.tabs.addTab(self._tab_system(_t), "System")
+        self.tabs.addTab(self._tab_tools(_t), "Tools")
 
         footer = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         footer.rejected.connect(self.reject)
@@ -202,6 +203,21 @@ class SettingsHubDialog(QDialog):
                 ("Plugin Manager…",
                  "Review installed plugins; enable or disable individually.",
                  self._open_plugins),
+                ("Shell Integration…",
+                 "Install 'Organize with UniFile' on folder right-click in Explorer.",
+                 self._open_shell),
+            ],
+            theme,
+        )
+
+    def _tab_tools(self, theme: dict) -> QWidget:
+        return _section(
+            "Power Tools",
+            "Utilities for advanced file management and search.",
+            [
+                ("Archive Content Indexer…",
+                 "Index files inside .zip / .7z / .rar / .tar archives for search.",
+                 self._open_archive_indexer),
             ],
             theme,
         )
@@ -249,3 +265,7 @@ class SettingsHubDialog(QDialog):
     def _open_theme(self):            self._call('_open_theme_picker')
     def _open_protected(self):        self._call('_open_protected_paths')
     def _open_plugins(self):          self._call('_open_plugin_manager')
+    def _open_shell(self):            self._call('_open_shell_integration')
+
+    # Tools tab
+    def _open_archive_indexer(self):  self._call('_open_archive_indexer')
