@@ -12,6 +12,10 @@ Supported token syntax (all case-insensitive, order does not matter):
   tag:<substr>             metadata tag contains substr
   size:>N[b|kb|mb|gb]      file size greater-than N
   size:<N[b|kb|mb|gb]      file size less-than N
+  rating:N                 star rating equals N  (0-5)
+  rating:>=N               star rating >= N
+  rating:<=N               star rating <= N
+  flag:<value>             review flag is 'pending', 'approved', or 'rejected'
 
 Any text NOT matched as a token is treated as a plain substring filter
 checked against the filename, directory path, and category.
@@ -41,6 +45,9 @@ class SearchSpec:
     tags: List[str] = field(default_factory=list)
     size_op: Optional[str] = None       # '>' or '<'
     size_bytes: Optional[int] = None
+    rating_op: Optional[str] = None    # '>=', '<=', '>', '<', '='
+    rating_val: Optional[int] = None
+    flag: Optional[str] = None         # 'pending' | 'approved' | 'rejected'
     is_chainable: bool = False          # True when at least one token was parsed
 
 
@@ -82,6 +89,13 @@ def parse_query(raw: str) -> SearchSpec:
             op, sz = _parse_size(val)
             if op is not None:
                 spec.size_op, spec.size_bytes = op, sz
+        elif key in ('rating', 'stars', 'r'):
+            m2 = re.match(r'^(>=|<=|>|<|=)?([0-5])$', val.strip())
+            if m2:
+                spec.rating_op = m2.group(1) or '='
+                spec.rating_val = int(m2.group(2))
+        elif key in ('flag', 'status'):
+            spec.flag = val.strip()
 
     spec.text = remaining.strip().lower()
     return spec
@@ -137,5 +151,19 @@ def item_matches(spec: SearchSpec, it) -> bool:
         return False
     if spec.size_op == '<' and spec.size_bytes is not None and size >= spec.size_bytes:
         return False
+
+    if spec.rating_op is not None and spec.rating_val is not None:
+        r = int(meta.get('_rating', 0) or 0)
+        op, val = spec.rating_op, spec.rating_val
+        if op == '>=' and r < val: return False
+        if op == '<=' and r > val: return False
+        if op == '>'  and r <= val: return False
+        if op == '<'  and r >= val: return False
+        if op == '='  and r != val: return False
+
+    if spec.flag is not None:
+        item_flag = str(meta.get('_flag', '') or '').lower()
+        if spec.flag not in item_flag:
+            return False
 
     return True

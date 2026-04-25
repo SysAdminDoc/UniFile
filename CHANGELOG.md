@@ -2,6 +2,34 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.19] — Star Ratings, Keyboard Shortcuts, Extended Tab Order
+
+### Added
+- **Per-file star ratings & review flags** (`unifile/ratings.py`):
+  - Rate any file 1–5 stars via right-click context menu → **Rate ★★★☆☆**
+  - Set a review flag (Pending / Approved / Rejected) from the same submenu
+  - Ratings and flags persist in SQLite (`%APPDATA%\UniFile\ratings.sqlite`)
+  - Current rating shown with checkmark highlighting in the Rate submenu
+  - After a files scan, ratings bulk-loaded into `it.metadata['_rating']` / `it.metadata['_flag']`
+
+- **`rating:` and `flag:` search tokens** (`unifile/search_parser.py`):
+  - `rating:3` — exact match; `rating:>=4` — at least 4 stars; `rating:<=2` — 2 or fewer
+  - `flag:approved` / `flag:pending` / `flag:rejected`
+  - Tokens resolved against pre-loaded metadata for zero-overhead filtering
+
+- **Keyboard shortcuts** (`unifile/main_window.py`):
+  - **Ctrl+S** — start scan (when Scan button is enabled)
+  - **Ctrl+T** — focus search bar and select all text
+  - **Alt+1–9** — switch profile by index (maps to `cmb_profile` entries in order)
+
+- **Extended tab order**:
+  - Previous: source → scan → apply → table
+  - Now: source → scan → apply → **search** → **confidence slider** → table
+
+### Changed
+- Right-click menu: rating/flag submenu added for all files-mode rows
+- `_on_files_scan_done` overridden in `UniFile` (not `ScanMixin`) to call `_load_item_ratings()` post-scan
+
 ## [v9.3.18] — Chainable Search Syntax, Query History, Accessibility Annotations
 
 ### Added
