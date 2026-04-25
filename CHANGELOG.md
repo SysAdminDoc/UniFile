@@ -2,7 +2,40 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v9.3.17] — High Contrast Theme, Font Size, Saved Searches, Inbox
+## [v9.3.18] — Chainable Search Syntax, Query History, Accessibility Annotations
+
+### Added
+- **Search query history** (`unifile/query_history.py`):
+  - Persists last 20 unique queries to `%APPDATA%\UniFile\query_history.json`
+  - Press **Up arrow** in the search bar to cycle backwards through history; **Down** to cycle forward or clear
+  - `QCompleter` attached to the search bar — typing shows matching history entries as autocomplete suggestions
+  - `add_to_history()` called on `returnPressed`; `clear_history()` exposed for future settings UI
+
+- **Chainable search syntax** (`unifile/search_parser.py`):
+  - Token grammar: `name:` `ext:` `cat:` `dir:` `folder:` `path:` `method:` `tag:` `size:` — multiple tokens combinable in one query
+  - Example: `ext:pdf,docx cat:invoices dir:2024 size:>10kb`
+  - `size:` supports operators (`>` / `<`) and units (`b` `kb` `mb` `gb`)
+  - Non-token text remains a plain substring match (filename, path, category)
+  - `parse_query(raw)` → `SearchSpec` dataclass; `item_matches(spec, item)` → bool
+
+- **Improved `_apply_filter()`** (`unifile/filter_mixin.py`):
+  - Now calls `parse_query()` to detect structured tokens
+  - When tokens are present: matches against `FileItem`/`CategorizeItem` properties via `item_matches()`
+  - Fixes face-filter row index bug: now uses `_item_idx_from_row()` instead of raw row index
+  - Falls back to cell-text scan for rows without a mapped item (backward compatible)
+
+- **Accessibility annotations** (`unifile/main_window.py`):
+  - `setAccessibleName()` + `setAccessibleDescription()` on: search bar, confidence slider, file-type filter combo, Scan button, Apply Changes button, results table
+  - All screen readers (NVDA, JAWS, Windows Narrator) can now identify and describe these widgets
+
+### Changed
+- Search bar placeholder updated to: `Filter… ext:pdf cat:Documents name:invoice size:>1mb`
+- PC Files mode placeholder updated to hint at chainable tokens
+- Search bar width increased from 280 → 300 px to accommodate longer token queries
+
+---
+
+
 
 ### Added
 - **High Contrast theme** (`config.py`):

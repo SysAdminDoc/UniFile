@@ -7,13 +7,14 @@ import sys
 import time
 from collections import Counter
 
-from PyQt6.QtCore import QSettings, Qt, QThread, QThreadPool, QTimer, pyqtSignal
+from PyQt6.QtCore import QSettings, QStringListModel, Qt, QThread, QThreadPool, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QPixmap, QTextCursor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
+    QCompleter,
     QDialog,
     QFileDialog,
     QFrame,
@@ -43,6 +44,7 @@ from PyQt6.QtWidgets import (
 )
 
 from unifile import __version__
+from unifile.query_history import add_to_history, load_history
 from unifile.apply_mixin import ApplyMixin
 from unifile.cache import (
     _load_undo_stack,
@@ -610,6 +612,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_scan.setFixedHeight(38)
         self.btn_scan.setDefault(True)
         self.btn_scan.clicked.connect(self._on_scan)
+        self.btn_scan.setAccessibleName("Scan")
+        self.btn_scan.setAccessibleDescription("Analyse the source folder and generate an organisation plan")
         ab_lay.addWidget(self.btn_scan)
 
         self.btn_apply = QPushButton("Apply Changes")
@@ -617,6 +621,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_apply.setFixedHeight(38)
         self.btn_apply.setEnabled(False)
         self.btn_apply.clicked.connect(self._on_apply)
+        self.btn_apply.setAccessibleName("Apply Changes")
+        self.btn_apply.setAccessibleDescription("Execute the checked items in the results table")
         ab_lay.addWidget(self.btn_apply)
 
         self.btn_preview = QPushButton("Preview Plan")
@@ -917,6 +923,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             f"QComboBox QAbstractItemView {{ background: {_t['input_bg']}; color: {_t['fg']};"
             f"selection-background-color: {_t['selection']}; border: 1px solid {_t['border']}; }}")
         self.cmb_type_filter.setVisible(False)
+        self.cmb_type_filter.setAccessibleName("File type filter")
+        self.cmb_type_filter.setAccessibleDescription("Restrict the scan to a specific category of file types")
         opts_row.addWidget(self.cmb_type_filter)
 
         opts_row.addStretch()
@@ -1038,9 +1046,22 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         # Filter / search
         self.txt_search = QLineEdit()
         self.txt_search.setClearButtonEnabled(True)
-        self.txt_search.setPlaceholderText("Filter names, folders, categories, or methods…")
-        self.txt_search.setFixedWidth(280)
+        self.txt_search.setPlaceholderText("Filter… ext:pdf cat:Documents name:invoice size:>1mb")
+        self.txt_search.setFixedWidth(300)
         self.txt_search.textChanged.connect(self._apply_filter)
+        self.txt_search.returnPressed.connect(self._search_save_history)
+        self.txt_search.textEdited.connect(self._on_search_text_edited)
+        self.txt_search.installEventFilter(self)
+        self.txt_search.setAccessibleName("Search filter")
+        self.txt_search.setAccessibleDescription(
+            "Filter scan results by text. "
+            "Supports chainable tokens: name: ext: cat: dir: method: tag: size:"
+        )
+        self._history_pos = -1
+        self._history_completer = QCompleter(load_history(), self)
+        self._history_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._history_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.txt_search.setCompleter(self._history_completer)
         toolbar.addWidget(self.txt_search)
 
         lbl_cf = QLabel("Confidence floor")
@@ -1051,6 +1072,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.sld_conf.setRange(0, 100); self.sld_conf.setValue(0)
         self.sld_conf.setFixedWidth(90)
         self.sld_conf.valueChanged.connect(self._on_conf_changed)
+        self.sld_conf.setAccessibleName("Confidence floor")
+        self.sld_conf.setAccessibleDescription("Minimum AI confidence percentage — rows below this value are hidden")
         toolbar.addWidget(self.sld_conf)
         self.lbl_conf = QLabel("0%"); self.lbl_conf.setFixedWidth(30)
         self.lbl_conf.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
@@ -1109,6 +1132,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         # ── Results Table ────────────────────────────────────────────────
         self.tbl = QTableWidget()
         self.tbl.setObjectName("main_table")
+        self.tbl.setAccessibleName("Results table")
+        self.tbl.setAccessibleDescription("Scan results — review and check items before applying changes")
         self.tbl.setAlternatingRowColors(True)
         self.tbl.setSortingEnabled(False)
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -1460,7 +1485,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                 "preview": "Preview Moves",
                 "open": "Open Output",
                 "hint": "Scan loose files, tune the confidence floor or filters, then apply a calmer destination plan with duplicates in view.",
-                "search": "Filter names, folders, categories, tags, or methods…",
+                "search": "Filter names, folders, categories, tags, or methods… (ext: cat: dir: tag:)",
                 "empty_title": "Choose a file source to scan",
                 "empty_detail": "UniFile will map loose files into category destinations, flag uncertain matches, and keep the plan reviewable.",
                 "next": "Pick a source folder, scan to classify files, review confidence and filters, then apply the checked rows."
@@ -3113,6 +3138,56 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             self._log(f"HTML report exported to: {path}")
         except Exception as e:
             self._log(f"HTML export error: {e}")
+
+    # ═══ SEARCH HISTORY ══════════════════════════════════════════════════════
+
+    def eventFilter(self, obj, event):
+        """Intercept Up/Down arrow keys on the search bar to cycle query history."""
+        from PyQt6.QtCore import QEvent
+        if obj is self.txt_search and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            # Don't steal arrow keys while the autocomplete popup is open
+            if hasattr(self, '_history_completer') and self._history_completer.popup().isVisible():
+                return super().eventFilter(obj, event)
+            history = load_history()
+            if not history:
+                return super().eventFilter(obj, event)
+            if key == Qt.Key.Key_Up:
+                self._history_pos = min(getattr(self, '_history_pos', -1) + 1, len(history) - 1)
+                self.txt_search.blockSignals(True)
+                self.txt_search.setText(history[self._history_pos])
+                self.txt_search.blockSignals(False)
+                self._apply_filter()
+                return True
+            elif key == Qt.Key.Key_Down:
+                pos = getattr(self, '_history_pos', -1)
+                if pos > 0:
+                    self._history_pos = pos - 1
+                    self.txt_search.blockSignals(True)
+                    self.txt_search.setText(history[self._history_pos])
+                    self.txt_search.blockSignals(False)
+                    self._apply_filter()
+                elif pos == 0:
+                    self._history_pos = -1
+                    self.txt_search.blockSignals(True)
+                    self.txt_search.setText("")
+                    self.txt_search.blockSignals(False)
+                    self._apply_filter()
+                return True
+        return super().eventFilter(obj, event)
+
+    def _search_save_history(self):
+        """Save the current search query to history on Enter."""
+        query = self.txt_search.text().strip()
+        if query:
+            add_to_history(query)
+            self._history_pos = -1
+            if hasattr(self, '_history_completer'):
+                self._history_completer.setModel(QStringListModel(load_history(), self))
+
+    def _on_search_text_edited(self, text: str):
+        """Reset history cycling position when the user edits the search bar manually."""
+        self._history_pos = -1
 
     def keyPressEvent(self, event):
         """Keyboard navigation for the main table."""
