@@ -1,7 +1,7 @@
 # Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
-Current version: **v9.3.15**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
+Current version: **v9.3.20**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
 
 ---
 

@@ -1448,7 +1448,7 @@ class ScanFilesWorker(QThread):
 
     def __init__(self, src_dir, dst_dir, categories, scan_depth=0,
                  check_hashes=False, include_folders=True, include_files=True,
-                 ext_filter=None):
+                 ext_filter=None, force_rescan=False):
         super().__init__()
         self.src_dir        = src_dir
         self.dst_dir        = dst_dir
@@ -1458,6 +1458,7 @@ class ScanFilesWorker(QThread):
         self.include_folders = include_folders
         self.include_files  = include_files
         self.ext_filter     = ext_filter   # set of allowed extensions (e.g. _FILTER_IMAGE_EXTS) or None
+        self.force_rescan   = force_rescan
         self._cancelled     = False
 
     def cancel(self): self._cancelled = True
@@ -1572,7 +1573,7 @@ class ScanFilesWorker(QThread):
 
             # ── Try scan cache first ─────────────────────────────────────────
             cached = None
-            if not is_folder and fsize > 0:
+            if not self.force_rescan and not is_folder and fsize > 0:
                 cached = cache.lookup(fpath_str, fmtime, fsize)
 
             if cached:
@@ -1939,7 +1940,7 @@ class ScanFilesLLMWorker(QThread):
 
     def __init__(self, src_dir, dst_dir, categories, scan_depth=0,
                  check_hashes=False, include_folders=True, include_files=True,
-                 ext_filter=None):
+                 ext_filter=None, force_rescan=False):
         super().__init__()
         self.src_dir        = src_dir
         self.dst_dir        = dst_dir
@@ -1949,6 +1950,7 @@ class ScanFilesLLMWorker(QThread):
         self.include_folders = include_folders
         self.include_files  = include_files
         self.ext_filter     = ext_filter
+        self.force_rescan   = force_rescan
         self._cancelled     = False
         self._fallback_worker = None
 
@@ -1958,7 +1960,7 @@ class ScanFilesLLMWorker(QThread):
             self.src_dir, self.dst_dir, self.categories,
             self.scan_depth, self.check_hashes,
             self.include_folders, self.include_files,
-            ext_filter=self.ext_filter)
+            ext_filter=self.ext_filter, force_rescan=self.force_rescan)
         # Forward cancel state so the user can stop the fallback scan too
         fallback._cancelled = self._cancelled
         self._fallback_worker = fallback  # keep ref for cancel forwarding
@@ -2615,7 +2617,7 @@ class ScanFilesLLMWorker(QThread):
                 bd = _build_item_data(item_path, is_folder)
 
                 # ── Cache check — skip AI if file unchanged since last scan ──
-                if not bd['is_folder'] and bd['fsize'] > 0:
+                if not self.force_rescan and not bd['is_folder'] and bd['fsize'] > 0:
                     cached = cache.lookup(str(bd['item_path']), bd['fmtime'], bd['fsize'])
                     if cached:
                         cache_hits += 1
