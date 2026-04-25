@@ -2,6 +2,54 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.17] — High Contrast Theme, Font Size, Saved Searches, Inbox
+
+### Added
+- **High Contrast theme** (`config.py`):
+  - New `THEME_HIGH_CONTRAST` palette: pure black/white with yellow accents, WCAG AA compliant
+  - Registered in `THEMES` dict — automatically appears in the Theme Picker dialog
+  - Subtitle added to the theme picker card: "WCAG AA compliant — pure black/white with yellow accents"
+
+- **Configurable font size** (`config.py`):
+  - `load_font_size()` / `save_font_size(size)` — persisted to `%APPDATA%\UniFile\accessibility.json`
+  - `_build_theme_qss(t, font_size)` now scales base widget, input, button, table, and menu font sizes
+  - `get_active_stylesheet()` automatically incorporates the saved font size
+  - `_on_theme_changed()` in `theme_mixin.py` uses the active font size when regenerating QSS
+
+- **Accessibility dialog** (`unifile/dialogs/accessibility.py`):
+  - Font size slider (8–24 px) with live preview on the main window
+  - "Reset to default" link; Apply / Cancel buttons
+  - Accessible from: Settings Hub → System → `Accessibility…` and Ctrl+K "Accessibility"
+
+- **Saved Searches / Smart Views** (`unifile/saved_searches.py`):
+  - `SavedSearch` dataclass: name, query, category, conf_min, created_at, last_run, result_count
+  - `load_saved_searches()`, `add_search()`, `delete_search()`, `update_run_stats()` API
+  - Persisted to `%APPDATA%\UniFile\saved_searches.json`
+
+- **Saved Searches dialog** (`unifile/dialogs/saved_searches_dialog.py`):
+  - Name + save current filters in one row; list of all saved searches below
+  - Apply: pushes query/category/confidence back to the main window; Delete: removes entry
+  - Accessible from: Settings Hub → Tools → `Saved Searches…` and Ctrl+K "Saved Searches"
+  - Command Palette "Smart View" section: each saved search appears as a runnable command
+
+- **Inbox / Quick Capture** (`unifile/inbox.py`):
+  - `load_inbox_config()`, `save_inbox_config()`, `get_inbox_path()`, `is_inbox_enabled()`, `get_inbox_count()` API
+  - Persisted to `%APPDATA%\UniFile\inbox.json`
+
+- **Inbox dialog** (`unifile/dialogs/inbox_dialog.py`):
+  - Folder picker with live file count; Open Folder shortcut; Clear Inbox / Save buttons
+  - Accessible from: Settings Hub → Tools → `Inbox / Quick Capture…` and Ctrl+K "Inbox"
+
+### Changed
+- `theme_mixin.py`: `_on_theme_changed()` now calls `load_font_size()` and passes it to `_build_theme_qss()`
+- `settings_hub.py`:
+  - System tab: added `Accessibility…` button; updated description to mention High Contrast
+  - Tools tab: added `Saved Searches…` and `Inbox / Quick Capture…` buttons
+- `dialogs_mixin.py`: added `_open_accessibility()`, `_open_saved_searches()`, `_open_inbox()` slots
+- `dialogs/command_palette.py`: added Accessibility, Inbox, Saved Searches commands; new Smart View section for saved searches
+- `dialogs/theme.py`: added subtitle for "High Contrast" theme in the picker dialog
+
+
 ## [v9.3.16] — Shell Integration, Ctrl+K Command Palette, Archive Indexer
 
 ### Added
