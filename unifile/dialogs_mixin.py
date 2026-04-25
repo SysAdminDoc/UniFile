@@ -120,3 +120,19 @@ class DialogsMixin:
         dlg = ThemePickerDialog(self)
         dlg.theme_changed.connect(self._on_theme_changed)
         dlg.exec()
+
+    # Shell integration --------------------------------------------------------
+
+    def _open_shell_integration(self):
+        """Open the Shell Integration dialog (Windows only)."""
+        from unifile.dialogs.shell_integration_dialog import ShellIntegrationDialog
+        dlg = ShellIntegrationDialog(self)
+        dlg.exec()
+
+    # Archive indexer ----------------------------------------------------------
+
+    def _open_archive_indexer(self):
+        """Open the Archive Content Indexer dialog."""
+        from unifile.dialogs.archive_indexer_dialog import ArchiveIndexerDialog
+        dlg = ArchiveIndexerDialog(self)
+        dlg.exec()

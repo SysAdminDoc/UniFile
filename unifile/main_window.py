@@ -173,6 +173,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.undo_ops = []
         self.settings = QSettings("UniFile", "UniFile")
         self._ollama_ready = False
+        self._command_palette = None
 
         # Enable drag & drop
         self.setAcceptDrops(True)
@@ -512,6 +513,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         # Unified Settings Hub — one-click entry point for every configurable
         # surface. Accelerator key so power users can Alt-S, Enter to reach it.
         menu_tools.addAction("&All Settings…", self._open_settings_hub)
+        menu_tools.addAction("Command Palette\tCtrl+K", self._open_command_palette)
         menu_tools.addSeparator()
         menu_tools.addAction("Edit Categories", self._open_custom_cats)
         menu_tools.addAction("Envato API Key", self._set_envato_key)
@@ -3149,8 +3151,22 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                 w = self.tbl.cellWidget(r, 0)
                 if isinstance(w, QCheckBox):
                     w.setChecked(False)
+        elif (event.modifiers() == Qt.KeyboardModifier.ControlModifier
+              and event.key() == Qt.Key.Key_K):
+            self._open_command_palette()
         else:
             super().keyPressEvent(event)
+
+    # ═══ COMMAND PALETTE ══════════════════════════════════════════════════════
+
+    def _open_command_palette(self):
+        """Open the Ctrl+K command palette."""
+        from unifile.dialogs.command_palette import CommandPalette, build_commands
+        if not hasattr(self, '_command_palette') or self._command_palette is None:
+            self._command_palette = CommandPalette(parent=self)
+        # Rebuild commands every open so profiles/categories are fresh
+        self._command_palette.set_commands(build_commands(self))
+        self._command_palette.open()
 
     # ═══ EXPORT/IMPORT RULES ═════════════════════════════════════════════════
     def _export_rules(self):
