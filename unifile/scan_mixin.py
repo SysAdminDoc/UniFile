@@ -589,14 +589,14 @@ class ScanMixin:
             self.worker = ScanFilesLLMWorker(
                 src, "", self._pc_categories, depth,
                 self.chk_hash.isChecked(), inc_folders, inc_files,
-                ext_filter=ext_filter)
+                ext_filter=ext_filter, force_rescan=self.chk_force_rescan.isChecked())
             self.lbl_prog_phase.setText("AI Classify")
             self.lbl_prog_method.setText("LLM classifying files…")
         else:
             self.worker = ScanFilesWorker(
                 src, "", self._pc_categories, depth,
                 self.chk_hash.isChecked(), inc_folders, inc_files,
-                ext_filter=ext_filter)
+                ext_filter=ext_filter, force_rescan=self.chk_force_rescan.isChecked())
             self.lbl_prog_phase.setText("Scanning")
             self.lbl_prog_method.setText("Multi-signal classification…")
 

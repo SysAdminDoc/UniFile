@@ -2,7 +2,43 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v9.3.19] — Star Ratings, Keyboard Shortcuts, Extended Tab Order
+## [v9.3.20] — Force Rescan, XMP Sidecars, Disk Space Protection
+
+### Added
+- **Force full rescan checkbox** (`unifile/main_window.py`, `unifile/workers.py`):
+  - New **"Force rescan"** checkbox in the scan options bar (files mode only)
+  - When checked, bypasses the incremental scan cache — every file is reclassified from scratch
+  - Threads through both `ScanFilesWorker` and `ScanFilesLLMWorker` (including LLM fallback)
+  - Fresh classifications still update the cache, so subsequent scans remain incremental
+
+- **`_ScanCache.count()` / `_ScanCache.clear()`** (`unifile/files.py`):
+  - `count()` returns the number of cached entries
+  - `clear()` wipes all entries and returns how many were removed
+
+- **Clear File Scan Cache button** (Settings → Tools tab):
+  - Shows the current entry count in a confirmation dialog before wiping
+  - Uses direct SQLite access so no open scan worker is required
+
+- **XMP sidecar writer** (`unifile/xmp_writer.py`):
+  - `write_sidecar(path, category, tags, rating, flag)` — writes a `.xmp` sidecar alongside the original file
+  - Uses only stdlib `xml.etree.ElementTree` (zero new dependencies)
+  - If a sidecar already exists, only UniFile-managed fields are updated; third-party fields are preserved
+  - Wrapped in standard `<?xpacket ...?>` processing instructions for compatibility with Lightroom, Adobe Bridge, etc.
+  - `read_sidecar(path)` — reads back category, rating, tags, flag, and timestamps
+  - Right-click any file in files mode → **"Write XMP Sidecar"** (shows "Update" if `.xmp` already present)
+
+- **Disk space protection** (`unifile/apply_mixin.py`):
+  - Before starting a file-move apply (not dry runs), checks free space on every destination volume
+  - For cross-volume moves (copy+delete), sums file sizes against destination free space
+  - For same-volume renames, enforces a minimum headroom threshold (default **512 MB**, configurable via `disk_protection/min_free_mb` QSettings key)
+  - If any volume fails the check, shows a `QMessageBox.warning` listing the volume, current free, and required bytes — and aborts
+
+### Changed
+- Scan option bar now shows `Force rescan` checkbox alongside `Include Files` / `Include Folders` in files mode
+- `ScanFilesWorker.__init__` and `ScanFilesLLMWorker.__init__` accept `force_rescan=False` keyword argument
+- `_fallback_rule_based()` in `ScanFilesLLMWorker` forwards `force_rescan` to the fallback `ScanFilesWorker`
+
+
 
 ### Added
 - **Per-file star ratings & review flags** (`unifile/ratings.py`):
