@@ -1,17 +1,3 @@
-<!-- codex-branding:start -->
-<p align="center">
-  
-
-<img width="1024" height="516" alt="icon" src="https://github.com/user-attachments/assets/196b1c78-ec0c-44cc-8a35-9c56adfd5247" />
-</p>
-
-<p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-9.3.20-58A6FF?style=for-the-badge">
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
-  <img alt="Platform" src="https://img.shields.io/badge/platform-Python%20GUI-58A6FF?style=for-the-badge">
-</p>
-<!-- codex-branding:end -->
-
 # UniFile
 
 ![Version](https://img.shields.io/badge/version-9.3.16-blue)
