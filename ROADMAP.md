@@ -345,12 +345,6 @@ Strategic / aspirational features. Some require significant architecture changes
 ## Research-Driven Additions
 
 ### P1
-- [ ] P1 - Durable watch-mode job queue with file-settle checks and retry status
-  Why: Watch mode currently uses `QFileSystemWatcher` plus a fixed delay and UI-state mutation, so partially written files, failed scans, and missed retries are not represented as recoverable jobs.
-  Evidence: `unifile/widgets.py:505-638`, Hazel/File Juggler watched-folder rule behavior, Paperless-ngx/Immich background job visibility.
-  Touches: `unifile/widgets.py`, `unifile/watch_mixin.py`, watch history storage in `unifile/config.py`, status/dashboard UI, watch-mode tests.
-  Acceptance: Changed files must remain size/mtime-stable before scan; pending/running/failed watch jobs persist across app restarts; users can retry or dismiss failed jobs; tests simulate rapid writes, deletes, restart recovery, and scan failure.
-  Complexity: L
 ### P2
 - [ ] P2 - Explain duplicate and cleanup no-result outcomes
   Why: Focused cleanup tools win trust by explaining why files were or were not grouped, especially for reference-folder, near-duplicate, and broken-file scans.

@@ -1054,12 +1054,12 @@ class PluginManagerDialog(QDialog):
 
 
 class WatchHistoryDialog(QDialog):
-    """Shows a log of all Watch Mode auto-organize events."""
+    """Shows watch history events and the durable job queue with retry/dismiss."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Watch History")
-        self.setMinimumSize(700, 500)
+        self.setMinimumSize(750, 560)
         self.setStyleSheet(get_active_stylesheet())
         self._build_ui()
 
@@ -1073,13 +1073,53 @@ class WatchHistoryDialog(QDialog):
             _t,
             "Monitoring",
             "Watch Mode History",
-            "Review recent background organize events triggered by Watch Mode. Use this log to confirm what ran, where it ran, and what happened."
+            "Review background events and manage pending or failed watch jobs. Failed jobs can be retried or dismissed."
         ))
 
         self.lbl_summary = QLabel("")
         self.lbl_summary.setWordWrap(True)
         self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px; padding: 0 2px;")
         lay.addWidget(self.lbl_summary)
+
+        # Failed/pending jobs section
+        self.lbl_jobs = QLabel("Job Queue")
+        self.lbl_jobs.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 13px; font-weight: 700;")
+        lay.addWidget(self.lbl_jobs)
+
+        self.tbl_jobs = QTableWidget()
+        self.tbl_jobs.setColumnCount(5)
+        self.tbl_jobs.setHorizontalHeaderLabels(["File", "Folder", "State", "Retries", "Error"])
+        self.tbl_jobs.horizontalHeader().setStretchLastSection(True)
+        self.tbl_jobs.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tbl_jobs.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_jobs.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_jobs.verticalHeader().setVisible(False)
+        self.tbl_jobs.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tbl_jobs.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_jobs.setAlternatingRowColors(True)
+        self.tbl_jobs.setMaximumHeight(160)
+        lay.addWidget(self.tbl_jobs)
+
+        job_btns = QHBoxLayout()
+        self.btn_retry = QPushButton("Retry Selected")
+        self.btn_retry.setProperty("class", "primary")
+        self.btn_retry.clicked.connect(self._retry_selected)
+        self.btn_retry.setEnabled(False)
+        job_btns.addWidget(self.btn_retry)
+        self.btn_dismiss = QPushButton("Dismiss Selected")
+        self.btn_dismiss.setProperty("class", "danger")
+        self.btn_dismiss.clicked.connect(self._dismiss_selected)
+        self.btn_dismiss.setEnabled(False)
+        job_btns.addWidget(self.btn_dismiss)
+        job_btns.addStretch()
+        lay.addLayout(job_btns)
+
+        self.tbl_jobs.currentCellChanged.connect(self._on_job_selection_changed)
+
+        # Event history section
+        lbl_events = QLabel("Event Log")
+        lbl_events.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 13px; font-weight: 700;")
+        lay.addWidget(lbl_events)
 
         self.tbl = QTableWidget()
         self.tbl.setColumnCount(4)
@@ -1094,7 +1134,7 @@ class WatchHistoryDialog(QDialog):
         lay.addWidget(self.tbl, 1)
 
         bb = QHBoxLayout()
-        self.btn_clear = QPushButton("Clear Watch History")
+        self.btn_clear = QPushButton("Clear Event Log")
         self.btn_clear.setProperty("class", "danger")
         self.btn_clear.clicked.connect(self._clear)
         bb.addWidget(self.btn_clear)
@@ -1106,7 +1146,30 @@ class WatchHistoryDialog(QDialog):
 
         self._populate()
 
+    def _populate_jobs(self):
+        from unifile.watch_jobs import load_jobs
+        jobs = load_jobs()
+        active = [j for j in jobs if j.get('state') not in ('completed',)]
+        self.tbl_jobs.setRowCount(0)
+        self._job_paths = []
+        for job in active:
+            r = self.tbl_jobs.rowCount()
+            self.tbl_jobs.insertRow(r)
+            self.tbl_jobs.setItem(r, 0, QTableWidgetItem(job.get('file_name', '')))
+            self.tbl_jobs.setItem(r, 1, QTableWidgetItem(job.get('folder', '')))
+            self.tbl_jobs.setItem(r, 2, QTableWidgetItem(job.get('state', '')))
+            self.tbl_jobs.setItem(r, 3, QTableWidgetItem(str(job.get('retries', 0))))
+            self.tbl_jobs.setItem(r, 4, QTableWidgetItem(job.get('error', '')))
+            self._job_paths.append(job.get('file_path', ''))
+        pending = sum(1 for j in active if j['state'] in ('settling', 'ready'))
+        failed = sum(1 for j in active if j['state'] == 'failed')
+        parts = []
+        if pending: parts.append(f"{pending} pending")
+        if failed: parts.append(f"{failed} failed")
+        self.lbl_jobs.setText(f"Job Queue — {', '.join(parts)}" if parts else "Job Queue — empty")
+
     def _populate(self):
+        self._populate_jobs()
         history = load_watch_history()
         self.tbl.setRowCount(0)
         for event in reversed(history):
@@ -1122,16 +1185,41 @@ class WatchHistoryDialog(QDialog):
         if history:
             latest = history[-1].get('timestamp', '').replace('T', ' ')[:19]
             self.lbl_summary.setText(
-                f"{len(history)} event{'s' if len(history) != 1 else ''} recorded. Latest event: {latest or 'unknown'}."
+                f"{len(history)} event{'s' if len(history) != 1 else ''} recorded. Latest: {latest or 'unknown'}."
             )
         else:
             self.lbl_summary.setText("No Watch Mode events have been recorded yet.")
         self.btn_clear.setEnabled(bool(history))
 
+    def _on_job_selection_changed(self):
+        row = self.tbl_jobs.currentRow()
+        is_failed = False
+        if 0 <= row < self.tbl_jobs.rowCount():
+            state_item = self.tbl_jobs.item(row, 2)
+            is_failed = state_item and state_item.text() == 'failed'
+        self.btn_retry.setEnabled(is_failed)
+        self.btn_dismiss.setEnabled(is_failed)
+
+    def _retry_selected(self):
+        from unifile.watch_jobs import load_jobs, retry_job, save_jobs
+        row = self.tbl_jobs.currentRow()
+        if 0 <= row < len(self._job_paths):
+            jobs = retry_job(load_jobs(), self._job_paths[row])
+            save_jobs(jobs)
+            self._populate_jobs()
+
+    def _dismiss_selected(self):
+        from unifile.watch_jobs import dismiss_job, load_jobs, save_jobs
+        row = self.tbl_jobs.currentRow()
+        if 0 <= row < len(self._job_paths):
+            jobs = dismiss_job(load_jobs(), self._job_paths[row])
+            save_jobs(jobs)
+            self._populate_jobs()
+
     def _clear(self):
         clear_watch_history()
         self.tbl.setRowCount(0)
-        self.lbl_summary.setText("Watch Mode history cleared.")
+        self.lbl_summary.setText("Watch Mode event log cleared.")
         self.btn_clear.setEnabled(False)
 
 

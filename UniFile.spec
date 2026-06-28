@@ -1,15 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
 
 a = Analysis(
     ['run.py'],
     pathex=[],
     binaries=[],
-    datas=[('unifile', 'unifile')],
-    hiddenimports=['unifile.bootstrap', 'unifile.config', 'unifile.main_window', 'unifile.tagging.db', 'unifile.tagging.models', 'unifile.tagging.library', 'unifile.dialogs.tag_library', 'unifile.dialogs.media_lookup', 'unifile.dialogs.cleanup', 'unifile.dialogs.duplicates', 'unifile.dialogs.editors', 'unifile.dialogs.settings', 'unifile.dialogs.theme', 'unifile.dialogs.tools', 'unifile.dialogs.advanced_settings', 'unifile.dialogs.settings_hub', 'unifile.media.providers', 'unifile.nexa_backend', 'unifile.scan_mixin', 'unifile.apply_mixin', 'unifile.theme_mixin', 'unifile.undo_mixin', 'unifile.filter_mixin', 'unifile.tray_mixin', 'unifile.watch_mixin', 'unifile.dialogs_mixin', 'unifile.workers', 'unifile.widgets', 'unifile.ui_helpers', 'unifile.classifier', 'unifile.categories', 'unifile.engine', 'unifile.naming', 'unifile.metadata', 'unifile.ollama', 'unifile.photos', 'unifile.files', 'unifile.cache', 'unifile.models', 'unifile.plugins', 'unifile.profiles', 'unifile.cleanup', 'unifile.duplicates', 'unifile.semantic', 'unifile.embedding', 'sqlalchemy.dialects.sqlite'],
+    datas=[('unifile', 'unifile')] + collect_data_files('face_recognition_models'),
+    hiddenimports=['unifile.bootstrap', 'unifile.watch_jobs', 'unifile.config', 'unifile.main_window', 'unifile.tagging.db', 'unifile.tagging.models', 'unifile.tagging.library', 'unifile.dialogs.tag_library', 'unifile.dialogs.media_lookup', 'unifile.dialogs.cleanup', 'unifile.dialogs.duplicates', 'unifile.dialogs.editors', 'unifile.dialogs.settings', 'unifile.dialogs.theme', 'unifile.dialogs.tools', 'unifile.dialogs.advanced_settings', 'unifile.dialogs.settings_hub', 'unifile.diagnostics', 'unifile.media.providers', 'unifile.nexa_backend', 'unifile.scan_mixin', 'unifile.apply_mixin', 'unifile.theme_mixin', 'unifile.undo_mixin', 'unifile.filter_mixin', 'unifile.tray_mixin', 'unifile.watch_mixin', 'unifile.dialogs_mixin', 'unifile.workers', 'unifile.widgets', 'unifile.ui_helpers', 'unifile.classifier', 'unifile.categories', 'unifile.engine', 'unifile.naming', 'unifile.metadata', 'unifile.ollama', 'unifile.photos', 'unifile.files', 'unifile.cache', 'unifile.models', 'unifile.plugins', 'unifile.profiles', 'unifile.cleanup', 'unifile.duplicates', 'unifile.semantic', 'unifile.embedding', 'sqlalchemy.dialects.sqlite'],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['unifile/pyinstaller_runtime.py'],
     excludes=[],
     noarchive=False,
     optimize=0,

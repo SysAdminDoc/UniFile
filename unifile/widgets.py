@@ -506,22 +506,33 @@ class WatchModeManager:
     """Manages QFileSystemWatcher for auto-organizing watched folders.
 
     Enhanced features:
+    - File-settle checks: files must be size/mtime-stable before scan
+    - Durable job queue persisted across app restarts
+    - Retry/dismiss for failed scan jobs
     - Snapshot-based change detection to learn from manual file moves
     - Download-folder cooldown (longer delay for Downloads-like dirs)
     - Tray notification per organized file
     """
 
     _DOWNLOAD_NAMES = {'downloads', 'download', 'descargas', 'téléchargements'}
+    _SETTLE_POLL_MS = 2000
 
     def __init__(self, parent_window):
+        from unifile.watch_jobs import load_jobs, recover_stale_running, save_jobs
+
         self.parent = parent_window
         self.settings = _load_watch_settings()
         self._watcher = QFileSystemWatcher()
         self._watcher.directoryChanged.connect(self._on_dir_changed)
-        self._delay_timers = {}  # folder -> QTimer
         self._active = False
-        self._snapshots = {}  # folder -> set of filenames at last snapshot
+        self._snapshots = {}
         self._files_organized = 0
+
+        self._settle_timer = QTimer()
+        self._settle_timer.timeout.connect(self._poll_settle)
+
+        jobs = recover_stale_running(load_jobs())
+        save_jobs(jobs)
 
     def start(self, folders: list, delay: int = 5):
         """Start watching the given folders."""
@@ -535,15 +546,14 @@ class WatchModeManager:
         self._delay = delay
         self._active = True
         self._files_organized = 0
+        self._settle_timer.start(self._SETTLE_POLL_MS)
 
     def stop(self):
         """Stop watching all folders."""
         watched = self._watcher.directories()
         if watched:
             self._watcher.removePaths(watched)
-        for t in self._delay_timers.values():
-            t.stop()
-        self._delay_timers.clear()
+        self._settle_timer.stop()
         self._snapshots.clear()
         self._active = False
 
@@ -562,36 +572,75 @@ class WatchModeManager:
         return os.path.basename(folder).lower() in self._DOWNLOAD_NAMES
 
     def _on_dir_changed(self, path: str):
-        """Called when a watched directory changes. Delays then triggers scan."""
-        if path in self._delay_timers:
-            self._delay_timers[path].stop()
+        """Called when a watched directory changes. Enqueues settle jobs."""
+        from unifile.watch_jobs import add_or_update_job, load_jobs, save_jobs
 
-        # Detect manual moves (files disappeared) and learn from them
         self._detect_manual_moves(path)
 
-        # Use longer cooldown for download folders (files may still be writing)
-        delay = self._delay
-        if self._is_download_folder(path):
-            delay = max(delay, 15)
+        old_snap = self._snapshots.get(path, set())
+        new_snap = self._snapshot_dir(path)
+        self._snapshots[path] = new_snap
 
-        timer = QTimer()
-        timer.setSingleShot(True)
-        timer.timeout.connect(lambda p=path: self._trigger_scan(p))
-        timer.start(delay * 1000)
-        self._delay_timers[path] = timer
+        new_files = new_snap - old_snap
+        if not new_files:
+            return
+
+        settle_secs = float(self._delay)
+        if self._is_download_folder(path):
+            settle_secs = max(settle_secs, 15.0)
+
+        jobs = load_jobs()
+        for fname in new_files:
+            fpath = os.path.join(path, fname)
+            if os.path.exists(fpath):
+                jobs = add_or_update_job(jobs, path, fpath, settle_secs)
+        save_jobs(jobs)
+
+        if hasattr(self.parent, '_log'):
+            self.parent._log(f"Watch: {len(new_files)} new file(s) in {path}, settling…")
+
+    def _poll_settle(self):
+        """Periodic check: promote settled jobs to ready, trigger scans."""
+        from unifile.watch_jobs import (
+            check_settle,
+            get_ready_folders,
+            load_jobs,
+            mark_completed,
+            mark_failed,
+            mark_running,
+            purge_completed,
+            save_jobs,
+        )
+
+        jobs = load_jobs()
+        jobs = check_settle(jobs, float(self._delay))
+        jobs = purge_completed(jobs)
+
+        ready_folders = get_ready_folders(jobs)
+        for folder in ready_folders:
+            jobs = mark_running(jobs, folder)
+            save_jobs(jobs)
+            try:
+                self._trigger_scan(folder)
+                jobs = load_jobs()
+                jobs = mark_completed(jobs, folder)
+            except Exception as exc:
+                jobs = load_jobs()
+                jobs = mark_failed(jobs, folder, str(exc))
+                if hasattr(self.parent, '_log'):
+                    self.parent._log(f"Watch: scan failed for {folder}: {exc}")
+        save_jobs(jobs)
 
     def _detect_manual_moves(self, folder: str):
         """Compare folder snapshot to detect manually moved/deleted files and learn."""
         old_snap = self._snapshots.get(folder, set())
         new_snap = self._snapshot_dir(folder)
-        self._snapshots[folder] = new_snap
 
         disappeared = old_snap - new_snap
 
         if not disappeared:
             return
 
-        # Check if disappeared files moved to subdirectories (manual organization)
         try:
             from unifile.learning import get_learner
             learner = get_learner()
@@ -602,11 +651,13 @@ class WatchModeManager:
             old_path = os.path.join(folder, fname)
             if os.path.isdir(old_path):
                 continue
-            # Search subdirs for the file
-            for sub in os.listdir(folder):
+            try:
+                entries = os.listdir(folder)
+            except OSError:
+                continue
+            for sub in entries:
                 sub_path = os.path.join(folder, sub)
                 if os.path.isdir(sub_path) and os.path.isfile(os.path.join(sub_path, fname)):
-                    # User manually moved fname into sub/ — learn this as a correction
                     learner.record_correction(fname, old_path, sub)
                     if hasattr(self.parent, '_log'):
                         self.parent._log(f"Watch: learned manual move {fname} -> {sub}/")
@@ -620,22 +671,18 @@ class WatchModeManager:
     def _trigger_scan(self, folder: str):
         """Trigger a mini-scan for the changed folder."""
         if hasattr(self.parent, '_log'):
-            self.parent._log(f"Watch: change detected in {folder}")
+            self.parent._log(f"Watch: scanning {folder}")
         append_watch_event({
             'folder': folder,
             'action': 'scan_triggered',
-            'details': 'Directory change detected, auto-scan started',
+            'details': 'File settled, auto-scan started',
         })
-        # Set source to the changed folder and trigger scan
         if hasattr(self.parent, 'cmb_pc_src'):
             self.parent.cmb_pc_src.setCurrentText(folder)
         if hasattr(self.parent, 'txt_pc_src'):
             self.parent.txt_pc_src.setText(folder)
         self.parent.cmb_op.setCurrentIndex(3)  # OP_FILES
         QTimer.singleShot(100, self.parent._on_scan)
-
-        # Update snapshot after scan trigger
-        self._snapshots[folder] = self._snapshot_dir(folder)
 
     def notify_file_organized(self, filename: str, category: str):
         """Called after a file is organized to show tray notification."""
