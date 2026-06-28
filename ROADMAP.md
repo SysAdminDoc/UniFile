@@ -323,5 +323,3 @@ Strategic / aspirational features. Some require significant architecture changes
 ### P2
 - [ ] P2 — Qt Linguist i18n pipeline before broader localization
   Complexity: L
-- [ ] P2 — Windows Property System metadata bridge
-  Complexity: L

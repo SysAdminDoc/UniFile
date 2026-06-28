@@ -2,19 +2,30 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v9.3.29] - Content-Aware Rule Conditions
+## [v9.3.29] - Content Rules, Watch Jobs, TagSpaces Sidecars
 
 ### Added
 - `content` and `has_ocr_text` rule condition fields in the classification rule engine.
 - `extract_file_text()` helper for inline text extraction from plain text files and digital PDFs (pdfminer).
 - Content rules resolve from OCR metadata (`ai_summary`), vision OCR text, or inline file reading — no LLM required.
 - Rule editor dialog now exposes `content` and `has_ocr_text` fields for Paperless/Hazel-style document routing.
-- 17 regression tests covering text extraction, content matching, regex, OCR metadata fallback, and no-text states.
+- Durable watch-mode job queue (`unifile/watch_jobs.py`) with file-settle checks (size/mtime stability before scan).
+- Watch jobs persist across app restarts; stuck-in-running jobs recover on startup.
+- Failed scan jobs retry up to 3 times before moving to failed state.
+- Watch History dialog gains a Job Queue section with retry/dismiss controls for failed jobs.
+- Duplicate Finder shows file count, skipped count, and scan criteria when no duplicates are found.
+- Cleanup panel shows category-specific "appears clean" messages on empty scan results.
+- TagSpaces `.ts` sidecar import/export module (`unifile/tagspaces.py`).
+- Bidirectional TagSpaces sidecar support: read/write `.ts/*.json`, dry-run import preview, directory scanning, tag color mapping, and library import/export.
+- Windows Property System metadata bridge (`unifile/win_properties.py`): reads Shell properties (title, author, subject, comment, keywords, rating) as read-only fields during scan via PowerShell.
+- Conflict-safe metadata merge: shell properties that conflict with existing metadata are stored with `_shell_` prefix.
+- 63 new regression tests across content rules, watch jobs, no-result outcomes, TagSpaces sidecars, and Windows properties.
 
 ### Changed
 - SECURITY.md now references "latest release (currently 9.3.x)" instead of stale "9.0.x".
 - CONTRIBUTING.md release section updated to local-build workflow (removed stale GitHub Actions reference).
 - ROADMAP.md developer ecosystem section no longer references GitHub Actions CI matrix.
+- Watch mode now uses settle-checked job queue instead of raw delay timers.
 
 ## [v9.3.28] - PyInstaller Build Smoke
 
