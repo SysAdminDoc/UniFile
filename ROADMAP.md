@@ -28,9 +28,6 @@ Current version: **v9.3.21**. Merges TagStudio, FileOrganizer, Local-File-Organi
 
 High-impact, achievable improvements. Each item is scoped to a few days–one week of work.
 
-### Windows Shell Integration
-- **Explorer preview pane** — optional IThumbnailProvider COM shim to show UniFile category badge on folder icons; lower priority, Windows-only
-
 ### Keyboard Navigation & Accessibility
 - Full Tab-order through all panels (main tree → tag library → results → toolbar)
 - Space/Enter to expand folders and trigger actions; arrow keys to navigate trees
