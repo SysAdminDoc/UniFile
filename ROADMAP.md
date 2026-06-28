@@ -318,3 +318,71 @@ Strategic / aspirational features. Some require significant architecture changes
 - **Checkpointed scans** — large library scans write progress to SQLite so crash/resume is clean
 - **Hydrus tag-sibling/parent DB layout** — `tag_implications(antecedent, consequent)` + `tag_siblings(bad_tag, good_tag)` tables; query-time expansion
 - **Sidecar-tag coexistence** — write `.xmp` sidecars in TagStudio format alongside originals; read them back on re-open so tags survive outside UniFile
+
+## Research-Driven Additions
+
+### P0
+- [ ] P0 — Plugin trust gate before Python hook execution
+  Why: `PluginManager.load_all()` executes every `.py` plugin in app data and suppresses failures; the future scripting/manifest items need an immediate trust boundary first.
+  Evidence: `unifile/plugins.py:144-174`; RestrictedPython README; Python importlib loader behavior.
+  Touches: `unifile/plugins.py`, `unifile/dialogs/tools.py`, plugin settings UI, plugin tests.
+  Acceptance: New Python plugins are disabled until explicitly trusted; load failures surface in the plugin UI/log; tests prove an untrusted plugin file is discovered but not executed.
+  Complexity: M
+- [ ] P0 — Replace embedded TMDb/OMDb demo keys with user-owned credentials
+  Why: Shared fallback API keys create quota, privacy, and revocation risk for media lookup users.
+  Evidence: `unifile/media/providers.py:115`, `unifile/media/providers.py:247`, `ATTRIBUTION.md:23-25`, TMDb and OMDb API-key docs.
+  Touches: `unifile/media/providers.py`, media lookup dialog, settings/config storage, README/SECURITY docs.
+  Acceptance: No TMDb/OMDb key literal remains in source; missing-key and invalid-key states are visible in the media lookup UI; tests cover env/config key resolution and TVMaze no-key fallback.
+  Complexity: M
+
+### P1
+- [ ] P1 — Versioned tag-library SQLite migrations with backup and integrity checks
+  Why: Current migrations ignore `OperationalError`, so schema drift can be hidden until user data is already in a partially upgraded state.
+  Evidence: `unifile/tagging/db.py:53-72`; SQLite `PRAGMA user_version`; Alembic migration model.
+  Touches: `unifile/tagging/db.py`, `unifile/tagging/models.py`, tag-library startup path, migration tests.
+  Acceptance: Database schema version is stored and validated; upgrades run in deterministic order; a backup is created before mutation; tests cover old DB -> current DB and failed migration rollback.
+  Complexity: L
+- [ ] P1 — Converge dependency manifests and make GUI smoke tests non-optional in dev installs
+  Why: `pyproject.toml`, `requirements.txt`, and `bootstrap.py` disagree, and the main-window smoke suite silently skips when `pytest-qt` is absent.
+  Evidence: `pyproject.toml`, `requirements.txt`, `unifile/bootstrap.py`, `tests/test_main_window_smoke.py:29`, pylock/pip-audit docs.
+  Touches: `pyproject.toml`, `requirements.txt`, `Makefile`, `unifile/bootstrap.py`, `tests/test_main_window_smoke.py`.
+  Acceptance: One declared source of dependency truth generates or validates install files; `make test` in a dev environment runs pytest-qt smoke tests; local dependency audit command reports no known vulnerable installed packages.
+  Complexity: M
+- [ ] P1 — Redacted support diagnostic bundle
+  Why: SECURITY.md names secrets and local-path exposure as reportable, but crash logs, CSV audit trails, and provider errors lack a redacted export path.
+  Evidence: `SECURITY.md:39`, `unifile/__main__.py:244-286`, `unifile/cache.py`, `unifile/ai_providers.py`, issue templates.
+  Touches: crash handler, log/CSV writers, Settings Hub, issue-template docs, tests for redaction.
+  Acceptance: Settings can export a diagnostics ZIP with version, platform, provider health, recent redacted logs, and no API keys; tests verify path/key/email redaction patterns.
+  Complexity: M
+- [ ] P1 — PyInstaller executable boot smoke and runtime hardening
+  Why: The build spec exists, but `run.py` version text is stale and the frozen app lacks a documented smoke that catches multiprocessing/runtime-hook regressions before release.
+  Evidence: `run.py:2`, `UniFile.spec`, PyInstaller `freeze_support()` guidance.
+  Touches: `run.py`, `UniFile.spec`, `Makefile`, release/build docs.
+  Acceptance: `run.py` version text matches package metadata; frozen builds call `multiprocessing.freeze_support()` before app startup; local build smoke runs `--version`, `classify`, and GUI-start checks; generated artifact checksum is recorded.
+  Complexity: M
+- [ ] P1 — Security policy support-version sync
+  Why: Vulnerability reporters see `9.0.x` as supported while the project currently ships v9.3.21.
+  Evidence: `SECURITY.md:12-15`, `pyproject.toml`, `README.md`.
+  Touches: `SECURITY.md`, release checklist, version sync tests/docs.
+  Acceptance: SECURITY.md reflects the actual supported release policy; release/version sync checks fail when README, package metadata, and security support table diverge.
+  Complexity: S
+
+### P2
+- [ ] P2 — Qt Linguist i18n pipeline before broader localization
+  Why: ROADMAP.md mentions RTL layout but not extractable strings, catalogs, or locale-switch testing.
+  Evidence: `unifile/main_window.py`, `unifile/dialogs/`, Qt internationalization docs, TagStudio translation model.
+  Touches: GUI string construction, resource packaging, settings UI, release artifacts.
+  Acceptance: `lupdate`/`lrelease` or PyQt equivalents extract translatable strings; an English baseline catalog ships; locale switching is testable without editing source; RTL remains a separate layout toggle.
+  Complexity: L
+- [ ] P2 — Windows Property System metadata bridge
+  Why: UniFile already reads many embedded formats, but Windows users also store ratings/tags/title/author in Shell properties that are searchable outside UniFile.
+  Evidence: Microsoft Windows Property System docs; `unifile/metadata.py`; README metadata/tag-library claims.
+  Touches: `unifile/metadata.py`, tag-library field mapping, search/filter UI, Windows-only adapter tests.
+  Acceptance: On Windows, supported Shell properties are imported as read-only fields during scan; conflicts with embedded metadata are labeled; non-Windows behavior is unchanged.
+  Complexity: L
+- [ ] P2 — TagSpaces `.ts` sidecar import/export
+  Why: TagStudio and XMP interop are already planned, but TagSpaces JSON sidecars are a common portable tag format that preserves existing folder structures.
+  Evidence: TagSpaces tagging and metafile-format docs; ROADMAP TagStudio/XMP items.
+  Touches: tag-library import/export tools, `unifile/tagging/library.py`, sidecar writer/reader tests, docs.
+  Acceptance: UniFile can dry-run import `.ts/*.json` sidecars into tags/fields and export selected entries back to TagSpaces sidecar format without moving originals.
+  Complexity: M
