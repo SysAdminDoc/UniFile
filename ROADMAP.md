@@ -318,4 +318,3 @@ Strategic / aspirational features. Some require significant architecture changes
 - **Hydrus tag-sibling/parent DB layout** — `tag_implications(antecedent, consequent)` + `tag_siblings(bad_tag, good_tag)` tables; query-time expansion
 - **Sidecar-tag coexistence** — write `.xmp` sidecars in TagStudio format alongside originals; read them back on re-open so tags survive outside UniFile
 
-## Research-Driven Additions
