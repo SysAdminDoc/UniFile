@@ -319,7 +319,3 @@ Strategic / aspirational features. Some require significant architecture changes
 - **Sidecar-tag coexistence** — write `.xmp` sidecars in TagStudio format alongside originals; read them back on re-open so tags survive outside UniFile
 
 ## Research-Driven Additions
-
-### P2
-- [ ] P2 — Qt Linguist i18n pipeline before broader localization
-  Complexity: L

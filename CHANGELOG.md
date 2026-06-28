@@ -19,7 +19,8 @@ All notable changes to UniFile will be documented in this file.
 - Bidirectional TagSpaces sidecar support: read/write `.ts/*.json`, dry-run import preview, directory scanning, tag color mapping, and library import/export.
 - Windows Property System metadata bridge (`unifile/win_properties.py`): reads Shell properties (title, author, subject, comment, keywords, rating) as read-only fields during scan via PowerShell.
 - Conflict-safe metadata merge: shell properties that conflict with existing metadata are stored with `_shell_` prefix.
-- 63 new regression tests across content rules, watch jobs, no-result outcomes, TagSpaces sidecars, and Windows properties.
+- Qt i18n infrastructure (`unifile/i18n.py`): locale loader, language switching via settings or `UNIFILE_LANG` env var, QTranslator integration, and `unifile/translations/` directory for `.qm` catalogs.
+- 71 new regression tests across content rules, watch jobs, no-result outcomes, TagSpaces sidecars, Windows properties, and i18n.
 
 ### Changed
 - SECURITY.md now references "latest release (currently 9.3.x)" instead of stale "9.0.x".
