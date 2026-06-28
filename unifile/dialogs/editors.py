@@ -897,7 +897,8 @@ class RuleEditorDialog(QDialog):
     """UI for creating and managing classification rules."""
 
     _FIELDS = ['name', 'extension', 'size', 'modified_date', 'created_date',
-               'path_contains', 'name_regex', 'camera_model', 'width', 'height',
+               'path_contains', 'name_regex', 'content', 'has_ocr_text',
+               'camera_model', 'width', 'height',
                'duration', 'artist', 'album']
     _OPS = ['eq', 'neq', 'gt', 'lt', 'gte', 'lte', 'contains', 'not_contains',
             'matches', 'startswith', 'endswith']

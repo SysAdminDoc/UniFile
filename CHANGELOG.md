@@ -2,6 +2,28 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.29] - Content-Aware Rule Conditions
+
+### Added
+- `content` and `has_ocr_text` rule condition fields in the classification rule engine.
+- `extract_file_text()` helper for inline text extraction from plain text files and digital PDFs (pdfminer).
+- Content rules resolve from OCR metadata (`ai_summary`), vision OCR text, or inline file reading — no LLM required.
+- Rule editor dialog now exposes `content` and `has_ocr_text` fields for Paperless/Hazel-style document routing.
+- 17 regression tests covering text extraction, content matching, regex, OCR metadata fallback, and no-text states.
+
+### Changed
+- SECURITY.md now references "latest release (currently 9.3.x)" instead of stale "9.0.x".
+- CONTRIBUTING.md release section updated to local-build workflow (removed stale GitHub Actions reference).
+- ROADMAP.md developer ecosystem section no longer references GitHub Actions CI matrix.
+
+## [v9.3.28] - PyInstaller Build Smoke
+
+### Added
+- PyInstaller runtime hook and startup freeze guard before UniFile imports.
+- `make build-smoke` to run frozen `--version`, `classify`, and GUI-start checks against `dist/UniFile/UniFile.exe`.
+- SHA-256 sidecar generation for the frozen executable after build smoke passes.
+- Regression tests for the PyInstaller runtime hook and frozen-smoke command coverage.
+
 ## [v9.3.27] - Redacted Diagnostics Bundle
 
 ### Added

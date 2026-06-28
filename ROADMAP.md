@@ -1,7 +1,7 @@
 # Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
-Current version: **v9.3.27**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
+Current version: **v9.3.29**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
 
 ---
 
@@ -351,12 +351,6 @@ Strategic / aspirational features. Some require significant architecture changes
   Touches: `unifile/widgets.py`, `unifile/watch_mixin.py`, watch history storage in `unifile/config.py`, status/dashboard UI, watch-mode tests.
   Acceptance: Changed files must remain size/mtime-stable before scan; pending/running/failed watch jobs persist across app restarts; users can retry or dismiss failed jobs; tests simulate rapid writes, deletes, restart recovery, and scan failure.
   Complexity: L
-- [ ] P1 - Content-aware rule conditions backed by OCR/text extraction
-  Why: OCR can populate `ai_summary`, but rules lack first-class content conditions, so Paperless/Hazel-style document routing is not ergonomic or testable.
-  Evidence: `unifile/ocr_indexer.py:58-96`, `unifile/engine.py:114-167`, Paperless-ngx matching docs, Hazel contents rules.
-  Touches: `unifile/engine.py`, `unifile/ocr_indexer.py`, `unifile/dialogs/editors.py`, tag-library field mapping, rule import/export tests.
-  Acceptance: Rule editor exposes `content contains`, `content matches`, and OCR-present conditions; rules can target OCR/PDF text without LLM calls; invalid regex and missing OCR states are visible; tests cover PDF text, image OCR metadata, and no-text fallbacks.
-  Complexity: M
 ### P2
 - [ ] P2 - Explain duplicate and cleanup no-result outcomes
   Why: Focused cleanup tools win trust by explaining why files were or were not grouped, especially for reference-folder, near-duplicate, and broken-file scans.

@@ -27,6 +27,38 @@ def _safe_regex_match(pattern: str, value: str) -> bool:
     except re.error:
         return False
 
+
+_TEXT_EXTS = {
+    '.txt', '.md', '.csv', '.tsv', '.log', '.json', '.xml', '.yaml', '.yml',
+    '.ini', '.cfg', '.conf', '.toml', '.html', '.htm', '.rst', '.tex',
+    '.py', '.js', '.ts', '.java', '.c', '.cpp', '.h', '.cs', '.rb', '.sh',
+    '.bat', '.ps1', '.sql', '.r', '.go', '.rs', '.swift', '.kt', '.lua',
+}
+_CONTENT_READ_LIMIT = 8192
+
+
+def extract_file_text(path: str) -> str:
+    """Best-effort text extraction from a file (no OCR, no LLM).
+
+    Supports plain text files and digital PDFs (via pdfminer). Returns empty
+    string when the format is unsupported or extraction fails.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext in _TEXT_EXTS:
+        try:
+            with open(path, encoding='utf-8', errors='replace') as f:
+                return f.read(_CONTENT_READ_LIMIT)
+        except Exception:
+            return ''
+    if ext == '.pdf':
+        try:
+            from pdfminer.high_level import extract_text
+            text = extract_text(path, maxpages=3)
+            return (text or '').strip()[:_CONTENT_READ_LIMIT]
+        except Exception:
+            return ''
+    return ''
+
 def apply_rule_delta(base_rules: list, delta: dict | None) -> list:
     """Merge a per-folder rule delta into the global rule set.
 
@@ -133,6 +165,15 @@ class RuleEngine:
             return getattr(item, 'full_src', '')
         elif field == 'name_regex':
             return getattr(item, 'name', '')
+        elif field == 'content':
+            text = metadata.get('ai_summary', '') or getattr(item, 'vision_ocr', '')
+            if not text:
+                src = getattr(item, 'full_src', '')
+                if src:
+                    text = extract_file_text(src)
+            return text
+        elif field == 'has_ocr_text':
+            return '1' if (metadata.get('ai_summary', '') or getattr(item, 'vision_ocr', '')) else ''
         else:
             return metadata.get(field, '')
 
