@@ -302,6 +302,8 @@ def main():
         description="UniFile — Context-Aware File Organizer",
     )
     parser.add_argument("--version", action="version", version=f"UniFile {__version__}")
+    parser.add_argument("--install-deps", action="store_true",
+                        help="Opt in to pip-install missing dependencies before running.")
     parser.add_argument("--source", type=str, default=None,
                         help="Source folder to auto-scan (used by shell integration)")
     parser.add_argument("--show-preview", action="store_true",
@@ -363,6 +365,10 @@ def main():
     )
 
     args, qt_args = parser.parse_known_args()
+
+    if args.install_deps:
+        os.environ['UNIFILE_INSTALL_DEPS'] = '1'
+        from unifile import bootstrap as _bootstrap  # noqa: F401
 
     # Headless subcommands — no GUI at all.
     if args.subcommand == "classify":

@@ -2,6 +2,16 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.22] - Explicit Setup Opt-In
+
+### Changed
+- Runtime dependency bootstrap now requires `UNIFILE_INSTALL_DEPS=1` or `--install-deps`; importing UniFile no longer invokes pip by default.
+- Startup and LLM scans no longer install Ollama or pull missing models automatically. Missing setup is reported with Settings/manual commands instead.
+- Model routing now prefers installed models and only downloads when a caller explicitly opts in.
+
+### Added
+- Regression tests covering no-pip import behavior, opt-in bootstrap, no startup Ollama install, and no scan-time model auto-pull.
+
 ## [v9.3.21] — Shell Preview Launch
 
 ### Added

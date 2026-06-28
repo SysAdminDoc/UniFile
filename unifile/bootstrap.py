@@ -1,7 +1,7 @@
 """UniFile — Dependency bootstrap and optional imports."""
 
 #!/usr/bin/env python3
-"""UniFile v9.3.21 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
+"""UniFile v9.3.22 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
 
 import base64
 import csv
@@ -23,9 +23,22 @@ import zipfile
 from collections import Counter
 from functools import lru_cache
 
+_AUTO_INSTALL_ENV = "UNIFILE_INSTALL_DEPS"
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def auto_install_enabled() -> bool:
+    """Return True only when dependency installation was explicitly requested."""
+    return os.environ.get(_AUTO_INSTALL_ENV, "").strip().lower() in _TRUE_VALUES
+
 
 def _bootstrap():
-    """Auto-install dependencies before any imports."""
+    """Optionally install dependencies before optional imports.
+
+    Importing UniFile modules must never mutate a user's Python environment by
+    default. Source users can opt in with UNIFILE_INSTALL_DEPS=1 or the
+    run.py / unifile --install-deps flag.
+    """
     # Skip bootstrap inside frozen PyInstaller bundles — all deps are already bundled
     if getattr(sys, 'frozen', False):
         return
@@ -34,6 +47,9 @@ def _bootstrap():
     # requires-python, but git-clone users don't hit that gate).
     if sys.version_info < (3, 10):  # noqa: UP036
         print("Python 3.10+ required"); sys.exit(1)
+
+    if not auto_install_enabled():
+        return
 
     # pip-name → actual import module name (only where they differ)
     _IMPORT_MAP = {

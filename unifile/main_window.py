@@ -186,7 +186,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._build_ui()
         self._load_settings()
 
-        # Launch Ollama auto-setup in background
+        # Check Ollama availability without installing binaries or pulling models.
         self._start_ollama_setup()
 
     # ═══ DRAG & DROP ═══════════════════════════════════════════════════════════
@@ -260,10 +260,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.settings.setValue("scan_depth", self.spn_depth.value())
         self.settings.setValue("type_filter", self.cmb_type_filter.currentText())
 
-    # ═══ OLLAMA AUTO-SETUP ════════════════════════════════════════════════════
+    # ═══ OLLAMA READINESS CHECK ═══════════════════════════════════════════════
     def _start_ollama_setup(self):
-        """Launch background Ollama setup (install + pull model) on app start."""
-        self._log("Ollama LLM: initializing...")
+        """Launch background Ollama readiness check on app start."""
+        self._log("Ollama LLM: checking local setup...")
         s = load_ollama_settings()
         self._ollama_worker = OllamaSetupWorker(s['model'], s['url'])
         self._ollama_worker.log.connect(self._log)

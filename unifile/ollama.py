@@ -310,10 +310,10 @@ class ModelRouter:
         cls._cache_ts = 0
 
     @classmethod
-    def get_model(cls, task: str, url: str = None, log_cb=None, auto_pull: bool = True) -> str:
+    def get_model(cls, task: str, url: str = None, log_cb=None, auto_pull: bool = False) -> str:
         """Return the best available model for the given task.
         Prepends the user's selected model for text/reasoning tasks.
-        Auto-pulls first preference if nothing installed for that task."""
+        Auto-pulls only when the caller explicitly opts in."""
         prefs = list(cls._TASK_PREFS.get(task, []))
         # For text/reasoning tasks, user's selected model goes first
         if task in ('text_classify', 'deep_reasoning'):
@@ -338,7 +338,7 @@ class ModelRouter:
         if auto_pull and prefs:
             target = prefs[0]
             if log_cb:
-                log_cb(f"  [ModelRouter] No model for '{task}' — auto-pulling {target}...")
+                log_cb(f"  [ModelRouter] No model for '{task}' — explicitly pulling {target}...")
             success = _ollama_pull_model_streaming(target, url=url, log_cb=log_cb)
             if success:
                 cls.invalidate_cache()

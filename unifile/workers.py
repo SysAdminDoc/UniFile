@@ -110,6 +110,8 @@ from unifile.photos import (
 )
 from unifile.plugins import PluginManager
 
+_OLLAMA_PULL_MODEL_COMPAT = _ollama_pull_model
+
 
 def _get_ai_backend() -> str:
     """Return 'nexa', 'providers', or 'ollama' based on configuration."""
@@ -1077,19 +1079,27 @@ class ScanLLMWorker(QThread):
 
 
 
-# ── Ollama Auto-Setup Worker ──────────────────────────────────────────────────
+# ── Ollama Readiness Worker ───────────────────────────────────────────────────
 class OllamaSetupWorker(QThread):
-    """Background worker that ensures Ollama is installed, running, and has the
-    required model. Runs on app launch so LLM is ready when the user hits Scan."""
+    """Background worker that checks Ollama readiness.
+
+    Installing Ollama, starting the server, and pulling models are opt-in so
+    app startup never downloads software or mutates local model state.
+    """
     log = pyqtSignal(str)
     status = pyqtSignal(str)  # short status for UI label
     finished = pyqtSignal(bool)  # True = ready, False = setup failed
 
-    def __init__(self, model: str = None, url: str = None):
+    def __init__(self, model: str = None, url: str = None,
+                 install_missing: bool = False, start_server: bool = False,
+                 pull_missing: bool = False):
         super().__init__()
         s = load_ollama_settings()
         self.model = model or s['model']
         self.url = url or s['url']
+        self.install_missing = install_missing
+        self.start_server = start_server
+        self.pull_missing = pull_missing
 
     def run(self):
         try:
@@ -1107,7 +1117,12 @@ class OllamaSetupWorker(QThread):
         if binary:
             self.log.emit(f"  Ollama found: {binary}")
         else:
-            self.log.emit("  Ollama not found, installing...")
+            if not self.install_missing:
+                self.log.emit("  Ollama not found. Install it manually from https://ollama.com")
+                self.status.emit("LLM: setup needed")
+                self.finished.emit(False)
+                return
+            self.log.emit("  Ollama not found; installing by explicit request...")
             self.status.emit("LLM: installing Ollama...")
             if not self._install_ollama():
                 self.status.emit("LLM: install failed")
@@ -1125,7 +1140,12 @@ class OllamaSetupWorker(QThread):
         if _is_ollama_server_running(self.url):
             self.log.emit("  Ollama server is running")
         else:
-            self.log.emit("  Starting Ollama server...")
+            if not self.start_server:
+                self.log.emit("  Ollama server is not running. Start it manually: ollama serve")
+                self.status.emit("LLM: offline")
+                self.finished.emit(False)
+                return
+            self.log.emit("  Starting Ollama server by explicit request...")
             self.status.emit("LLM: starting server...")
             self._start_server(binary)
             # Wait for server to come up (up to 15 seconds)
@@ -1149,8 +1169,15 @@ class OllamaSetupWorker(QThread):
             self.finished.emit(True)
             return
 
+        if not self.pull_missing:
+            self.log.emit(f"  Model '{self.model}' is not installed.")
+            self.log.emit(f"  Download it in Settings > Ollama LLM or run: ollama pull {self.model}")
+            self.status.emit("LLM: model missing")
+            self.finished.emit(False)
+            return
+
         # ── Step 4: Pull the model ──
-        self.log.emit(f"  Pulling model: {self.model} (this may take several minutes)...")
+        self.log.emit(f"  Pulling model by explicit request: {self.model} (this may take several minutes)...")
         self.status.emit(f"LLM: pulling {self.model}...")
         if self._pull_model(binary):
             self.log.emit(f"  Model ready: {self.model}")
@@ -2014,15 +2041,11 @@ class ScanFilesLLMWorker(QThread):
                 return False
             self.log.emit("  Ollama server started")
 
-        # ── Step 2: Check if model is pulled, auto-pull if not ──
+        # ── Step 2: Check if model is available. Do not auto-pull on scans. ──
         if not _ollama_has_model(model, url):
-            self.log.emit(f"  Model '{model}' not installed — pulling automatically...")
-            self.phase.emit("LLM Setup", f"Pulling {model}...")
-            success = _ollama_pull_model_streaming(model, url=url, log_cb=self.log.emit)
-            if not success:
-                self.log.emit(f"  Failed to pull {model}. Run manually: ollama pull {model}")
-                return False
-            self.log.emit(f"  Model '{model}' pulled successfully")
+            self.log.emit(f"  Model '{model}' is not installed. Download it from Settings > Ollama LLM")
+            self.log.emit(f"  Manual command: ollama pull {model}")
+            return False
 
         return True
 
@@ -2106,28 +2129,13 @@ class ScanFilesLLMWorker(QThread):
                 vision_model = settings['model']
                 self.log.emit(f"  Vision: using selected model [{vision_model}]")
             else:
-                # Selected model is text-only — auto-find a vision model
-                self.log.emit(f"  Selected model [{settings['model']}] is text-only — searching for a vision model...")
-                vision_model = _find_vision_model(settings['url'])
+                # Selected model is text-only — use an installed vision model only.
+                self.log.emit(f"  Selected model [{settings['model']}] is text-only — checking installed vision models...")
+                vision_model = _find_vision_model(settings['url'], auto_upgrade=False)
                 if vision_model:
                     self.log.emit(f"  Vision: found [{vision_model}]")
-                    # Ensure it's pulled
-                    if not _ollama_has_model(vision_model, settings['url']):
-                        self.log.emit(f"  Vision: pulling [{vision_model}] (this may take a few minutes)...")
-                        self.phase.emit("Vision Setup", f"Pulling {vision_model}...")
-                        if not _ollama_pull_model(vision_model, settings['url'], log_cb=self.log.emit):
-                            self.log.emit(f"  Vision: pull failed for [{vision_model}] — checking for installed fallback...")
-                            fallback = _find_vision_model(settings['url'], auto_upgrade=False)
-                            if fallback:
-                                vision_model = fallback
-                                self.log.emit(f"  Vision: falling back to installed [{vision_model}]")
-                            else:
-                                self.log.emit("  Vision: no vision model available — images will use text-only classification")
-                                vision_model = ''
-                        else:
-                            self.log.emit(f"  Vision: [{vision_model}] ready")
                 else:
-                    self.log.emit("  Vision: no vision model available — images will use text-only classification")
+                    self.log.emit("  Vision: no installed vision model available — images will use text-only classification")
 
         use_vision = bool(_v_enabled and _v_pil and has_images and vision_model and _is_vision_model(vision_model))
         self.log.emit(f"  Vision active: {use_vision}" + (f" [{vision_model}]" if use_vision else ""))

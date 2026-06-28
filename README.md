@@ -1,6 +1,6 @@
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.3.21-blue)
+![Version](https://img.shields.io/badge/version-9.3.22-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -29,16 +29,18 @@ UniFile merges the best ideas from five file organization projects into one cohe
 ```bash
 git clone https://github.com/SysAdminDoc/UniFile.git
 cd UniFile
-python run.py  # Auto-installs all dependencies + Ollama on first run
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -e ".[full]"
+.\.venv\Scripts\python run.py
 ```
 
-On first launch, UniFile will:
-1. Install PyQt6, SQLAlchemy, and other dependencies if missing
-2. Download and install [Ollama](https://ollama.com) if not found
-3. Start the Ollama server and pull the `qwen2.5:7b` model
-4. Open the GUI with LLM mode enabled and ready
+Source imports do not install packages or download models. To opt in to the legacy dependency bootstrap for a source checkout, run:
 
-No manual setup required.
+```bash
+python run.py --install-deps
+```
+
+Ollama is optional. Install it from [ollama.com](https://ollama.com), start it with `ollama serve`, then download a model manually (`ollama pull qwen2.5:7b`) or from **Settings > Ollama LLM**. UniFile falls back to rule-based classification when Ollama is unavailable.
 
 ## Features
 
@@ -95,7 +97,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | Feature | Description |
 |---------|-------------|
 | Ollama LLM | Local AI-powered category + name inference via Ollama |
-| Auto Ollama Setup | Installs Ollama, starts server, pulls model on first launch |
+| Explicit Ollama Setup | Checks local Ollama/model readiness and points to Settings/manual setup when missing |
 | 384+ Built-in Categories | Covers design, video, audio, print, web, 3D, photography |
 | 7-Level Pipeline | Extension > Keyword > Fuzzy > Metadata > Composition > Context > LLM |
 | Multiple Profiles | Design Assets, PC Files, Photo Library, and custom profiles |
@@ -182,7 +184,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 unifile/
 ├── __init__.py          # Package version
 ├── __main__.py          # Entry point with crash handler
-├── bootstrap.py         # Auto-dependency installer
+├── bootstrap.py         # Optional dependency probes + explicit opt-in installer
 ├── config.py            # Settings, themes, protected paths
 ├── categories.py        # 384+ category definitions
 ├── classifier.py        # 7-level classification engine
@@ -250,6 +252,7 @@ Click **Settings > Ollama LLM** to configure:
 
 ```bash
 python run.py                                          # Launch GUI
+python run.py --install-deps                           # Opt in to dependency bootstrap
 python run.py --source "C:/Users/You/Downloads"        # Auto-scan a folder
 python run.py --profile MyProfile --auto-apply         # Automated profile scan
 python run.py --dry-run --profile MyProfile            # Simulate without moving
@@ -294,10 +297,10 @@ approval queue / a CI job):
 - **Python 3.10+**
 - **8 GB RAM** minimum (for Ollama LLM models)
 - **~5 GB disk space** for the default `qwen2.5:7b` model
-- **Internet connection** for first launch only (Ollama install + model download)
+- **Internet connection** only when you choose to install dependencies or download AI models
 - Works without Ollama — falls back to rule-based engine automatically
 
-All dependencies auto-installed: PyQt6, SQLAlchemy, rapidfuzz, psd-tools, Pillow, and more.
+Install optional dependencies with `pip install -e ".[full]"`. Missing optional packages disable their related feature instead of triggering runtime installs.
 
 ## Related Tools
 
