@@ -10,3 +10,9 @@ dist/
 .venv/
 venv/
 *.egg-info/
+
+# AI artifacts
+.ai/
+PROJECT_CONTEXT.md
+CONTINUATION_PROMPT.md
+RESEARCH_FEATURE_PLAN*.md
