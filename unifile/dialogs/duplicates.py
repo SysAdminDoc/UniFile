@@ -202,6 +202,8 @@ class _DupScanWorker(QThread):
         self.root = root
         self.opts = opts
         self._cancelled = False
+        self.total_scanned = 0
+        self.total_skipped = 0
 
     def cancel(self):
         self._cancelled = True
@@ -209,11 +211,12 @@ class _DupScanWorker(QThread):
     def run(self):
         from unifile.duplicates import ProgressiveDuplicateDetector
         try:
-            # Collect files
             self.progress.emit("Collecting files...")
             entries = []
+            skipped = 0
             depth = self.opts.get('depth', 99)
             root_depth = self.root.rstrip(os.sep).count(os.sep)
+            min_size = self.opts.get('min_size', 1)
 
             for dirpath, dirnames, filenames in os.walk(self.root):
                 if self._cancelled:
@@ -227,11 +230,15 @@ class _DupScanWorker(QThread):
                     fpath = os.path.join(dirpath, fname)
                     try:
                         sz = os.path.getsize(fpath)
-                        if sz >= self.opts.get('min_size', 1):
+                        if sz >= min_size:
                             entries.append((fpath, sz))
+                        else:
+                            skipped += 1
                     except OSError:
-                        continue
+                        skipped += 1
 
+            self.total_scanned = len(entries)
+            self.total_skipped = skipped
             self.progress.emit(f"Scanning {len(entries)} files for duplicates...")
             det = ProgressiveDuplicateDetector(
                 enable_perceptual=self.opts.get('perceptual', True),
@@ -481,7 +488,18 @@ class DuplicateFinderDialog(QDialog):
         self.progress.setVisible(False)
 
         if not dup_map:
-            self.lbl_status.setText("No duplicates found.")
+            scanned = getattr(self._worker, 'total_scanned', 0)
+            skipped = getattr(self._worker, 'total_skipped', 0)
+            criteria = []
+            if self.chk_perceptual.isChecked(): criteria.append("perceptual image hash")
+            if self.chk_audio.isChecked() and self.chk_audio.isEnabled(): criteria.append("audio fingerprint")
+            criteria.append("SHA-256 content hash")
+            criteria_str = ", ".join(criteria)
+            parts = [f"No duplicates found among {scanned} file{'s' if scanned != 1 else ''}"]
+            if skipped:
+                parts.append(f"{skipped} file{'s' if skipped != 1 else ''} skipped (below minimum size)")
+            parts.append(f"Criteria used: {criteria_str}")
+            self.lbl_status.setText(". ".join(parts) + ".")
             self.lbl_summary.setText("")
             return
 

@@ -763,17 +763,32 @@ class CleanupPanel(QWidget):
         self.lbl_summary.setText(
             f"Found {len(self._results)} items ({_fmt_size(total_size)})")
 
+    _TAB_LABELS = {
+        0: "empty directories",
+        1: "zero-byte files",
+        2: "temporary/junk files",
+        3: "broken or corrupt files",
+        4: "large files",
+        5: "old downloads",
+    }
+
     def _on_scan_done(self, results):
         from unifile.cleanup import _fmt_size
         self.btn_scan.setText("Run Scan")
         self.btn_scan.setEnabled(True)
         total_size = sum(r.size for r in self._results)
-        self.lbl_summary.setText(
-            f"Found {len(self._results)} item{'s' if len(self._results) != 1 else ''} ({_fmt_size(total_size)})")
-        self.lbl_progress.setText(
-            f"Scan complete — {len(self._results)} result{'s' if len(self._results) != 1 else ''}"
-        )
-        self.btn_delete.setEnabled(len(self._results) > 0)
+        count = len(self._results)
+        if count:
+            self.lbl_summary.setText(f"Found {count} item{'s' if count != 1 else ''} ({_fmt_size(total_size)})")
+            self.lbl_progress.setText(f"Scan complete — {count} result{'s' if count != 1 else ''}")
+        else:
+            tab_idx = self.tabs.currentIndex()
+            kind = self._TAB_LABELS.get(tab_idx, "matching items")
+            self.lbl_summary.setText("")
+            self.lbl_progress.setText(
+                f"No {kind} found. The scanned directory appears clean for this category."
+            )
+        self.btn_delete.setEnabled(count > 0)
 
     def _on_check(self, row, state):
         if row < len(self._results):

@@ -320,35 +320,10 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Research-Driven Additions
 
-### P1
-
 ### P2
 - [ ] P2 — Qt Linguist i18n pipeline before broader localization
-  Why: ROADMAP.md mentions RTL layout but not extractable strings, catalogs, or locale-switch testing.
-  Evidence: `unifile/main_window.py`, `unifile/dialogs/`, Qt internationalization docs, TagStudio translation model.
-  Touches: GUI string construction, resource packaging, settings UI, release artifacts.
-  Acceptance: `lupdate`/`lrelease` or PyQt equivalents extract translatable strings; an English baseline catalog ships; locale switching is testable without editing source; RTL remains a separate layout toggle.
   Complexity: L
 - [ ] P2 — Windows Property System metadata bridge
-  Why: UniFile already reads many embedded formats, but Windows users also store ratings/tags/title/author in Shell properties that are searchable outside UniFile.
-  Evidence: Microsoft Windows Property System docs; `unifile/metadata.py`; README metadata/tag-library claims.
-  Touches: `unifile/metadata.py`, tag-library field mapping, search/filter UI, Windows-only adapter tests.
-  Acceptance: On Windows, supported Shell properties are imported as read-only fields during scan; conflicts with embedded metadata are labeled; non-Windows behavior is unchanged.
   Complexity: L
 - [ ] P2 — TagSpaces `.ts` sidecar import/export
-  Why: TagStudio and XMP interop are already planned, but TagSpaces JSON sidecars are a common portable tag format that preserves existing folder structures.
-  Evidence: TagSpaces tagging and metafile-format docs; ROADMAP TagStudio/XMP items.
-  Touches: tag-library import/export tools, `unifile/tagging/library.py`, sidecar writer/reader tests, docs.
-  Acceptance: UniFile can dry-run import `.ts/*.json` sidecars into tags/fields and export selected entries back to TagSpaces sidecar format without moving originals.
-  Complexity: M
-
-## Research-Driven Additions
-
-### P1
-### P2
-- [ ] P2 - Explain duplicate and cleanup no-result outcomes
-  Why: Focused cleanup tools win trust by explaining why files were or were not grouped, especially for reference-folder, near-duplicate, and broken-file scans.
-  Evidence: `unifile/duplicates.py`, `unifile/dialogs/duplicates.py`, `unifile/cleanup.py`, dupeGuru documentation, Czkawka issue patterns.
-  Touches: duplicate detector result model, duplicate dialog, cleanup dialog, logs/status text, tests with controlled duplicate/non-duplicate fixtures.
-  Acceptance: Duplicate and cleanup dialogs show scan totals, skipped/protected counts, duplicate criteria used, and a clear "no matches because..." state; reference/master folders can be marked as keep-only; tests cover empty/no-match/protected/reference scenarios.
   Complexity: M
