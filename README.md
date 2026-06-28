@@ -1,6 +1,6 @@
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.3.22-blue)
+![Version](https://img.shields.io/badge/version-9.3.23-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -166,7 +166,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | File Preview Panel | Split-view with image preview, text excerpt, metadata |
 | Drag & Drop | Drop folders onto the window to set source |
 | Undo Timeline | Visual timeline of all operations with one-click rollback |
-| Plugin System | Extensible plugin architecture for custom behavior |
+| Trusted Plugin System | Python plugins are discovered but disabled until explicitly trusted; changed plugins must be re-trusted |
 
 ### Safety
 
@@ -177,6 +177,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 - **Full undo log** — every operation recorded with one-click rollback
 - **CSV audit trail** — every classification logged with timestamp, method, confidence
 - **Crash handler** — unhandled exceptions saved to crash log with MessageBox notification
+- **Plugin trust gate** — local Python plugins are fingerprinted and must be explicitly trusted before execution
 
 ## Architecture
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UniFile v9.3.22 — Launch Script
+"""UniFile v9.3.23 — Launch Script
 
 Run this file to start UniFile:
     python run.py

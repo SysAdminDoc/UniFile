@@ -956,6 +956,14 @@ class PluginManagerDialog(QDialog):
         btn_open.setProperty("class", "toolbar")
         btn_open.clicked.connect(self._open_folder)
         btn_row.addWidget(btn_open)
+        self.btn_trust = QPushButton("Trust Plugin")
+        self.btn_trust.setProperty("class", "toolbar")
+        self.btn_trust.clicked.connect(self._trust_selected)
+        btn_row.addWidget(self.btn_trust)
+        self.btn_untrust = QPushButton("Untrust")
+        self.btn_untrust.setProperty("class", "toolbar")
+        self.btn_untrust.clicked.connect(self._untrust_selected)
+        btn_row.addWidget(self.btn_untrust)
         btn_reload = QPushButton("Reload Plugins")
         btn_reload.setProperty("class", "primary")
         btn_reload.clicked.connect(self._reload)
@@ -970,30 +978,53 @@ class PluginManagerDialog(QDialog):
         self._refresh()
 
     def _refresh(self):
+        current = self.lst_plugins.currentRow()
         self.lst_plugins.clear()
         self._discovered = PluginManager.discover()
         for p in self._discovered:
-            hooks = ', '.join(p.get('hooks', []))
-            self.lst_plugins.addItem(f"{p['name']}  [{hooks}]")
+            hooks = ', '.join(p.get('hooks', [])) or 'no hooks'
+            status = p.get('trust_status', 'untrusted').upper()
+            self.lst_plugins.addItem(f"{p['name']}  [{status}]  [{hooks}]")
         count = len(self._discovered)
+        trusted = sum(1 for p in self._discovered if p.get('trusted'))
+        errors = PluginManager.last_load_errors()
         self.lbl_summary.setText(
-            f"{count} plugin{'s' if count != 1 else ''} discovered."
+            f"{count} plugin{'s' if count != 1 else ''} discovered; {trusted} trusted."
+            + (f" {len(errors)} load error{'s' if len(errors) != 1 else ''}." if errors else "")
             if count else
             "No plugins were discovered. Open the plugins folder to add one."
         )
         if not count:
             self.lbl_info.setText("No plugin metadata is available yet.")
+        elif 0 <= current < count:
+            self.lst_plugins.setCurrentRow(current)
+        else:
+            self.lst_plugins.setCurrentRow(0)
+        self._on_selected(self.lst_plugins.currentRow())
 
     def _on_selected(self, row):
         if 0 <= row < len(self._discovered):
             p = self._discovered[row]
+            hooks = ', '.join(p.get('hooks', [])) or '(none)'
+            trust_status = p.get('trust_status', 'untrusted')
+            error_text = p.get('load_error') or ''
+            for err in PluginManager.last_load_errors():
+                if err.get('path') == p.get('path'):
+                    error_text = err.get('load_error', '')
+                    break
             self.lbl_info.setText(
                 f"Name: {p['name']}\n"
-                f"Hooks: {', '.join(p.get('hooks', []))}\n"
+                f"Trust: {trust_status}\n"
+                f"Hooks: {hooks}\n"
                 f"Description: {p['description']}\n"
-                f"Path: {p['path']}")
+                f"Path: {p['path']}"
+                + (f"\nLoad error: {error_text}" if error_text else ""))
+            self.btn_trust.setEnabled(trust_status in ('untrusted', 'changed') and not p.get('load_error'))
+            self.btn_untrust.setEnabled(trust_status in ('trusted', 'changed'))
         else:
             self.lbl_info.setText("Select a plugin to inspect its hooks, description, and path.")
+            self.btn_trust.setEnabled(False)
+            self.btn_untrust.setEnabled(False)
 
     def _open_folder(self):
         if sys.platform == 'win32':
@@ -1006,6 +1037,20 @@ class PluginManagerDialog(QDialog):
     def _reload(self):
         PluginManager.load_all()
         self._refresh()
+
+    def _trust_selected(self):
+        row = self.lst_plugins.currentRow()
+        if 0 <= row < len(self._discovered):
+            PluginManager.trust(self._discovered[row]['path'])
+            PluginManager.load_all()
+            self._refresh()
+
+    def _untrust_selected(self):
+        row = self.lst_plugins.currentRow()
+        if 0 <= row < len(self._discovered):
+            PluginManager.untrust(self._discovered[row]['path'])
+            PluginManager.load_all()
+            self._refresh()
 
 
 class WatchHistoryDialog(QDialog):

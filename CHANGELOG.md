@@ -2,6 +2,16 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.23] - Plugin Trust Gate
+
+### Added
+- Plugin trust store keyed by plugin path, size, mtime, and SHA-256 fingerprint.
+- Plugin Manager trust/untrust controls with trust status and load-error reporting.
+- Regression tests proving untrusted plugins are discovered but not executed, changed plugins are disabled, and load errors are surfaced.
+
+### Changed
+- Plugin loading now skips untrusted or changed `.py` files instead of executing every discovered plugin in app data.
+
 ## [v9.3.22] - Explicit Setup Opt-In
 
 ### Changed

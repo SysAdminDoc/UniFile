@@ -1,9 +1,10 @@
 """UniFile — Plugins, profiles, category presets, cloud path resolution."""
+import hashlib
 import importlib.util
 import json
 import os
 
-from unifile.config import _APP_DATA_DIR, _PRESETS_DIR, _PROFILES_DIR
+from unifile.config import _APP_DATA_DIR, _PRESETS_DIR, _PROFILES_DIR, load_json_safe, save_json_safe
 
 
 class ProfileManager:
@@ -116,6 +117,7 @@ class CategoryPresetManager:
 
 # ── Plugin System ────────────────────────────────────────────────────────────
 _PLUGINS_DIR = os.path.join(_APP_DATA_DIR, 'plugins')
+_PLUGIN_TRUST_PATH = os.path.join(_APP_DATA_DIR, 'trusted_plugins.json')
 os.makedirs(_PLUGINS_DIR, exist_ok=True)
 
 
@@ -124,6 +126,71 @@ class PluginManager:
 
     HOOKS = ('classify', 'rename_token', 'post_move', 'post_scan')
     _plugins = []  # list of (module, metadata_dict)
+    _load_errors = []
+
+    @staticmethod
+    def _trust_key(path: str) -> str:
+        return os.path.normcase(os.path.abspath(path))
+
+    @staticmethod
+    def _fingerprint(path: str) -> dict:
+        st = os.stat(path)
+        h = hashlib.sha256()
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                h.update(chunk)
+        return {
+            'path': PluginManager._trust_key(path),
+            'size': st.st_size,
+            'mtime_ns': getattr(st, 'st_mtime_ns', int(st.st_mtime * 1_000_000_000)),
+            'sha256': h.hexdigest(),
+        }
+
+    @classmethod
+    def _trust_store(cls) -> dict:
+        return load_json_safe(_PLUGIN_TRUST_PATH, {}, expected_type=dict)
+
+    @classmethod
+    def is_trusted(cls, path: str) -> bool:
+        key = cls._trust_key(path)
+        entry = cls._trust_store().get(key)
+        if not isinstance(entry, dict):
+            return False
+        try:
+            return entry == cls._fingerprint(path)
+        except OSError:
+            return False
+
+    @classmethod
+    def trust(cls, path: str) -> bool:
+        try:
+            fp = cls._fingerprint(path)
+        except OSError:
+            return False
+        store = cls._trust_store()
+        store[fp['path']] = fp
+        return save_json_safe(_PLUGIN_TRUST_PATH, store)
+
+    @classmethod
+    def untrust(cls, path: str) -> bool:
+        store = cls._trust_store()
+        store.pop(cls._trust_key(path), None)
+        return save_json_safe(_PLUGIN_TRUST_PATH, store)
+
+    @classmethod
+    def trust_status(cls, path: str) -> str:
+        key = cls._trust_key(path)
+        store = cls._trust_store()
+        if key not in store:
+            return 'untrusted'
+        try:
+            return 'trusted' if store.get(key) == cls._fingerprint(path) else 'changed'
+        except OSError:
+            return 'missing'
+
+    @classmethod
+    def last_load_errors(cls) -> list:
+        return list(cls._load_errors)
 
     @classmethod
     def discover(cls) -> list:
@@ -136,7 +203,9 @@ class PluginManager:
                 continue
             fpath = os.path.join(_PLUGINS_DIR, fname)
             meta = {'file': fname, 'path': fpath, 'name': fname[:-3],
-                    'hooks': [], 'description': '', 'enabled': True}
+                    'hooks': [], 'description': '', 'enabled': False,
+                    'trusted': False, 'trust_status': 'untrusted',
+                    'load_error': ''}
             try:
                 with open(fpath, encoding='utf-8') as f:
                     src = f.read()
@@ -150,8 +219,14 @@ class PluginManager:
                         hook = line.split(':', 1)[1].strip().lower()
                         if hook in cls.HOOKS:
                             meta['hooks'].append(hook)
-            except Exception:
+                status = cls.trust_status(fpath)
+                meta['trust_status'] = status
+                meta['trusted'] = status == 'trusted'
+                meta['enabled'] = meta['trusted']
+            except Exception as exc:
                 meta['description'] = f"Error parsing {fname}"
+                meta['trust_status'] = 'parse_error'
+                meta['load_error'] = f"{type(exc).__name__}: {exc}"
             results.append(meta)
         return results
 
@@ -159,8 +234,9 @@ class PluginManager:
     def load_all(cls):
         """Load all discovered plugins."""
         cls._plugins.clear()
+        cls._load_errors.clear()
         for meta in cls.discover():
-            if not meta.get('enabled', True):
+            if not meta.get('trusted', False):
                 continue
             try:
                 spec = importlib.util.spec_from_file_location(meta['name'], meta['path'])
@@ -168,8 +244,10 @@ class PluginManager:
                     mod = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(mod)
                     cls._plugins.append((mod, meta))
-            except Exception:
-                pass
+            except Exception as exc:
+                failed = dict(meta)
+                failed['load_error'] = f"{type(exc).__name__}: {exc}"
+                cls._load_errors.append(failed)
 
     @classmethod
     def run_classifiers(cls, filepath, metadata) -> tuple:
@@ -295,4 +373,3 @@ class CloudPathResolver:
 
 # Note: append_csv_log() used to live here as duplicate code. The canonical
 # implementation is in unifile.cache — import it from there instead.
-
