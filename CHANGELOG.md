@@ -2,6 +2,17 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.26] - Dependency Manifest Convergence
+
+### Added
+- Dependency manifest validator for `pyproject.toml`, `requirements.txt`, and bootstrap package probes.
+- `make deps-check` and `make audit` developer targets.
+
+### Changed
+- `requirements.txt` now delegates to pyproject extras instead of duplicating package lists.
+- `make dev` installs runtime and dev extras, and `make test` runs manifest validation before pytest.
+- Main-window Qt smoke tests now require `pytest-qt` instead of skipping when it is missing.
+
 ## [v9.3.25] - Versioned Tag Library Migrations
 
 ### Added

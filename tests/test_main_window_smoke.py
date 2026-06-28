@@ -14,8 +14,7 @@ window). Run the full suite with the marker enabled:
     pytest -m "not slow"       # fast path — skip smoke
     pytest tests/test_main_window_smoke.py -v
 
-If `pytest-qt` is not installed (the `dev` extra pins it), every test
-skips cleanly.
+`pytest-qt` is required; install the `dev` extra before running the suite.
 """
 
 import os
@@ -26,7 +25,10 @@ import pytest
 # Force headless Qt before importing anything that pulls in a QApplication.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-pytest.importorskip("pytestqt", reason="pytest-qt not installed")
+try:
+    import pytestqt  # noqa: F401
+except ImportError as exc:
+    raise RuntimeError("pytest-qt is required for main-window smoke tests; install .[dev]") from exc
 
 
 @pytest.fixture

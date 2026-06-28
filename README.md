@@ -1,6 +1,6 @@
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.3.25-blue)
+![Version](https://img.shields.io/badge/version-9.3.26-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -303,7 +303,17 @@ approval queue / a CI job):
 - **Internet connection** only when you choose to install dependencies or download AI models
 - Works without Ollama — falls back to rule-based engine automatically
 
-Install optional dependencies with `pip install -e ".[full]"`. Missing optional packages disable their related feature instead of triggering runtime installs.
+Install optional dependencies with `pip install -e ".[full]"`. Missing optional packages disable their related feature instead of triggering runtime installs. `pyproject.toml` is the dependency source of truth; `requirements.txt` delegates to the runtime/dev extras.
+
+Developer checks:
+
+```bash
+make dev         # install runtime + dev extras
+make deps-check  # verify pyproject/requirements/bootstrap alignment
+make test        # deps-check + full pytest, including pytest-qt smoke tests
+make lint        # Ruff
+make audit       # pip-audit --local
+```
 
 ## Related Tools
 

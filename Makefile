@@ -3,15 +3,17 @@
 
 PY ?= python
 
-.PHONY: help install dev test cov lint format build clean run
+.PHONY: help install dev deps-check test cov lint audit format build clean run
 
 help:
 	@echo "UniFile developer targets:"
 	@echo "  install     Install package + core deps (editable)"
-	@echo "  dev         Install with [dev] extras (pytest, ruff, coverage)"
-	@echo "  test        Run pytest"
+	@echo "  dev         Install with runtime + dev extras"
+	@echo "  deps-check  Validate dependency manifest alignment"
+	@echo "  test        Validate dependency manifests and run pytest"
 	@echo "  cov         Run pytest with coverage report"
 	@echo "  lint        Run ruff"
+	@echo "  audit       Run pip-audit against the local environment"
 	@echo "  format      Auto-fix ruff issues"
 	@echo "  build       Build a Windows exe via PyInstaller"
 	@echo "  run         Launch the GUI"
@@ -21,9 +23,12 @@ install:
 	$(PY) -m pip install -e .
 
 dev:
-	$(PY) -m pip install -e ".[dev]"
+	$(PY) -m pip install -e ".[full,media,ocr,dev]"
 
-test:
+deps-check:
+	$(PY) tools/check_dependency_manifests.py
+
+test: deps-check
 	$(PY) -m pytest
 
 cov:
@@ -31,6 +36,9 @@ cov:
 
 lint:
 	$(PY) -m ruff check unifile tests
+
+audit:
+	$(PY) -m pip_audit --local
 
 format:
 	$(PY) -m ruff check --fix unifile tests
