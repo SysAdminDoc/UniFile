@@ -386,3 +386,41 @@ Strategic / aspirational features. Some require significant architecture changes
   Touches: tag-library import/export tools, `unifile/tagging/library.py`, sidecar writer/reader tests, docs.
   Acceptance: UniFile can dry-run import `.ts/*.json` sidecars into tags/fields and export selected entries back to TagSpaces sidecar format without moving originals.
   Complexity: M
+
+## Research-Driven Additions
+
+### P0
+- [ ] P0 - Make runtime dependency and Ollama setup explicit opt-in
+  Why: Source imports currently mutate Python environments and can download/install large native packages or local model infrastructure without a clear trust boundary.
+  Evidence: `unifile/bootstrap.py:27-113`, `unifile/workers.py:1081-1250`, Python packaging guide, Ollama install docs.
+  Touches: `unifile/bootstrap.py`, `unifile/workers.py`, `run.py`, Settings Hub setup flow, README/CONTRIBUTING install docs, bootstrap tests.
+  Acceptance: `python -m unifile --version` and headless commands never invoke pip/Ollama installers; GUI first-run shows an explicit setup flow with offline/manual options; tests prove missing optional packages do not trigger subprocess installs unless an opt-in flag or UI action is used.
+  Complexity: M
+
+### P1
+- [ ] P1 - Durable watch-mode job queue with file-settle checks and retry status
+  Why: Watch mode currently uses `QFileSystemWatcher` plus a fixed delay and UI-state mutation, so partially written files, failed scans, and missed retries are not represented as recoverable jobs.
+  Evidence: `unifile/widgets.py:505-638`, Hazel/File Juggler watched-folder rule behavior, Paperless-ngx/Immich background job visibility.
+  Touches: `unifile/widgets.py`, `unifile/watch_mixin.py`, watch history storage in `unifile/config.py`, status/dashboard UI, watch-mode tests.
+  Acceptance: Changed files must remain size/mtime-stable before scan; pending/running/failed watch jobs persist across app restarts; users can retry or dismiss failed jobs; tests simulate rapid writes, deletes, restart recovery, and scan failure.
+  Complexity: L
+- [ ] P1 - Content-aware rule conditions backed by OCR/text extraction
+  Why: OCR can populate `ai_summary`, but rules lack first-class content conditions, so Paperless/Hazel-style document routing is not ergonomic or testable.
+  Evidence: `unifile/ocr_indexer.py:58-96`, `unifile/engine.py:114-167`, Paperless-ngx matching docs, Hazel contents rules.
+  Touches: `unifile/engine.py`, `unifile/ocr_indexer.py`, `unifile/dialogs/editors.py`, tag-library field mapping, rule import/export tests.
+  Acceptance: Rule editor exposes `content contains`, `content matches`, and OCR-present conditions; rules can target OCR/PDF text without LLM calls; invalid regex and missing OCR states are visible; tests cover PDF text, image OCR metadata, and no-text fallbacks.
+  Complexity: M
+- [ ] P1 - Replace stale GitHub Actions/release workflow promises with local-build release docs
+  Why: Repo policy and commit history removed CI workflows, but contributing docs and roadmap still promise workflow-triggered releases and CI enforcement.
+  Evidence: `CONTRIBUTING.md:111-113`, `ROADMAP.md:266`, `ROADMAP.md:279-280`, commit `ae27c3f`, `.github/` contains templates but no workflows.
+  Touches: `CONTRIBUTING.md`, `ROADMAP.md`, README release/install sections, Makefile build target, release checklist.
+  Acceptance: Docs describe local pytest/ruff/build/release commands only; roadmap no longer asks for GitHub Actions automation; release checklist includes local artifact build, signing status, checksum, tag, push, GitHub Release upload, and post-push verification.
+  Complexity: S
+
+### P2
+- [ ] P2 - Explain duplicate and cleanup no-result outcomes
+  Why: Focused cleanup tools win trust by explaining why files were or were not grouped, especially for reference-folder, near-duplicate, and broken-file scans.
+  Evidence: `unifile/duplicates.py`, `unifile/dialogs/duplicates.py`, `unifile/cleanup.py`, dupeGuru documentation, Czkawka issue patterns.
+  Touches: duplicate detector result model, duplicate dialog, cleanup dialog, logs/status text, tests with controlled duplicate/non-duplicate fixtures.
+  Acceptance: Duplicate and cleanup dialogs show scan totals, skipped/protected counts, duplicate criteria used, and a clear "no matches because..." state; reference/master folders can be marked as keep-only; tests cover empty/no-match/protected/reference scenarios.
+  Complexity: M

@@ -1,50 +1,58 @@
 # Research - UniFile
 
 ## Executive Summary
-UniFile is a local-first PyQt6 desktop organizer that combines filesystem scans, rule/AI classification, a SQLAlchemy tag library, duplicate cleanup, media metadata lookup, shell integration, and Ollama/Nexa-backed intelligence. Verified: its strongest current shape is breadth plus safety-oriented preview/undo workflows; the highest-value direction is to harden trust boundaries and persistence before adding more feature breadth. Top opportunities: plugin trust gate, removal of embedded shared media API keys, versioned tag-library migrations, dependency/test manifest convergence, redacted diagnostics, PyInstaller runtime smoke hardening, security policy sync, locale-ready UI strings, Windows metadata bridge, and TagSpaces sidecar interop.
+UniFile is a local-first Python/PyQt6 desktop organizer that combines rule and AI classification, preview-first moves/renames, cleanup, duplicate detection, media metadata lookup, a SQLAlchemy tag library, shell integration, and optional Ollama/Nexa intelligence. Verified: its strongest current shape is breadth plus review/undo safety; the highest-value direction is to harden trust, install, deletion, job-state, and persistence paths before adding more surface area. Priority opportunities: stop runtime dependency/Ollama mutation by default; keep cleanup deletion fail-closed when trash support is missing; make watch-mode jobs explicit and recoverable; expose OCR/content extraction to rules and saved views; remove stale CI/release automation promises from docs/roadmap; then continue the already-planned plugin trust gate, API-key removal, tag-library migrations, dependency audit, diagnostics, PyInstaller smoke, i18n, Windows metadata bridge, and TagSpaces sidecar work.
 
 ## Product Map
-- Core workflows: scan folders/files, preview classifications, apply moves/renames with undo, manage tag-library entries, run cleanup/duplicate/media-lookup tools.
-- Core workflows: shell-triggered scans and headless CLI commands in `unifile/__main__.py` (`classify`, `validate-rules`, `install-shell`, profile-driven scan/apply).
-- User personas: Windows power users cleaning Downloads/Desktop, media-library maintainers, photographers/designers, local-AI privacy users, and developers extending classifiers.
-- Platforms and distribution: Python >=3.10, PyQt6 GUI, SQLAlchemy/SQLite data layer, PyInstaller spec for Windows desktop artifacts, source installs via `pyproject.toml` and `requirements.txt`.
-- Key integrations and data flows: Ollama/Nexa providers, TMDb/OMDb/TVMaze media APIs, optional metadata/OCR/image dependencies, SQLite tag library, CSV/undo/crash logs, Windows Explorer context-menu launcher.
+- Core workflows: scan folders/files, classify by extension/rules/metadata/context/LLM, preview destinations, apply moves or renames with undo, and export scan plans from `unifile/__main__.py`.
+- Core workflows: manage tag-library entries in SQLite, search by tags/query tokens, save searches, run OCR/media lookup, and write XMP sidecars.
+- Core workflows: cleanup empty/temp/broken/big/old files, find duplicates with progressive hashing/perceptual image matching, and use shell context-menu launches with `--source` and `--show-preview`.
+- User personas: Windows power users cleaning Downloads/Desktop, media-library maintainers, designers/photographers with asset packs, local-AI privacy users, and developers extending rules/plugins.
+- Platforms and distribution: Python >=3.10, PyQt6, SQLAlchemy/SQLite, source install via `pyproject.toml`/`requirements.txt`, Windows PyInstaller spec, and cross-platform claims in README.
+- Key integrations and data flows: Ollama/Nexa/local AI providers, TMDb/OMDb/TVMaze, optional OCR/media/image libraries, Windows Explorer shell registration, app-data JSON/SQLite stores, crash/CSV/undo/watch logs.
 
 ## Competitive Landscape
-- TagStudio: does non-destructive tag libraries, custom fields, Boolean search, translations, and library-format thinking well. Learn from its explicit library-format goals and user complaints about search/performance; avoid a single opaque database that cannot survive moves or interoperate.
-- TagSpaces: does file-adjacent tag portability through filename tags or `.ts` JSON sidecars well. Learn import/export and travel-with-files metadata; avoid forcing sidecars as the only storage model.
-- Hydrus Network: does tag parents/siblings and large tag graphs well. Learn graph semantics and query expansion; avoid importing PTR/community-repository complexity into a personal filesystem app.
-- Czkawka/dupeGuru: do focused duplicate/cleanup UX with review-before-delete well. Learn reference-folder, conflict, and false-negative diagnostics; avoid irreversible delete paths and silent "no matches" results.
-- Eagle/Adobe Bridge/FileBot: commercial tools make smart folders, batch metadata/rename templates, and media metadata workflows feel polished. Learn previewable batch templates and collection/search ergonomics; avoid paywall-style feature fragmentation and online-account assumptions.
-- Paperless-ngx/Immich: adjacent self-hosted systems prove that OCR/ML tagging, saved views, CLIP search, and job status dashboards are expected in serious libraries. Learn explicit job state, retry, and review queues; avoid server-first architecture unless a future headless mode is intentionally built.
+- TagStudio: strong non-destructive tag-library model, flexible fields, Boolean search, and library-format thinking. Learn from its local-library ergonomics and user demand for AI-assisted ingestion; avoid a closed database that cannot round-trip through sidecars or moves.
+- TagSpaces: strong portable metadata through filename tags and `.ts` JSON sidecars. Learn file-adjacent metadata portability and mobile/PWA reach; avoid forcing sidecars as the only source of truth.
+- Hydrus Network: strong tag parents/siblings and high-scale tag graph semantics. Learn implication/sibling query expansion; avoid importing public tag repository moderation and network trust complexity.
+- Czkawka and dupeGuru: strong focused cleanup/duplicate workflows, reference-folder protection, and false-negative community feedback. Learn master-folder protection and explainable "why not duplicate" states; avoid permanent-delete fallbacks and silent no-result scans.
+- Hazel, DropIt, and File Juggler: strong watched-folder automation with content/date/name rules. Learn file-settle checks, explicit rule order, and content-aware matching; avoid Mac-only assumptions and opaque automation side effects.
+- Eagle, Adobe Bridge, and FileBot: strong smart folders, collections, batch metadata/rename previews, and media rename grammar. Learn previewable batch templates and merge-oriented duplicate handling; avoid account/cloud assumptions and feature fragmentation.
+- Paperless-ngx and Immich: adjacent self-hosted libraries show OCR/content matching, saved views, ML-assisted search, job status, retry, and review queues are table-stakes for serious personal libraries. Learn visible background jobs and post-ingest review; avoid server-first architecture unless headless mode is deliberately added.
 
 ## Security, Privacy, and Reliability
-- Verified: `unifile/plugins.py:144-174` discovers every `.py` file under the app-data plugins directory, executes it via `importlib.util.spec_from_file_location(...).loader.exec_module(...)`, and swallows load errors. Add an explicit trust/enable gate before expanding the roadmap's future scripting system.
-- Verified: `unifile/media/providers.py:115` and `unifile/media/providers.py:247` embed shared TMDb/OMDb fallback keys; `ATTRIBUTION.md:23-25` documents the TMDb key as a shared demo key. Replace with user-owned credentials and visible provider status.
-- Verified: `unifile/tagging/db.py:53-72` applies unordered raw `ALTER TABLE` statements and ignores `OperationalError`; this hides drift and gives no rollback path for user libraries.
-- Verified: `SECURITY.md:12-15` still lists `9.0.x` as supported while `pyproject.toml` and README declare v9.3.21.
-- Verified: `unifile/cleanup.py:621-629` can fall back to `os.remove()` when `send2trash` is unavailable; the existing ROADMAP already covers a Recycle Bin unification item, so this research does not add a duplicate roadmap item.
-- Likely: crash logs, CSV audit trails, provider warnings, and diagnostic screenshots can expose local paths or credentials; `SECURITY.md:39` already names secrets/path exposure as in scope, but no redacted support-bundle path is documented.
+- Verified: `unifile/bootstrap.py:27-113` auto-runs pip installs for required and optional packages during import, including large/native packages, with quiet stdout/stderr and no consent boundary. This conflicts with normal source-install expectations and can mutate user environments unexpectedly.
+- Verified: `unifile/workers.py:1081-1250` can silently install/start Ollama and pull models as part of setup. This supports the README quick start but needs an explicit opt-in/offline-safe path for privacy, bandwidth, and enterprise environments.
+- Verified: `unifile/cleanup.py:597-629` falls back to `os.rmdir()`/`os.remove()` when `send2trash` is unavailable. `unifile/workers.py:263-282` already fails closed for trash-mode deletion, so cleanup should match that safer behavior.
+- Verified: `unifile/widgets.py:505-638` uses `QFileSystemWatcher` plus a fixed delay and triggers a scan by mutating main-window UI state. There is no durable pending-job record, file-size stability check, retry queue, or visible failed-watch job state.
+- Verified: `unifile/plugins.py:159-172` executes every discovered plugin module and suppresses load errors. The existing roadmap already covers a plugin trust gate; keep that as a top trust prerequisite before scripting/manifest expansion.
+- Verified: `unifile/media/providers.py:115` and `unifile/media/providers.py:247` embed shared TMDb/OMDb fallback keys; `ATTRIBUTION.md` documents the TMDb key as shared. The existing roadmap already covers replacing these with user-owned credentials.
+- Verified: `unifile/tagging/db.py:50-70` applies raw `ALTER TABLE` statements and ignores `OperationalError`, with no schema version, backup, or rollback. The existing roadmap already covers versioned migrations.
+- Verified: `SECURITY.md:12-15` says only latest releases are supported but still lists `9.0.x` while the app is v9.3.21; the existing roadmap already covers security policy sync.
+- Likely: crash logs, provider failures, CSV audit trails, and watch history can expose full local paths. The existing diagnostics roadmap item should redact paths, keys, emails, and media API parameters.
 
 ## Architecture Assessment
-- Verified: `unifile/main_window.py` is 4054 lines and `unifile/workers.py` is 2737 lines; recent commits show repeated mixin extraction, so future work should continue boundary cuts only when tied to testable behavior.
-- Verified: package metadata is split across `pyproject.toml`, `requirements.txt`, and `unifile/bootstrap.py`; the sets disagree for optional/media/dev dependencies, and `tests/test_main_window_smoke.py:29` skips the main GUI smoke suite when `pytest-qt` is missing.
-- Verified: `run.py:2` still says `UniFile v9.0.0` while project metadata says v9.3.21; PyInstaller docs require `multiprocessing.freeze_support()` in frozen apps that may spawn subprocesses/processes, but `run.py` does not call it.
-- Verified: `UniFile.spec` has no runtime hooks, no signing identity, and no automated launch smoke; the existing distribution roadmap covers installers, but not executable-level boot verification.
-- Likely: Windows Property System and Cloud Files API can improve metadata reads and placeholder handling without writing fragile Shell extensions; `plugins.py` already has heuristic cloud-folder detection, and `Roadmap_Blocked.md` keeps native thumbnail provider work blocked on COM signing.
-- Verified: i18n is currently limited in the roadmap to RTL layout support; Qt Linguist-ready string extraction is missing and must precede real localization.
+- Verified: `unifile/main_window.py` is 4054 lines and `unifile/workers.py` is 2737 lines; recent commits show mixin extraction, but scan/apply/watch still share UI state and worker state tightly.
+- Verified: `pyproject.toml`, `requirements.txt`, and `unifile/bootstrap.py` do not describe the same dependency set; optional packages are unpinned even though image/OCR/media parsers process untrusted files. This is already partly captured by the dependency convergence roadmap item.
+- Verified: `tests/test_main_window_smoke.py:29` skips GUI smoke coverage if `pytest-qt` is absent; docs say `pip install -e ".[dev]"` is the dev path, so dev installs should make GUI smoke non-optional.
+- Verified: `run.py:2` still says v9.0.0 while package metadata says v9.3.21, and `UniFile.spec` has no runtime hook. The existing PyInstaller smoke roadmap item should include version sync and frozen-process guards.
+- Verified: `unifile/ocr_indexer.py:58-96` extracts OCR text into `ai_summary`, but `RuleEngine._get_field_value()` in `unifile/engine.py:114-137` only reads direct metadata fields and does not provide first-class content conditions, OCR confidence, or "content contains" rule ergonomics.
+- Verified: `CONTRIBUTING.md:111-113` and `ROADMAP.md:266,279-280` still describe GitHub release/CI automation even though `.github/workflows/` is absent and commit `ae27c3f` removed workflows for local-only builds.
+- Likely: Windows Property System and Cloud Files API can improve Shell metadata import and cloud-placeholder handling without risky Explorer shell extensions; native thumbnail provider work is correctly parked in `Roadmap_Blocked.md`.
+- Verified: i18n is currently represented as RTL layout in the roadmap, but Qt Linguist extraction/catalog/release steps are missing. The existing i18n roadmap item should land before broader localization.
 
 ## Rejected Ideas
-- GitHub Actions CI/release automation: rejected because repo rules and recent commit `ae27c3f` require local builds only, despite the older roadmap item mentioning GitHub Actions.
-- Full commercial DAM/PIM suite parity: rejected because Pimcore/ResourceSpace-style multi-tenant asset workflows contradict UniFile's desktop local-first shape.
-- Hydrus PTR/community tag-repository sync: rejected because moderation, legal, and network trust burdens do not fit the current personal-file organizer; tag graph semantics remain useful.
-- RestrictedPython as a security sandbox: rejected because its own README says it is not a sandbox or secured environment; use explicit trust gates and process isolation for untrusted plugins.
-- Mac-only Hazel clone behavior: rejected as a primary direction because UniFile is Windows-first and already has cross-platform watch/profile automation on the roadmap.
-- Subtitle/NFO downloader and full media-provider parity: rejected as new additions because ROADMAP.md already contains those media items.
-- Mobile companion, collaborative LAN tagging, NAS/headless, offline embeddings, and Recycle Bin unification: rejected as new additions because ROADMAP.md already contains those items.
+- GitHub Actions build/test/release automation: rejected because repo rules and commit `ae27c3f` require local builds only; update stale docs instead.
+- Full commercial DAM/PIM parity: rejected because ResourceSpace/Pimcore-style multi-tenant workflows do not fit UniFile's desktop local-first shape.
+- Hydrus PTR/community tag-repository sync: rejected because moderation, legal, and network trust burdens do not fit a personal filesystem organizer; tag graph semantics remain useful.
+- RestrictedPython as the plugin security boundary: rejected because its own documentation says it is not a sandbox; use explicit trust gates, process isolation, and clear enabled-state UX.
+- Mac-only Hazel clone behavior: rejected as a primary direction because UniFile is Windows-first/cross-platform; borrow rule clarity and file-settle semantics instead.
+- New subtitle/NFO downloader, media-provider parity, mobile companion, collaborative LAN tagging, NAS/headless, ONNX embeddings, XMP sidecars, and TagStudio import/export: rejected as new additions because `ROADMAP.md` already contains those items.
+- Native Explorer thumbnail/preview provider now: rejected because `Roadmap_Blocked.md` correctly identifies the COM DLL, installer, and signing requirements.
 
 ## Sources
 OSS and adjacent:
+- https://github.com/TagStudioDev/TagStudio
 - https://docs.tagstud.io/
 - https://github.com/TagStudioDev/TagStudio/discussions/1022
 - https://docs.tagspaces.org/tagging/
@@ -52,36 +60,32 @@ OSS and adjacent:
 - https://hydrusnetwork.github.io/hydrus/advanced_parents.html
 - https://hydrusnetwork.github.io/hydrus/advanced_siblings.html
 - https://github.com/qarmin/czkawka
-- https://github.com/arsenetar/dupeguru/
-- https://github.com/jkwill87/mnamer
-- https://docs.immich.app/features/searching/
+- https://dupeguru.voltaicideas.net/help/en/
 - https://docs.paperless-ngx.com/advanced_usage/
+- https://docs.immich.app/features/searching/
+- https://github.com/hyperfield/ai-file-sorter
+- https://github.com/iyaja/llama-fs
+- https://github.com/QiuYannnn/Local-File-Organizer
 
 Commercial and product:
+- https://www.noodlesoft.com/manual/hazel/hazel-overview/
+- https://www.noodlesoft.com/manual/hazel/work-with-folders-rules/create-edit-rules/understand-the-logic-of-rules/
+- https://www.dropitproject.com/
+- https://www.filejuggler.com/
 - https://en.eagle.cool/support/article/smart-folders
-- https://helpx.adobe.com/bridge/desktop/organize-and-find-files/tag-and-find-files/batch-rename-files.html
+- https://helpx.adobe.com/bridge/desktop/organize-and-find-files/organize-files-and-folders/use-collections.html
 - https://www.filebot.net/
 
-Standards and platform APIs:
-- https://developer.adobe.com/xmp/docs/xmp-specifications/
-- https://www.iptc.org/std/photometadata/documentation/userguide/
-- https://learn.microsoft.com/en-us/windows/win32/cfapi/build-a-cloud-file-sync-engine
-- https://learn.microsoft.com/en-us/windows/win32/properties/property-system-overview
+Standards, platform, dependency, and security:
+- https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html
 - https://doc.qt.io/qt-6/internationalization.html
-- https://www.w3.org/TR/WCAG22/
-- https://developer.themoviedb.org/docs/getting-started
-- https://www.omdbapi.com/apikey.aspx
-- https://www.tvmaze.com/api
-- https://sqlite.org/pragma.html
-
-Dependency, packaging, and security:
-- https://pyinstaller.org/en/v6.6.0/common-issues-and-pitfalls.html
+- https://doc.qt.io/qt-6/linguist-lupdate.html
+- https://learn.microsoft.com/en-us/windows/win32/properties/property-system-overview
+- https://learn.microsoft.com/en-us/windows/win32/cfapi/build-a-cloud-file-sync-engine
 - https://github.com/python-pillow/Pillow/security/advisories/GHSA-cfh3-3jmp-rvhc
 - https://pypi.org/project/pip-audit/
-- https://packaging.python.org/en/latest/specifications/pylock-toml/
 - https://alembic.sqlalchemy.org/
-- https://github.com/zopefoundation/RestrictedPython
 
 ## Open Questions
-- Needs live validation: which generated release artifact format is the canonical user install path right now: PyInstaller COLLECT folder, portable ZIP, or a future MSI?
-- Needs live validation: should media API credentials be stored only in environment variables, or also in UniFile settings using OS credential storage?
+- Needs live validation: which install artifact should be canonical for users now: source checkout, PyInstaller COLLECT folder, portable ZIP, or a future MSI?
+- Needs live validation: should media API credentials be environment-only, stored in UniFile settings, or stored through OS credential storage?
