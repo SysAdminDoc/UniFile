@@ -2,6 +2,17 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.25] - Versioned Tag Library Migrations
+
+### Added
+- Versioned tag-library SQLite migrations using `PRAGMA user_version`.
+- Online SQLite backups before existing tag-library databases are migrated.
+- Integrity checks before and after migration, with backup restore on migration failure.
+- Regression tests for legacy database upgrades, new database stamping, and failed migration rollback.
+
+### Changed
+- Tag-library startup now runs deterministic migration steps instead of ignoring `ALTER TABLE` errors.
+
 ## [v9.3.24] - User-Owned Media API Keys
 
 ### Added
