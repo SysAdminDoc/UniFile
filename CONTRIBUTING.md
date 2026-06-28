@@ -108,9 +108,16 @@ When bumping, update all of the following in the same commit:
 
 ## Releases
 
-Tagged `v*` pushes trigger the release workflow
-(`.github/workflows/release.yml`), which builds a PyInstaller Windows exe
-and uploads it to the GitHub Release. Maintainers only.
+Releases are built locally and uploaded to GitHub Releases manually:
+
+```bash
+make build              # PyInstaller build + frozen smoke + SHA-256
+gh release create vX.Y.Z --title "vX.Y.Z" --notes "<changelog>"
+gh release upload vX.Y.Z dist/UniFile/UniFile.exe
+```
+
+Tag, build, verify the artifact locally, then upload. No CI workflows
+involved — all builds happen on the maintainer's machine.
 
 ## Reporting bugs
 

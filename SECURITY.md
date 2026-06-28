@@ -7,8 +7,8 @@ on the Releases page for reproducibility only.
 
 | Version | Supported |
 |---------|-----------|
-| 9.0.x   | ✅ |
-| < 9.0   | ❌ |
+| latest release (currently 9.3.x) | ✅ |
+| older releases | ❌ |
 
 ## Reporting a vulnerability
 

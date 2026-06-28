@@ -1,7 +1,7 @@
 # Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
-Current version: **v9.3.21**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
+Current version: **v9.3.27**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
 
 ---
 
@@ -276,8 +276,7 @@ Strategic / aspirational features. Some require significant architecture changes
 
 - **Full type hints (PEP 484)** — all public APIs annotated; `mypy --strict` clean; improves IDE autocomplete and catches integration bugs
 - **Sphinx API documentation** — auto-generated from docstrings; published to Read the Docs; includes "How to add a custom classifier" and "How to integrate with S3" tutorials
-- **Test coverage baseline** — current tests cover critical paths; target: 60% coverage on `classifier.py`, `engine.py`, `learning.py`, `tagging/library.py`; CI enforced via `pytest-cov`
-- **GitHub Actions CI matrix** — Python 3.10/3.11/3.12 on Windows/macOS/Linux; headless Qt tests via `pytest-qt` with `xvfb`; auto-publish to PyPI on tag push
+- **Test coverage baseline** — current tests cover critical paths; target: 60% coverage on `classifier.py`, `engine.py`, `learning.py`, `tagging/library.py`; enforced locally via `pytest-cov`
 - **YAML plugin manifest + scaffolding CLI** — `unifile plugin create --name "My Plugin"`; community plugin index (hosted JSON); browsable from Settings → Plugins
 - **Action DAG dry-run renderer** — LLM produces proposed file actions as a JSON action list; GUI renders a diff view; user approves before atomic apply; same interface used by `--dry-run` CLI flag
 
@@ -321,51 +320,7 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Research-Driven Additions
 
-### P0
-- [ ] P0 — Plugin trust gate before Python hook execution
-  Why: `PluginManager.load_all()` executes every `.py` plugin in app data and suppresses failures; the future scripting/manifest items need an immediate trust boundary first.
-  Evidence: `unifile/plugins.py:144-174`; RestrictedPython README; Python importlib loader behavior.
-  Touches: `unifile/plugins.py`, `unifile/dialogs/tools.py`, plugin settings UI, plugin tests.
-  Acceptance: New Python plugins are disabled until explicitly trusted; load failures surface in the plugin UI/log; tests prove an untrusted plugin file is discovered but not executed.
-  Complexity: M
-- [ ] P0 — Replace embedded TMDb/OMDb demo keys with user-owned credentials
-  Why: Shared fallback API keys create quota, privacy, and revocation risk for media lookup users.
-  Evidence: `unifile/media/providers.py:115`, `unifile/media/providers.py:247`, `ATTRIBUTION.md:23-25`, TMDb and OMDb API-key docs.
-  Touches: `unifile/media/providers.py`, media lookup dialog, settings/config storage, README/SECURITY docs.
-  Acceptance: No TMDb/OMDb key literal remains in source; missing-key and invalid-key states are visible in the media lookup UI; tests cover env/config key resolution and TVMaze no-key fallback.
-  Complexity: M
-
 ### P1
-- [ ] P1 — Versioned tag-library SQLite migrations with backup and integrity checks
-  Why: Current migrations ignore `OperationalError`, so schema drift can be hidden until user data is already in a partially upgraded state.
-  Evidence: `unifile/tagging/db.py:53-72`; SQLite `PRAGMA user_version`; Alembic migration model.
-  Touches: `unifile/tagging/db.py`, `unifile/tagging/models.py`, tag-library startup path, migration tests.
-  Acceptance: Database schema version is stored and validated; upgrades run in deterministic order; a backup is created before mutation; tests cover old DB -> current DB and failed migration rollback.
-  Complexity: L
-- [ ] P1 — Converge dependency manifests and make GUI smoke tests non-optional in dev installs
-  Why: `pyproject.toml`, `requirements.txt`, and `bootstrap.py` disagree, and the main-window smoke suite silently skips when `pytest-qt` is absent.
-  Evidence: `pyproject.toml`, `requirements.txt`, `unifile/bootstrap.py`, `tests/test_main_window_smoke.py:29`, pylock/pip-audit docs.
-  Touches: `pyproject.toml`, `requirements.txt`, `Makefile`, `unifile/bootstrap.py`, `tests/test_main_window_smoke.py`.
-  Acceptance: One declared source of dependency truth generates or validates install files; `make test` in a dev environment runs pytest-qt smoke tests; local dependency audit command reports no known vulnerable installed packages.
-  Complexity: M
-- [ ] P1 — Redacted support diagnostic bundle
-  Why: SECURITY.md names secrets and local-path exposure as reportable, but crash logs, CSV audit trails, and provider errors lack a redacted export path.
-  Evidence: `SECURITY.md:39`, `unifile/__main__.py:244-286`, `unifile/cache.py`, `unifile/ai_providers.py`, issue templates.
-  Touches: crash handler, log/CSV writers, Settings Hub, issue-template docs, tests for redaction.
-  Acceptance: Settings can export a diagnostics ZIP with version, platform, provider health, recent redacted logs, and no API keys; tests verify path/key/email redaction patterns.
-  Complexity: M
-- [ ] P1 — PyInstaller executable boot smoke and runtime hardening
-  Why: The build spec exists, but `run.py` version text is stale and the frozen app lacks a documented smoke that catches multiprocessing/runtime-hook regressions before release.
-  Evidence: `run.py:2`, `UniFile.spec`, PyInstaller `freeze_support()` guidance.
-  Touches: `run.py`, `UniFile.spec`, `Makefile`, release/build docs.
-  Acceptance: `run.py` version text matches package metadata; frozen builds call `multiprocessing.freeze_support()` before app startup; local build smoke runs `--version`, `classify`, and GUI-start checks; generated artifact checksum is recorded.
-  Complexity: M
-- [ ] P1 — Security policy support-version sync
-  Why: Vulnerability reporters see `9.0.x` as supported while the project currently ships v9.3.21.
-  Evidence: `SECURITY.md:12-15`, `pyproject.toml`, `README.md`.
-  Touches: `SECURITY.md`, release checklist, version sync tests/docs.
-  Acceptance: SECURITY.md reflects the actual supported release policy; release/version sync checks fail when README, package metadata, and security support table diverge.
-  Complexity: S
 
 ### P2
 - [ ] P2 — Qt Linguist i18n pipeline before broader localization
@@ -389,14 +344,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Research-Driven Additions
 
-### P0
-- [ ] P0 - Make runtime dependency and Ollama setup explicit opt-in
-  Why: Source imports currently mutate Python environments and can download/install large native packages or local model infrastructure without a clear trust boundary.
-  Evidence: `unifile/bootstrap.py:27-113`, `unifile/workers.py:1081-1250`, Python packaging guide, Ollama install docs.
-  Touches: `unifile/bootstrap.py`, `unifile/workers.py`, `run.py`, Settings Hub setup flow, README/CONTRIBUTING install docs, bootstrap tests.
-  Acceptance: `python -m unifile --version` and headless commands never invoke pip/Ollama installers; GUI first-run shows an explicit setup flow with offline/manual options; tests prove missing optional packages do not trigger subprocess installs unless an opt-in flag or UI action is used.
-  Complexity: M
-
 ### P1
 - [ ] P1 - Durable watch-mode job queue with file-settle checks and retry status
   Why: Watch mode currently uses `QFileSystemWatcher` plus a fixed delay and UI-state mutation, so partially written files, failed scans, and missed retries are not represented as recoverable jobs.
@@ -410,13 +357,6 @@ Strategic / aspirational features. Some require significant architecture changes
   Touches: `unifile/engine.py`, `unifile/ocr_indexer.py`, `unifile/dialogs/editors.py`, tag-library field mapping, rule import/export tests.
   Acceptance: Rule editor exposes `content contains`, `content matches`, and OCR-present conditions; rules can target OCR/PDF text without LLM calls; invalid regex and missing OCR states are visible; tests cover PDF text, image OCR metadata, and no-text fallbacks.
   Complexity: M
-- [ ] P1 - Replace stale GitHub Actions/release workflow promises with local-build release docs
-  Why: Repo policy and commit history removed CI workflows, but contributing docs and roadmap still promise workflow-triggered releases and CI enforcement.
-  Evidence: `CONTRIBUTING.md:111-113`, `ROADMAP.md:266`, `ROADMAP.md:279-280`, commit `ae27c3f`, `.github/` contains templates but no workflows.
-  Touches: `CONTRIBUTING.md`, `ROADMAP.md`, README release/install sections, Makefile build target, release checklist.
-  Acceptance: Docs describe local pytest/ruff/build/release commands only; roadmap no longer asks for GitHub Actions automation; release checklist includes local artifact build, signing status, checksum, tag, push, GitHub Release upload, and post-push verification.
-  Complexity: S
-
 ### P2
 - [ ] P2 - Explain duplicate and cleanup no-result outcomes
   Why: Focused cleanup tools win trust by explaining why files were or were not grouped, especially for reference-folder, near-duplicate, and broken-file scans.
