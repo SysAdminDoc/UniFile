@@ -6,7 +6,6 @@ buried inside compressed archives without extracting them first.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -115,7 +114,7 @@ class ArchiveIndexerDialog(QDialog):
         self.lst_results = QListWidget()
         self.lst_results.setMinimumHeight(140)
         self.lst_results.setStyleSheet(
-            f"QListWidget {{ background: transparent; border: none; }}"
+            "QListWidget { background: transparent; border: none; }"
         )
         srch_lay.addWidget(self.lst_results)
 

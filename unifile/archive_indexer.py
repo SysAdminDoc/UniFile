@@ -21,11 +21,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import struct
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Iterator
 
 from unifile.config import _APP_DATA_DIR, register_sqlite_connection
 
@@ -383,7 +380,8 @@ def clear_index() -> None:
 # ── QThread worker for GUI use ────────────────────────────────────────────────
 
 try:
-    from PyQt6.QtCore import QThread, pyqtSignal as Signal
+    from PyQt6.QtCore import QThread
+    from PyQt6.QtCore import pyqtSignal as Signal
 
     class ArchiveIndexWorker(QThread):
         """Background worker that indexes archives in a directory.

@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QPushButton, QSlider, QVBoxLayout,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
 )
 
 from unifile.config import (
-    get_active_stylesheet, get_active_theme, load_font_size, save_font_size,
+    get_active_stylesheet,
+    get_active_theme,
+    load_font_size,
+    save_font_size,
 )
 from unifile.dialogs.common import build_dialog_header
 
@@ -97,7 +105,7 @@ class AccessibilityDialog(QDialog):
         # Live preview: push updated QSS to parent window if available
         parent = self.parent()
         if parent and hasattr(parent, 'setStyleSheet'):
-            from unifile.config import _build_theme_qss, get_active_theme, load_theme_name, DARK_STYLE, THEMES
+            from unifile.config import DARK_STYLE, THEMES, _build_theme_qss, load_theme_name
             name = load_theme_name()
             if name == 'Steam Dark' and value == 13:
                 parent.setStyleSheet(DARK_STYLE)

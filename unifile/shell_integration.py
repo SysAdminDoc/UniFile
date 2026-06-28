@@ -11,7 +11,7 @@ Public API:
     uninstall_sendto()
 
 The context menu launches:
-    python run.py --source "<folder_path>"
+    python run.py --source "<folder_path>" --show-preview
 
 If running as a frozen exe (PyInstaller), the exe path is used instead.
 """
@@ -20,7 +20,6 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +35,23 @@ def _exe_and_args() -> tuple[str, str]:
     python = sys.executable
     run_py = Path(__file__).resolve().parent.parent / "run.py"
     return python, f'"{run_py}"'
+
+
+def _source_arguments(source_token: str, *, show_preview: bool = True) -> str:
+    """Return arguments for launching UniFile against an Explorer path token."""
+    _exe, extra = _exe_and_args()
+    parts = []
+    if extra:
+        parts.append(extra)
+    parts.append(f'--source "{source_token}"')
+    if show_preview:
+        parts.append("--show-preview")
+    return " ".join(parts)
+
+
+def _ps_string(value: str) -> str:
+    """Return a PowerShell single-quoted string literal."""
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _menu_root() -> str:
@@ -113,11 +129,11 @@ def install_sendto() -> bool:
         return False
     try:
         import winshell  # type: ignore
-        exe, extra = _exe_and_args()
+        exe, _extra = _exe_and_args()
         lnk_path = str(_sendto_lnk())
         with winshell.shortcut(lnk_path) as lnk:
             lnk.path = exe
-            lnk.arguments = extra + " --source %1" if extra else "--source %1"
+            lnk.arguments = _source_arguments("%1")
             lnk.description = "Organize selected folder with UniFile"
             icon = _icon_path()
             if icon:
@@ -127,15 +143,15 @@ def install_sendto() -> bool:
         # winshell not available — create shortcut via PowerShell
         try:
             lnk_path = str(_sendto_lnk())
-            exe, extra = _exe_and_args()
+            exe, _extra = _exe_and_args()
             target = exe
-            arguments = (extra + " --source %1").strip() if extra else "--source %1"
+            arguments = _source_arguments("%1")
             ps_script = (
                 f'$ws = New-Object -ComObject WScript.Shell; '
-                f'$lnk = $ws.CreateShortcut("{lnk_path}"); '
-                f'$lnk.TargetPath = "{target}"; '
-                f'$lnk.Arguments = "{arguments}"; '
-                f'$lnk.Description = "Organize with UniFile"; '
+                f'$lnk = $ws.CreateShortcut({_ps_string(lnk_path)}); '
+                f'$lnk.TargetPath = {_ps_string(target)}; '
+                f'$lnk.Arguments = {_ps_string(arguments)}; '
+                f'$lnk.Description = {_ps_string("Organize with UniFile")}; '
                 f'$lnk.Save()'
             )
             import subprocess
@@ -183,12 +199,8 @@ def install_context_menu() -> bool:
     try:
         exe, extra = _exe_and_args()
         # Build the command string
-        if extra:
-            cmd_folder = f'"{exe}" {extra} --source "%1"'
-            cmd_bg     = f'"{exe}" {extra} --source "%V"'
-        else:
-            cmd_folder = f'"{exe}" --source "%1"'
-            cmd_bg     = f'"{exe}" --source "%V"'
+        cmd_folder = f'"{exe}" {_source_arguments("%1")}'
+        cmd_bg = f'"{exe}" {_source_arguments("%V")}'
 
         icon = _icon_path()
 

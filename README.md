@@ -1,6 +1,6 @@
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.3.16-blue)
+![Version](https://img.shields.io/badge/version-9.3.21-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -142,6 +142,11 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 - Monitor folders and auto-organize new files
 - System tray integration with minimize-to-tray
 - Watch history log with timestamps
+
+### Windows Shell Integration
+
+- `unifile install-shell` adds "Organize with UniFile" to folder context menus and the Send To menu.
+- Explorer launches include `--source <folder> --show-preview`, so a shell-opened folder is scanned and the review preview opens automatically.
 
 ### UI & UX
 

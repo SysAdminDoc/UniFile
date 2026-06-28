@@ -24,7 +24,6 @@ from __future__ import annotations
 import os
 import sqlite3
 from datetime import datetime, timezone
-from typing import Dict, List, Tuple
 
 from unifile.config import _APP_DATA_DIR
 
@@ -51,7 +50,7 @@ def _norm(path: str) -> str:
     return os.path.normcase(os.path.abspath(path))
 
 
-def get_rating(path: str) -> Tuple[int, str]:
+def get_rating(path: str) -> tuple[int, str]:
     """Return (stars, flag) for *path*, or (0, '') if not rated."""
     try:
         con = _conn()
@@ -97,7 +96,7 @@ def clear_rating(path: str) -> None:
         pass
 
 
-def bulk_load(paths: List[str]) -> Dict[str, Tuple[int, str]]:
+def bulk_load(paths: list[str]) -> dict[str, tuple[int, str]]:
     """Fetch ratings for a list of paths in one query.
 
     Returns a dict mapping each normalised path to ``(stars, flag)``.
@@ -106,7 +105,7 @@ def bulk_load(paths: List[str]) -> Dict[str, Tuple[int, str]]:
     if not paths:
         return {}
     normed = [_norm(p) for p in paths]
-    result: Dict[str, Tuple[int, str]] = {}
+    result: dict[str, tuple[int, str]] = {}
     try:
         con = _conn()
         placeholders = ",".join("?" * len(normed))

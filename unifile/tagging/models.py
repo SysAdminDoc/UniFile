@@ -2,7 +2,15 @@
 import enum
 from datetime import datetime as dt
 from pathlib import Path
-from typing import override
+
+try:
+    from typing import override
+except ImportError:  # Python 3.10/3.11 compatibility
+    try:
+        from typing_extensions import override
+    except ImportError:
+        def override(func):
+            return func
 
 from sqlalchemy import ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship

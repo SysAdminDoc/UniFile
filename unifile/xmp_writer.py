@@ -14,7 +14,6 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from typing import Optional
 
 # ── Namespace registry ────────────────────────────────────────────────────────
 _NS = {
@@ -77,7 +76,7 @@ def _build_fresh_root() -> ET.Element:
     return root
 
 
-def _find_desc(root: ET.Element) -> Optional[ET.Element]:
+def _find_desc(root: ET.Element) -> ET.Element | None:
     """Find the first rdf:Description element anywhere in the tree."""
     tag = f'{_RDF}Description'
     if root.tag == tag:
@@ -109,7 +108,7 @@ def _set_bag(desc: ET.Element, ns_prefix: str, local: str, values: list) -> None
 
 def write_sidecar(file_path: str,
                   category: str,
-                  tags: Optional[list] = None,
+                  tags: list | None = None,
                   rating: int = 0,
                   flag: str = '') -> bool:
     """Write (or update) a .xmp sidecar next to *file_path*.

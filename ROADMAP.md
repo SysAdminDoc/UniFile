@@ -1,7 +1,7 @@
 # Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
-Current version: **v9.3.20**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
+Current version: **v9.3.21**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
 
 ---
 
@@ -29,8 +29,6 @@ Current version: **v9.3.20**. Merges TagStudio, FileOrganizer, Local-File-Organi
 High-impact, achievable improvements. Each item is scoped to a few days–one week of work.
 
 ### Windows Shell Integration
-- **Context menu handler** — register "Organize with UniFile" on right-click for folders; launches UniFile with `--source <path> --show-preview`; done via a minimal `.reg` file or installer step that writes `HKCU\Software\Classes\Directory\shell\UniFile`
-- **Send To shortcut** — installer drops `UniFile.lnk` into the user's `SendTo` folder as the zero-dependency fallback
 - **Explorer preview pane** — optional IThumbnailProvider COM shim to show UniFile category badge on folder icons; lower priority, Windows-only
 
 ### Keyboard Navigation & Accessibility

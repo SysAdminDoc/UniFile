@@ -9,8 +9,8 @@ while giving users a single discoverable entry point for configuration.
 """
 from __future__ import annotations
 
-import sqlite3
 import os
+import sqlite3
 
 from PyQt6.QtWidgets import (
     QDialog,
@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from unifile.config import get_active_stylesheet, get_active_theme, _PC_SCAN_CACHE_DB
+from unifile.config import _PC_SCAN_CACHE_DB, get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 
 

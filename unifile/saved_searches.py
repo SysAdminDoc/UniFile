@@ -12,7 +12,6 @@ import json
 import os
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Optional
 
 from unifile.config import _APP_DATA_DIR
 

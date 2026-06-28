@@ -2,6 +2,20 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.21] — Shell Preview Launch
+
+### Added
+- `--show-preview` CLI flag for shell-launched scans. After the automatic source scan completes, UniFile opens the existing review preview or before/after comparison when results are available.
+- Shell context menu and Send To registrations now launch folders with `--source "<path>" --show-preview`, matching the documented shell workflow.
+
+### Changed
+- Removed stale branding markers from the application entrypoint while preserving the existing icon lookup helper.
+- Synchronized package, README, and working-note version strings to v9.3.21.
+
+### Fixed
+- Tag-library imports now fall back when `typing.override` is unavailable, keeping the test suite green on Python 3.10 and 3.11.
+- Cleaned the current Ruff backlog so the configured linter passes across the full repository.
+
 ## [v9.3.20] — Force Rescan, XMP Sidecars, Disk Space Protection
 
 ### Added

@@ -592,14 +592,14 @@ class MetadataExtractor:
             if k in skip or v is None or v == '':
                 continue
             label = _LABELS.get(k, k.replace('_', ' ').title())
-            if k == 'duration' and isinstance(v, (int, float)):
+            if k == 'duration' and isinstance(v, int | float):
                 dur = int(v)
                 m, s = divmod(dur, 60)
                 h, m2 = divmod(m, 60)
                 v = f"{h}:{m2:02d}:{s:02d}" if h else f"{m}:{s:02d}"
-            elif k == 'bitrate' and isinstance(v, (int, float)):
+            elif k == 'bitrate' and isinstance(v, int | float):
                 v = f"{int(v)} kbps"
-            elif k == 'sample_rate' and isinstance(v, (int, float)):
+            elif k == 'sample_rate' and isinstance(v, int | float):
                 v = f"{int(v)} Hz"
             elif k in ('gps_lat', 'gps_lon') and isinstance(v, float):
                 v = f"{v:.6f}"
@@ -1031,5 +1031,4 @@ class ArchivePeeker:
 # ══════════════════════════════════════════════════════════════════════════════
 
 _RULES_FILE = os.path.join(_APP_DATA_DIR, 'rules.json')
-
 

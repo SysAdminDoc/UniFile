@@ -8,8 +8,8 @@ Run this file to start UniFile:
     python run.py --dry-run --profile MyProfile --auto-apply
     python run.py --portable        (store all data beside this script)
 """
-import sys
 import os
+import sys
 
 # Portable mode: must be set BEFORE importing unifile (config.py reads it at import)
 if '--portable' in sys.argv:

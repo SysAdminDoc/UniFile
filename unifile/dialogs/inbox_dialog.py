@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 from PyQt6.QtWidgets import (
-    QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QVBoxLayout,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
 )
 
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.inbox import (
-    get_inbox_count, get_inbox_path, is_inbox_enabled,
-    load_inbox_config, save_inbox_config,
+    get_inbox_count,
+    get_inbox_path,
+    save_inbox_config,
 )
 
 
@@ -117,7 +123,8 @@ class InboxDialog(QDialog):
         self.lbl_count.setText("No inbox folder configured.")
 
     def _open_folder(self):
-        import os, subprocess
+        import os
+        import subprocess
         path = self.txt_path.text().strip()
         if path and os.path.isdir(path):
             subprocess.Popen(f'explorer "{path}"')

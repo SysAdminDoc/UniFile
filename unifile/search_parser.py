@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 # Matches tokens like  key:value  or  key:"quoted value"
 _TOKEN_RE = re.compile(r'\b(\w+):(\"(?:[^\"]+)\"|\S+)')
@@ -37,17 +36,17 @@ _TOKEN_RE = re.compile(r'\b(\w+):(\"(?:[^\"]+)\"|\S+)')
 @dataclass
 class SearchSpec:
     text: str = ""
-    names: List[str] = field(default_factory=list)
-    exts: List[str] = field(default_factory=list)
-    cats: List[str] = field(default_factory=list)
-    dirs: List[str] = field(default_factory=list)
-    methods: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)
-    size_op: Optional[str] = None       # '>' or '<'
-    size_bytes: Optional[int] = None
-    rating_op: Optional[str] = None    # '>=', '<=', '>', '<', '='
-    rating_val: Optional[int] = None
-    flag: Optional[str] = None         # 'pending' | 'approved' | 'rejected'
+    names: list[str] = field(default_factory=list)
+    exts: list[str] = field(default_factory=list)
+    cats: list[str] = field(default_factory=list)
+    dirs: list[str] = field(default_factory=list)
+    methods: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    size_op: str | None = None       # '>' or '<'
+    size_bytes: int | None = None
+    rating_op: str | None = None    # '>=', '<=', '>', '<', '='
+    rating_val: int | None = None
+    flag: str | None = None         # 'pending' | 'approved' | 'rejected'
     is_chainable: bool = False          # True when at least one token was parsed
 
 

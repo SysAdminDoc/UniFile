@@ -21,7 +21,6 @@ from datetime import datetime
 from pathlib import Path
 
 
-# codex-branding:start
 def _branding_icon_path() -> Path:
     candidates = []
     if getattr(sys, "frozen", False):
@@ -38,7 +37,6 @@ def _branding_icon_path() -> Path:
         if candidate.exists():
             return candidate
     return Path("icon.png")
-# codex-branding:end
 
 
 def _cmd_list_profiles(args) -> int:
@@ -306,6 +304,8 @@ def main():
     parser.add_argument("--version", action="version", version=f"UniFile {__version__}")
     parser.add_argument("--source", type=str, default=None,
                         help="Source folder to auto-scan (used by shell integration)")
+    parser.add_argument("--show-preview", action="store_true",
+                        help="After an auto-scan, open the review preview")
     parser.add_argument("--profile", type=str, default=None,
                         help="Load a named profile for scheduled/automated scans")
     parser.add_argument("--auto-apply", action="store_true",
@@ -357,7 +357,7 @@ def main():
     p_shell.add_argument("--sendto", action="store_true", default=False,
                          help="Install Send To shortcut only (omit to install both)")
 
-    p_unshell = subparsers.add_parser(
+    subparsers.add_parser(
         "uninstall-shell",
         help="Remove Windows Explorer shell integration",
     )
@@ -414,6 +414,7 @@ def main():
     window = UniFile()
     window._cli_dry_run = args.dry_run
     window._cli_source = args.source or ''
+    window._cli_show_preview = args.show_preview
 
     if args.profile:
         try:
@@ -440,11 +441,11 @@ def main():
             window.txt_pc_src.setText(args.source)
         QTimer.singleShot(200, window._on_scan)
 
-        if args.output_json:
+        if args.output_json or args.show_preview:
             _deadline_out = [time.time() + 30 * 60]
             def _wait_and_dump():
                 if time.time() > _deadline_out[0]:
-                    window._log("Scan-plan export aborted: 30 minute deadline exceeded")
+                    window._log("Auto-scan follow-up aborted: 30 minute deadline exceeded")
                     return
                 scan_worker = getattr(window, 'worker', None)
                 still_scanning = (
@@ -452,7 +453,18 @@ def main():
                     or (scan_worker is not None and scan_worker.isRunning())
                 )
                 if not still_scanning:
-                    _write_scan_json(window, args.output_json)
+                    if args.output_json:
+                        _write_scan_json(window, args.output_json)
+                    if args.show_preview:
+                        try:
+                            if window.cmb_op.currentIndex() == UniFile.OP_FILES and getattr(window, 'file_items', None):
+                                window._show_before_after()
+                            elif window.btn_preview.isEnabled():
+                                window._show_preview()
+                            else:
+                                window._log("Preview skipped: scan produced no reviewable items")
+                        except Exception as e:
+                            window._log(f"Preview failed: {e}")
                 else:
                     QTimer.singleShot(500, _wait_and_dump)
             QTimer.singleShot(1000, _wait_and_dump)

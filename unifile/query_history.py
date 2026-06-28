@@ -8,15 +8,14 @@ from __future__ import annotations
 
 import json
 import os
-from typing import List
 
 _HISTORY_FILE = os.path.join(os.environ.get("APPDATA", ""), "UniFile", "query_history.json")
 _MAX_HISTORY = 20
 
 
-def load_history() -> List[str]:
+def load_history() -> list[str]:
     try:
-        with open(_HISTORY_FILE, "r", encoding="utf-8") as f:
+        with open(_HISTORY_FILE, encoding="utf-8") as f:
             data = json.load(f)
         return [str(q) for q in data if q][:_MAX_HISTORY]
     except Exception:

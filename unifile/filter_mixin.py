@@ -40,7 +40,7 @@ class FilterMixin:
             self.cmb_op.currentIndex() == self.OP_FILES and len(persons) > 0)
 
     def _apply_filter(self):
-        from unifile.search_parser import parse_query, item_matches
+        from unifile.search_parser import item_matches, parse_query
         raw = self.txt_search.text()
         face = self.cmb_face_filter.currentText() if self.cmb_face_filter.isVisible() else "All Persons"
         spec = parse_query(raw)

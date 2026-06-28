@@ -13,7 +13,8 @@ Arrow keys navigate, Enter executes, Escape closes.
 """
 from __future__ import annotations
 
-from typing import Callable, NamedTuple
+from collections.abc import Callable
+from typing import NamedTuple
 
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QKeyEvent
@@ -30,7 +31,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from unifile.config import get_active_stylesheet, get_active_theme
+from unifile.config import get_active_theme
 
 
 class _Command(NamedTuple):

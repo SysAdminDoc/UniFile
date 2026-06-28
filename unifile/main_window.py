@@ -44,7 +44,6 @@ from PyQt6.QtWidgets import (
 )
 
 from unifile import __version__
-from unifile.query_history import add_to_history, load_history
 from unifile.apply_mixin import ApplyMixin
 from unifile.cache import (
     _load_undo_stack,
@@ -100,8 +99,9 @@ from unifile.profiles import (
     get_profile_names,
     set_active_profile,
 )
-from unifile.ratings import bulk_load as ratings_bulk_load, get_rating, set_rating, clear_rating
-from unifile.xmp_writer import write_sidecar as xmp_write_sidecar, read_sidecar as xmp_read_sidecar
+from unifile.query_history import add_to_history, load_history
+from unifile.ratings import bulk_load as ratings_bulk_load
+from unifile.ratings import clear_rating, get_rating, set_rating
 from unifile.scan_mixin import ScanMixin
 from unifile.theme_mixin import ThemeMixin
 from unifile.tray_mixin import TrayMixin
@@ -120,6 +120,7 @@ from unifile.workers import (
     OllamaSetupWorker,
     format_size,
 )
+from unifile.xmp_writer import write_sidecar as xmp_write_sidecar
 
 
 class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,

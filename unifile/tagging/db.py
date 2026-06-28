@@ -1,7 +1,15 @@
 """UniFile — Tag Library database engine and base model."""
 import logging
 from pathlib import Path
-from typing import override
+
+try:
+    from typing import override
+except ImportError:  # Python 3.10/3.11 compatibility
+    try:
+        from typing_extensions import override
+    except ImportError:
+        def override(func):
+            return func
 
 from sqlalchemy import Dialect, Engine, String, TypeDecorator, create_engine, text
 from sqlalchemy.exc import OperationalError

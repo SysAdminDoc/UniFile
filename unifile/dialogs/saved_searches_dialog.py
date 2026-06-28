@@ -6,14 +6,23 @@ import time
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QPushButton, QSpinBox, QVBoxLayout, QWidget,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
 )
 
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.saved_searches import (
-    SavedSearch, add_search, delete_search, load_saved_searches,
+    SavedSearch,
+    add_search,
+    delete_search,
+    load_saved_searches,
 )
 
 
@@ -92,7 +101,6 @@ class SavedSearchesDialog(QDialog):
     # ── Data ──────────────────────────────────────────────────────────────────
 
     def _populate(self):
-        t = get_active_theme()
         self.lst.clear()
         for s in load_saved_searches():
             item = QListWidgetItem()
