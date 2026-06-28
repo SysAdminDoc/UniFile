@@ -2,6 +2,14 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.27] - Redacted Diagnostics Bundle
+
+### Added
+- Redacted support diagnostics ZIP export from Settings > Tools.
+- Diagnostics bundle with version/platform summary, AI/media provider status without key values, and recent crash/audit/watch logs.
+- Redaction helpers for local paths, API keys/tokens/passwords, bearer tokens, and email addresses.
+- Regression tests proving text, JSON, and ZIP exports redact sensitive values.
+
 ## [v9.3.26] - Dependency Manifest Convergence
 
 ### Added

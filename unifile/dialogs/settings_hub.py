@@ -15,6 +15,7 @@ import sqlite3
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -235,6 +236,9 @@ class SettingsHubDialog(QDialog):
                  "Delete cached classification results so the next scan re-evaluates "
                  "all files from scratch.  Useful after changing profiles or rules.",
                  self._clear_scan_cache),
+                ("Export Diagnostics…",
+                 "Create a redacted ZIP with version, platform, provider status, and recent logs.",
+                 self._export_diagnostics),
             ],
             theme,
         )
@@ -289,6 +293,29 @@ class SettingsHubDialog(QDialog):
     def _open_archive_indexer(self):  self._call('_open_archive_indexer')
     def _open_saved_searches(self):   self._call('_open_saved_searches')
     def _open_inbox(self):            self._call('_open_inbox')
+
+    def _export_diagnostics(self):
+        from unifile.diagnostics import default_diagnostics_path, export_diagnostics_zip
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Diagnostics",
+            default_diagnostics_path(),
+            "ZIP Files (*.zip)",
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".zip"):
+            path += ".zip"
+        try:
+            written = export_diagnostics_zip(path)
+            QMessageBox.information(
+                self,
+                "Diagnostics Exported",
+                f"Saved redacted diagnostics bundle:\n{written}",
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Diagnostics Export Failed", str(exc))
 
     def _clear_scan_cache(self):
         """Count entries then ask for confirmation before wiping the scan cache."""

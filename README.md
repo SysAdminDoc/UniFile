@@ -1,6 +1,6 @@
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.3.26-blue)
+![Version](https://img.shields.io/badge/version-9.3.27-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -179,6 +179,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 - **Full undo log** — every operation recorded with one-click rollback
 - **CSV audit trail** — every classification logged with timestamp, method, confidence
 - **Crash handler** — unhandled exceptions saved to crash log with MessageBox notification
+- **Redacted diagnostics export** — Settings > Tools creates a support ZIP with paths, emails, and API keys removed
 - **Plugin trust gate** — local Python plugins are fingerprinted and must be explicitly trusted before execution
 
 ## Architecture
