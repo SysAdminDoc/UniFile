@@ -33,8 +33,12 @@ from unifile.media.providers import (
     EpisodeResult,
     MediaType,
     MovieResult,
+    clear_media_provider_errors,
+    load_media_api_keys,
+    media_provider_statuses,
     omdb_details,
     parse_media_filename,
+    save_media_api_keys,
     search_media,
     tmdb_movie_details,
     tvmaze_show_details,
@@ -206,6 +210,37 @@ class MediaLookupPanel(QWidget):
 
         lay.addWidget(self.search_bar)
 
+        # Provider credentials/status
+        self.credentials_bar = QFrame()
+        self.credentials_bar.setProperty("class", "card")
+        key_lay = QHBoxLayout(self.credentials_bar)
+        key_lay.setContentsMargins(16, 10, 16, 10)
+        key_lay.setSpacing(8)
+
+        self.lbl_key_status = QLabel("")
+        self.lbl_key_status.setWordWrap(True)
+        self.lbl_key_status.setMinimumWidth(260)
+        key_lay.addWidget(self.lbl_key_status, 1)
+
+        self.txt_tmdb_key = QLineEdit()
+        self.txt_tmdb_key.setPlaceholderText("TMDb API key")
+        self.txt_tmdb_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_tmdb_key.setFixedHeight(28)
+        key_lay.addWidget(self.txt_tmdb_key)
+
+        self.txt_omdb_key = QLineEdit()
+        self.txt_omdb_key.setPlaceholderText("OMDb API key")
+        self.txt_omdb_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_omdb_key.setFixedHeight(28)
+        key_lay.addWidget(self.txt_omdb_key)
+
+        self.btn_save_keys = QPushButton("Save Keys")
+        self.btn_save_keys.setProperty("class", "toolbar")
+        self.btn_save_keys.clicked.connect(self._on_save_api_keys)
+        key_lay.addWidget(self.btn_save_keys)
+
+        lay.addWidget(self.credentials_bar)
+
         # ── Main Content: Results (left) | Detail (right) ─────────────────
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -331,7 +366,79 @@ class MediaLookupPanel(QWidget):
         splitter.setStretchFactor(1, 2)
 
         lay.addWidget(splitter, 1)
+        self._load_api_key_fields()
+        self._refresh_provider_status()
         self.apply_theme()
+
+    def _load_api_key_fields(self):
+        keys = load_media_api_keys()
+        statuses = media_provider_statuses()
+        fields = {
+            "tmdb": self.txt_tmdb_key,
+            "omdb": self.txt_omdb_key,
+        }
+        for provider, field in fields.items():
+            status = statuses.get(provider, {})
+            if status.get("source") == "environment":
+                field.setText("")
+                field.setPlaceholderText(f"Using {status.get('env_var', '')}")
+                field.setEnabled(False)
+            else:
+                field.setEnabled(True)
+                field.setText(keys.get(provider, ""))
+                field.setPlaceholderText(f"{status.get('label', provider)} API key")
+
+    def _refresh_provider_status(self) -> str:
+        statuses = media_provider_statuses()
+        parts = []
+        for provider in ("tmdb", "omdb", "tvmaze"):
+            status = statuses.get(provider, {})
+            label = status.get("label", provider)
+            last_error = status.get("last_error", "")
+            if last_error:
+                parts.append(f"{label}: {last_error}")
+            elif not status.get("requires_key", False):
+                parts.append(f"{label}: ready (no key)")
+            elif status.get("configured", False):
+                source = "env" if status.get("source") == "environment" else "settings"
+                parts.append(f"{label}: key from {source}")
+            else:
+                parts.append(f"{label}: missing {status.get('env_var', 'API key')}")
+        text = " | ".join(parts)
+        self.lbl_key_status.setText(text)
+        return text
+
+    def _provider_issue_text(self, media_type: MediaType) -> str:
+        statuses = media_provider_statuses()
+        providers = ("tmdb", "omdb") if media_type == MediaType.MOVIE else ("tvmaze",)
+        issues = []
+        for provider in providers:
+            status = statuses.get(provider, {})
+            label = status.get("label", provider)
+            if status.get("last_error"):
+                issues.append(f"{label}: {status['last_error']}")
+            elif status.get("requires_key") and not status.get("configured"):
+                issues.append(f"{label}: missing API key")
+        if not issues:
+            return ""
+        if media_type == MediaType.MOVIE and len(issues) == 2:
+            return "Movie lookup needs a TMDb or OMDb key. Add one above or set API_KEY_TMDB/API_KEY_OMDB."
+        return "Provider status: " + "; ".join(issues)
+
+    def _on_save_api_keys(self):
+        keys = load_media_api_keys()
+        if self.txt_tmdb_key.isEnabled():
+            keys["tmdb"] = self.txt_tmdb_key.text().strip()
+        if self.txt_omdb_key.isEnabled():
+            keys["omdb"] = self.txt_omdb_key.text().strip()
+        if save_media_api_keys(keys):
+            clear_media_provider_errors()
+            self.lbl_status.setText("Media provider keys saved")
+            self.lbl_results_hint.setText("Provider settings updated. Search again to refresh results.")
+            self._load_api_key_fields()
+            self._refresh_provider_status()
+        else:
+            self.lbl_status.setText("Could not save media provider keys")
 
     # ── Search ─────────────────────────────────────────────────────────────
 
@@ -343,6 +450,7 @@ class MediaLookupPanel(QWidget):
 
         media_type = MediaType.MOVIE if self.cmb_type.currentIndex() == 0 else MediaType.EPISODE
         year = self.txt_year.text().strip() or None
+        self._refresh_provider_status()
 
         self.lbl_status.setText("Searching connected providers…")
         self.lbl_results_hint.setText("Reviewing TMDb, OMDb, and TVMaze for the best matches.")
@@ -410,6 +518,9 @@ class MediaLookupPanel(QWidget):
                 self.tbl_results.setItem(row, 3, QTableWidgetItem(result.id_tvmaze))
 
         count = len(results)
+        media_type = MediaType.MOVIE if self.cmb_type.currentIndex() == 0 else MediaType.EPISODE
+        provider_issue = self._provider_issue_text(media_type)
+        self._refresh_provider_status()
         self.lbl_status.setText(
             f"{count} result{'s' if count != 1 else ''} found"
             if count else
@@ -419,11 +530,12 @@ class MediaLookupPanel(QWidget):
         self.lbl_results_hint.setText(
             "Select a result to load artwork, synopsis, and IDs."
             if count else
-            "No provider returned a confident match for that search."
+            provider_issue or "No provider returned a confident match for that search."
         )
 
     @pyqtSlot(str)
     def _on_search_error(self, error_msg):
+        self._refresh_provider_status()
         self.lbl_status.setText(f"Search failed: {error_msg}")
         self.lbl_results_hint.setText("Check your provider settings or adjust the title and year, then try again.")
         self._clear_detail()
@@ -621,10 +733,11 @@ class MediaLookupPanel(QWidget):
             f"background: {t['header_bg']}; color: {t['muted']}; border: 1px solid {t['border']}; "
             "border-radius: 999px; padding: 6px 12px; font-size: 11px; font-weight: 600;"
         )
-        for panel in (self.search_bar, self.results_panel, self.detail_panel):
+        for panel in (self.search_bar, self.credentials_bar, self.results_panel, self.detail_panel):
             panel.setStyleSheet(
                 f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; border-radius: 18px; }}"
             )
+        self.lbl_key_status.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
         self.lbl_results_title.setStyleSheet(
             f"color: {t['fg_bright']}; font-size: 14px; font-weight: 700;"
         )

@@ -9,7 +9,21 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from unifile.config import _APP_DATA_DIR, load_json_safe, save_json_safe
+
 logger = logging.getLogger(__name__)
+
+_MEDIA_KEYS_FILE = os.path.join(_APP_DATA_DIR, "media_api_keys.json")
+_KEY_ENV_VARS = {
+    "tmdb": "API_KEY_TMDB",
+    "omdb": "API_KEY_OMDB",
+}
+_PROVIDER_LABELS = {
+    "tmdb": "TMDb",
+    "omdb": "OMDb",
+    "tvmaze": "TVMaze",
+}
+_PROVIDER_ERRORS: dict[str, str] = {key: "" for key in _PROVIDER_LABELS}
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -66,8 +80,80 @@ class ProviderError(Exception):
     pass
 
 
+class ProviderAuthError(ProviderError):
+    pass
+
+
 class ProviderNotFound(ProviderError):
     pass
+
+
+def load_media_api_keys() -> dict[str, str]:
+    """Load user-owned media API keys from UniFile app data."""
+    raw = load_json_safe(_MEDIA_KEYS_FILE, {}, expected_type=dict)
+    keys: dict[str, str] = {}
+    for provider in _KEY_ENV_VARS:
+        value = raw.get(provider, "")
+        if isinstance(value, str) and value.strip():
+            keys[provider] = value.strip()
+    return keys
+
+
+def save_media_api_keys(keys: dict[str, str]) -> bool:
+    """Persist user-owned media API keys. Empty values remove saved keys."""
+    payload: dict[str, str] = {}
+    for provider in _KEY_ENV_VARS:
+        value = str(keys.get(provider, "") or "").strip()
+        if value:
+            payload[provider] = value
+    return save_json_safe(_MEDIA_KEYS_FILE, payload)
+
+
+def _api_key_source(provider: str) -> str:
+    env_var = _KEY_ENV_VARS.get(provider)
+    if env_var and os.environ.get(env_var, "").strip():
+        return "environment"
+    if load_media_api_keys().get(provider, ""):
+        return "settings"
+    return "missing"
+
+
+def get_media_api_key(provider: str) -> str:
+    """Return the configured API key for a provider, preferring env vars."""
+    provider = provider.lower()
+    env_var = _KEY_ENV_VARS.get(provider)
+    if env_var:
+        value = os.environ.get(env_var, "").strip()
+        if value:
+            return value
+    return load_media_api_keys().get(provider, "")
+
+
+def clear_media_provider_errors() -> None:
+    for provider in _PROVIDER_ERRORS:
+        _PROVIDER_ERRORS[provider] = ""
+
+
+def _set_provider_error(provider: str, message: str) -> None:
+    if provider in _PROVIDER_ERRORS:
+        _PROVIDER_ERRORS[provider] = message.strip()
+
+
+def media_provider_statuses() -> dict[str, dict[str, Any]]:
+    """Return provider credential/readiness state for UI and tests."""
+    statuses: dict[str, dict[str, Any]] = {}
+    for provider, label in _PROVIDER_LABELS.items():
+        requires_key = provider in _KEY_ENV_VARS
+        source = _api_key_source(provider) if requires_key else "not required"
+        statuses[provider] = {
+            "label": label,
+            "requires_key": requires_key,
+            "configured": not requires_key or source != "missing",
+            "source": source,
+            "env_var": _KEY_ENV_VARS.get(provider, ""),
+            "last_error": _PROVIDER_ERRORS.get(provider, ""),
+        }
+    return statuses
 
 
 def _get_session():
@@ -99,10 +185,14 @@ def _get_json(url: str, params: dict | None = None,
         _session = _get_session()
     try:
         resp = _session.get(url, params=params, headers=headers, timeout=10)
+        if resp.status_code in (401, 403):
+            raise ProviderAuthError(f"provider rejected credentials ({resp.status_code})")
         resp.raise_for_status()
         return resp.json()
+    except ProviderAuthError:
+        raise
     except Exception as e:
-        logger.warning("API request failed: %s — %s", url, e)
+        logger.warning("API request failed: %s - %s", url, e)
         raise ProviderError(str(e)) from e
 
 
@@ -112,18 +202,27 @@ def _get_json(url: str, params: dict | None = None,
 
 TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMG = "https://image.tmdb.org/t/p/w300"
-TMDB_KEY = os.environ.get("API_KEY_TMDB", "db972a607f2760bb19ff8bb34074b4c7")
 
 
 def tmdb_search_movies(query: str, year: str | None = None,
                        limit: int = 10) -> list[MovieResult]:
     """Search TMDb for movies by title."""
-    params: dict[str, Any] = {"api_key": TMDB_KEY, "query": query}
+    key = get_media_api_key("tmdb")
+    if not key:
+        _set_provider_error("tmdb", "Missing TMDb API key.")
+        return []
+
+    params: dict[str, Any] = {"api_key": key, "query": query}
     if year:
         params["year"] = year
     try:
         data = _get_json(f"{TMDB_BASE}/search/movie", params=params)
+        _set_provider_error("tmdb", "")
+    except ProviderAuthError:
+        _set_provider_error("tmdb", "TMDb rejected the API key.")
+        return []
     except ProviderError:
+        _set_provider_error("tmdb", "TMDb request failed.")
         return []
     results = []
     for item in data.get("results", [])[:limit]:
@@ -142,10 +241,20 @@ def tmdb_search_movies(query: str, year: str | None = None,
 
 def tmdb_movie_details(tmdb_id: str) -> MovieResult | None:
     """Get detailed movie info by TMDb ID."""
+    key = get_media_api_key("tmdb")
+    if not key:
+        _set_provider_error("tmdb", "Missing TMDb API key.")
+        return None
+
     try:
         data = _get_json(f"{TMDB_BASE}/movie/{tmdb_id}",
-                         params={"api_key": TMDB_KEY})
+                         params={"api_key": key})
+        _set_provider_error("tmdb", "")
+    except ProviderAuthError:
+        _set_provider_error("tmdb", "TMDb rejected the API key.")
+        return None
     except ProviderError:
+        _set_provider_error("tmdb", "TMDb request failed.")
         return None
     poster = f"{TMDB_IMG}{data['poster_path']}" if data.get("poster_path") else ""
     rd = data.get("release_date", "")
@@ -244,20 +353,32 @@ def tvmaze_episode_lookup(show_id: int, season: int,
 # ---------------------------------------------------------------------------
 
 OMDB_BASE = "https://www.omdbapi.com"
-OMDB_KEY = os.environ.get("API_KEY_OMDB", "477a7ebc")
 
 
 def omdb_search(query: str, year: str | None = None,
                 limit: int = 10) -> list[MovieResult]:
     """Search OMDb for movies."""
-    params: dict[str, Any] = {"apikey": OMDB_KEY, "s": query, "type": "movie"}
+    key = get_media_api_key("omdb")
+    if not key:
+        _set_provider_error("omdb", "Missing OMDb API key.")
+        return []
+
+    params: dict[str, Any] = {"apikey": key, "s": query, "type": "movie"}
     if year:
         params["y"] = year
     try:
         data = _get_json(OMDB_BASE, params=params)
+        _set_provider_error("omdb", "")
+    except ProviderAuthError:
+        _set_provider_error("omdb", "OMDb rejected the API key.")
+        return []
     except ProviderError:
+        _set_provider_error("omdb", "OMDb request failed.")
         return []
     if data.get("Response") != "True":
+        err = data.get("Error", "")
+        if isinstance(err, str) and "api key" in err.lower():
+            _set_provider_error("omdb", err)
         return []
     results = []
     for item in data.get("Search", [])[:limit]:
@@ -275,11 +396,24 @@ def omdb_search(query: str, year: str | None = None,
 
 def omdb_details(imdb_id: str) -> MovieResult | None:
     """Get movie details by IMDb ID from OMDb."""
+    key = get_media_api_key("omdb")
+    if not key:
+        _set_provider_error("omdb", "Missing OMDb API key.")
+        return None
+
     try:
-        data = _get_json(OMDB_BASE, params={"apikey": OMDB_KEY, "i": imdb_id})
+        data = _get_json(OMDB_BASE, params={"apikey": key, "i": imdb_id})
+        _set_provider_error("omdb", "")
+    except ProviderAuthError:
+        _set_provider_error("omdb", "OMDb rejected the API key.")
+        return None
     except ProviderError:
+        _set_provider_error("omdb", "OMDb request failed.")
         return None
     if data.get("Response") != "True":
+        err = data.get("Error", "")
+        if isinstance(err, str) and "api key" in err.lower():
+            _set_provider_error("omdb", err)
         return None
     poster = data.get("Poster", "")
     if poster == "N/A":

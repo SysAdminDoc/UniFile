@@ -1,6 +1,6 @@
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.3.23-blue)
+![Version](https://img.shields.io/badge/version-9.3.24-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -22,7 +22,7 @@ UniFile merges the best ideas from five file organization projects into one cohe
 | [FileOrganizer](https://github.com/SysAdminDoc/FileOrganizer) | — | Foundation: 7-level classification, Ollama LLM, PyQt6 GUI, 384+ categories |
 | [Local-File-Organizer](https://github.com/QiuYannworworworworworworworwor/Local-File-Organizer) | 3.1k | AI file analysis with vision models (planned: Nexa SDK backend) |
 | [classifier](https://github.com/bhrigu123/classifier) | 1.1k | Rule-based file sorting by extension (planned: category preset merge) |
-| [mnamer](https://github.com/jkwill87/mnamer) | 1k | Media file renaming via TMDb/TVDb APIs (planned: media lookup panel) |
+| [mnamer](https://github.com/jkwill87/mnamer) | 1k | Media metadata lookup patterns via TMDb, OMDb, TVMaze, and `guessit` |
 
 ## Quick Start
 
@@ -65,12 +65,14 @@ The tag library stores data in `.unifile/unifile_tags.sqlite` within your librar
 ### Media Lookup (NEW in v8.0)
 
 Movie and TV metadata lookup powered by TMDb, OMDb, and TVMaze APIs (adapted from mnamer):
+TMDb and OMDb require your own API keys via the Media Lookup panel or `API_KEY_TMDB` / `API_KEY_OMDB`; TVMaze works without a key.
 
 | Feature | Description |
 |---------|-------------|
 | TMDb Search | Search movies by title/year with poster art and full details |
 | TVMaze Search | Search TV shows, browse full episode lists by season |
 | OMDb Fallback | Secondary movie lookup via IMDb IDs |
+| Provider Key Status | Missing or rejected TMDb/OMDb keys are shown before and after searches |
 | guessit Parser | Parse media filenames to auto-detect title, year, season, episode |
 | Poster Preview | Full poster art display with synopsis, genres, and external IDs |
 | Apply to Tags | Push metadata (title, synopsis, genres, IMDb/TMDb IDs) to Tag Library entries |
@@ -314,7 +316,7 @@ UniFile is built directly on FileOrganizer's foundation. If you only need folder
 
 ## Roadmap
 
-- [x] **Media Lookup** — TMDb/TVDb/TVMaze metadata panel (from mnamer's provider system)
+- [x] **Media Lookup** — TMDb/OMDb/TVMaze metadata panel (from mnamer's provider system)
 - [x] **Nexa SDK Backend** — Alternative AI backend with Llama 3.2 + LLaVA vision (from Local-File-Organizer)
 - [x] **Category Presets** — Per-directory config, import/export, extension-based presets (from classifier)
 - [x] **Search Query Language** — Advanced tag search with boolean operators (tag:, ext:, field:, AND/OR/NOT)

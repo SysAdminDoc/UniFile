@@ -2,6 +2,16 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.24] - User-Owned Media API Keys
+
+### Added
+- Media Lookup provider key fields for saving TMDb and OMDb credentials in UniFile app data.
+- Provider status reporting for missing, environment-sourced, settings-sourced, and rejected media API keys.
+- Regression tests for media key env/config precedence, missing-key short-circuiting, invalid-key reporting, and TVMaze's no-key path.
+
+### Changed
+- TMDb and OMDb lookups no longer use embedded shared demo keys; users must configure their own keys or rely on TVMaze for no-key TV lookup.
+
 ## [v9.3.23] - Plugin Trust Gate
 
 ### Added
