@@ -325,5 +325,3 @@ Strategic / aspirational features. Some require significant architecture changes
   Complexity: L
 - [ ] P2 — Windows Property System metadata bridge
   Complexity: L
-- [ ] P2 — TagSpaces `.ts` sidecar import/export
-  Complexity: M
