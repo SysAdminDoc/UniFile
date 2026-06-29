@@ -1,4 +1,4 @@
-# Roadmap
+﻿# Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
 Current version: **v9.3.29**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
@@ -317,4 +317,97 @@ Strategic / aspirational features. Some require significant architecture changes
 - **Checkpointed scans** — large library scans write progress to SQLite so crash/resume is clean
 - **Hydrus tag-sibling/parent DB layout** — `tag_implications(antecedent, consequent)` + `tag_siblings(bad_tag, good_tag)` tables; query-time expansion
 - **Sidecar-tag coexistence** — write `.xmp` sidecars in TagStudio format alongside originals; read them back on re-open so tags survive outside UniFile
+
+## Research-Driven Additions
+
+- [ ] P0 — Restore the frozen-build release gate and missing runtime hook
+  Why: The repo claims frozen smoke and SHA-256 release checks, but `UniFile.spec` points at missing `unifile/pyinstaller_runtime.py` and no checked-in smoke/checksum tool exists.
+  Evidence: `UniFile.spec`, `Makefile`, `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`; PyInstaller multiprocessing/frozen-app docs.
+  Touches: `UniFile.spec`, `unifile/pyinstaller_runtime.py`, `tools/smoke_pyinstaller_build.py`, `tests/test_pyinstaller_smoke.py`, `Makefile`, `README.md`, `CHANGELOG.md`.
+  Acceptance: `make build` cleans stale artifacts, builds `dist/UniFile/UniFile.exe`, runs frozen `--version`, `classify --json`, and GUI-start smoke checks, and writes a SHA-256 sidecar only after smoke passes.
+  Complexity: M
+
+- [ ] P0 — Pin and audit untrusted image/document parser dependencies
+  Why: UniFile scans user-controlled media and documents, but `[full]` leaves parser-heavy packages unpinned while current Pillow advisories affect image formats UniFile can ingest.
+  Evidence: `pyproject.toml:39`, Pillow GitHub advisories `GHSA-cfh3-3jmp-rvhc`, `GHSA-pwv6-vv43-88gr`, `GHSA-whj4-6x5x-4v2j`.
+  Touches: `pyproject.toml`, `requirements.txt`, `tools/check_dependency_manifests.py`, `unifile/bootstrap.py`, dependency/audit docs.
+  Acceptance: Full/dev installs resolve to patched parser versions, dependency-manifest checks enforce the bounds, and `make audit` has no unresolved high-severity findings from the pinned stack.
+  Complexity: S
+
+- [ ] P1 — Wire TagSpaces sidecar import/export into the GUI
+  Why: `unifile/tagspaces.py` has sidecar import/export logic and tests, but current app-code grep finds no GUI or Settings Hub caller, so users cannot run it from UniFile.
+  Evidence: `unifile/tagspaces.py`, `tests/test_tagspaces.py`, `unifile/dialogs/tag_library.py`, `unifile/dialogs/settings_hub.py`, TagSpaces metafile format docs.
+  Touches: `unifile/dialogs/tag_library.py`, `unifile/dialogs/settings_hub.py`, `unifile/tagspaces.py`, GUI tests.
+  Acceptance: Tag Library exposes Import from TagSpaces and Export to TagSpaces actions with dry-run preview, conflict counts, error reporting, and regression coverage for the GUI entry points.
+  Complexity: M
+
+- [ ] P1 — Merge Windows Shell properties into scan metadata
+  Why: `unifile/win_properties.py` reads title, author, keywords, comments, and ratings, but scan/metadata paths do not import it, leaving Windows metadata invisible.
+  Evidence: `unifile/win_properties.py`, `tests/test_win_properties.py`, `unifile/metadata.py`, `unifile/workers.py`, Microsoft Windows Property System docs.
+  Touches: `unifile/metadata.py`, `unifile/workers.py`, file preview/info UI, metadata tests.
+  Acceptance: On Windows, scans merge Shell properties into extracted metadata with source labels; non-Windows behavior stays no-op; tests cover merge precedence and UI-visible fields.
+  Complexity: M
+
+- [ ] P1 — Install the Qt translator at startup and expose language settings
+  Why: `unifile/i18n.py` implements QTranslator loading and language persistence, but startup/settings paths do not call it, so localization infrastructure is inert.
+  Evidence: `unifile/i18n.py`, `tests/test_i18n.py`, `unifile/__main__.py`, `unifile/dialogs/settings_hub.py`, Qt internationalization docs.
+  Touches: `unifile/__main__.py`, `unifile/dialogs/settings_hub.py`, `unifile/i18n.py`, translation resource packaging, startup tests.
+  Acceptance: `main()` installs the configured translator before window creation; Settings Hub lists available languages, persists selection, prompts restart when required, and packages `.qm` files into PyInstaller builds.
+  Complexity: M
+
+- [ ] P1 — Replace regex LLM cleanup with schema-validated structured outputs
+  Why: Ollama now supports JSON-schema structured outputs and OpenAI-compatible `response_format`, while UniFile still strips `<think>` blocks and parses raw model text after generation.
+  Evidence: `unifile/ollama.py:461`, `unifile/ollama.py:1102`, `unifile/workers.py:2219`, Ollama structured-output and OpenAI-compatibility docs.
+  Touches: `unifile/ollama.py`, `unifile/ai_providers.py`, `unifile/workers.py`, classifier parsing tests.
+  Acceptance: Classification, vision, and batch prompts send explicit JSON schemas, validate responses with typed models, surface schema failures as provider errors, and keep a fallback only for providers that lack structured output.
+  Complexity: M
+
+- [ ] P1 — Centralize AI HTTP timeouts, retries, redaction, and diagnostics
+  Why: Provider calls use raw `urllib.request.urlopen` across multiple modules, making timeout behavior, retry policy, and user-visible errors inconsistent.
+  Evidence: `unifile/ai_providers.py`, `unifile/ollama.py`, `unifile/semantic.py`, `unifile/engine.py`, `unifile/metadata.py`, `unifile/workers.py`, AI File Sorter custom endpoint and diagnostics patterns.
+  Touches: `unifile/ai_providers.py`, `unifile/ollama.py`, `unifile/semantic.py`, `unifile/engine.py`, diagnostics export tests.
+  Acceptance: All AI/network provider calls use one request helper with per-provider timeout config, redacted request diagnostics, normalized errors, retry policy tests, and no leaked API keys in logs.
+  Complexity: M
+
+- [ ] P1 — Convert shortcut-only roadmap flows into visible accessible commands
+  Why: Existing roadmap entries rely on Ctrl-key shortcuts, but project instructions prohibit keyboard shortcuts and Qt accessibility guidance requires reachable, semantic controls.
+  Evidence: `AGENTS.md`, existing `ROADMAP.md` Keyboard Navigation and UX sections, Qt accessibility docs.
+  Touches: `unifile/main_window.py`, `unifile/widgets.py`, `unifile/dialogs/settings_hub.py`, accessibility smoke tests.
+  Acceptance: New command/search/profile actions have visible buttons or menus, accessible names/descriptions, tab-order coverage, and no new shortcut-only default workflows.
+  Complexity: M
+
+- [ ] P2 — Split heavyweight face and local-AI packages out of the full extra
+  Why: `[full]` installs `cmake`, `dlib`, `face_recognition`, and `nexaai`, which makes routine source installs fragile and expands the attack/maintenance surface for users who only need tagging and cleanup.
+  Evidence: `pyproject.toml:68`, `pyproject.toml:70`, `pyproject.toml:71`, `pyproject.toml:72`, AI File Sorter optional visual backend pattern.
+  Touches: `pyproject.toml`, `requirements.txt`, `unifile/bootstrap.py`, README setup instructions, dependency-manifest tests.
+  Acceptance: Default/full installs remain useful without compiling face/Nexa stacks; new extras such as `[face]` and `[local-ai]` enable those features explicitly; disabled UI states explain how to install missing extras.
+  Complexity: M
+
+- [ ] P2 — Remove the `--break-system-packages` bootstrap fallback
+  Why: UniFile should not override externally managed Python protections during optional dependency bootstrap; the packaging spec says the override is risky and should not be default behavior.
+  Evidence: `unifile/bootstrap.py:95`, Python externally managed environment spec.
+  Touches: `unifile/bootstrap.py`, README setup troubleshooting, bootstrap tests.
+  Acceptance: Opt-in bootstrap tries normal/user-safe install paths only, reports virtualenv/pipx-style guidance on failure, and tests prove `--break-system-packages` is never invoked.
+  Complexity: S
+
+- [ ] P2 — Audit SQLite shared-connection ownership and busy-timeout behavior
+  Why: Several modules use `check_same_thread=False`; future scale/watch/semantic work needs explicit locking, WAL, timeouts, and close semantics instead of implicit cross-thread sharing.
+  Evidence: `unifile/archive_indexer.py:60`, `unifile/ratings.py:36`, `unifile/semantic.py:49`, SQLite threading docs.
+  Touches: `unifile/archive_indexer.py`, `unifile/ratings.py`, `unifile/semantic.py`, SQLite helper utilities, concurrency tests.
+  Acceptance: Each SQLite-backed service documents connection ownership, applies WAL/busy timeout consistently where appropriate, closes cleanly, and has a concurrent read/write regression test.
+  Complexity: M
+
+- [ ] P2 — Add bad-extension and corrupt-file cleanup analysis
+  Why: Czkawka treats content/extension mismatches and broken files as first-class cleanup tools, and UniFile already has file-type, checksum, and cleanup foundations to support a preview-only analyzer.
+  Evidence: Czkawka README feature list, `unifile/cleanup.py`, `unifile/metadata.py`, existing Cleanup & Safety roadmap section.
+  Touches: `unifile/cleanup.py`, `unifile/dialogs/cleanup.py`, `unifile/metadata.py`, cleanup tests.
+  Acceptance: Cleanup can detect mismatched extensions and unreadable/corrupt files without moving or deleting them, shows confidence/reason per result, and routes all actions through the normal preview/delete safety path.
+  Complexity: M
+
+- [ ] P3 — Extend TagSpaces interop to folder metadata and saved searches
+  Why: TagSpaces documents folder `.ts/tsm.json`, tag-library exports, location exports, and saved-search exports; UniFile's current module focuses on file sidecars only.
+  Evidence: `unifile/tagspaces.py`, TagSpaces metafile format docs, TagSpaces Pro export docs.
+  Touches: `unifile/tagspaces.py`, tag library import/export UI, migration tests.
+  Acceptance: UniFile imports/exports folder-level tags/descriptions and saved-search definitions where supported, reports unsupported TagSpaces fields, and keeps file-sidecar behavior backward compatible.
+  Complexity: L
 
