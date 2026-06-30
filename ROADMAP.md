@@ -411,3 +411,24 @@ Strategic / aspirational features. Some require significant architecture changes
   Acceptance: UniFile imports/exports folder-level tags/descriptions and saved-search definitions where supported, reports unsupported TagSpaces fields, and keeps file-sidecar behavior backward compatible.
   Complexity: L
 
+- [ ] P1 — Add indexed/FTS-backed Tag Library search with a scale benchmark
+  Why: Tag and entry searches currently use unindexed `%ilike%` scans over tag names, filenames, and text field values, which will not hold up for large libraries.
+  Evidence: `unifile/tagging/library.py:138`, `unifile/tagging/library.py:647`, `unifile/tagging/library.py:735`, `unifile/tagging/library.py:801`; SQLite FTS5 docs; paperless-ngx Tantivy indexing issue.
+  Touches: `unifile/tagging/models.py`, `unifile/tagging/db.py`, `unifile/tagging/library.py`, tag migration tests, search/query tests.
+  Acceptance: Migration-backed indexes or FTS tables cover tag names, entry filenames/suffixes, and text fields; existing search results stay equivalent; a generated large-library fixture verifies query latency and migration integrity.
+  Complexity: L
+
+- [ ] P2 — Capture platform download provenance into Source URL metadata
+  Why: `Entry.source_url` exists and is manually editable, but scans do not import Windows Mark-of-the-Web/Zone.Identifier source/referrer URLs for downloaded files.
+  Evidence: `unifile/tagging/models.py:217`, `unifile/tagging/library.py:455`, `unifile/dialogs/tag_library.py:1196`; Microsoft Zone.Identifier and IAttachmentExecute docs.
+  Touches: `unifile/metadata.py`, `unifile/tagging/library.py`, `unifile/dialogs/tag_library.py`, platform metadata tests, diagnostics redaction tests.
+  Acceptance: On Windows NTFS files with Zone.Identifier streams, scans populate `source_url` from `HostUrl` or `ReferrerUrl` with source labels; non-Windows behavior is no-op; diagnostics redact captured URLs when exporting support bundles.
+  Complexity: M
+
+- [ ] P2 — Remove tracked root debug outputs and enforce repository hygiene
+  Why: `audit2.txt`, `cats.txt`, and `smoke86_out.txt` are tracked ad-hoc outputs in the repo root, including stale smoke output and a traceback.
+  Evidence: `git ls-files audit2.txt cats.txt smoke86_out.txt`, `.gitignore`, `smoke86_out.txt`.
+  Touches: `.gitignore`, repository hygiene test or local check script, release/check documentation if needed.
+  Acceptance: Stale root output files are removed or converted into intentional fixtures; future ad-hoc smoke/audit/category dumps are ignored or rejected by a local hygiene check; normal tests and release smoke do not depend on root `.txt` artifacts.
+  Complexity: S
+
