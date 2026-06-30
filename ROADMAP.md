@@ -417,3 +417,31 @@ Strategic / aspirational features. Some require significant architecture changes
   Touches: `.gitignore`, repository hygiene test or local check script, release/check documentation if needed.
   Acceptance: Stale root output files are removed or converted into intentional fixtures; future ad-hoc smoke/audit/category dumps are ignored or rejected by a local hygiene check; normal tests and release smoke do not depend on root `.txt` artifacts.
   Complexity: S
+
+- [ ] P1 — Add full-library backup, restore, and integrity verification
+  Why: Migration backups and move snapshots exist, but users have no full tag-library recovery path before larger sidecar, import/export, and search migrations.
+  Evidence: `unifile/tagging/db.py:116`, `tests/test_tagging_migrations.py:64`, `unifile/cache.py:198`, paperless-ngx and Immich backup guidance.
+  Touches: `unifile/tagging/db.py`, `unifile/dialogs/settings_hub.py`, `unifile/__main__.py`, backup/restore tests, README usage docs.
+  Acceptance: Settings and CLI can export a timestamped ZIP containing tag DB, relevant config, tag packs, sidecar manifest, and SHA-256 manifest; restore validates version/integrity, creates a pre-restore backup, and round-trips in tests.
+  Complexity: M
+
+- [ ] P2 — Add release SBOM, license, and vulnerability artifacts
+  Why: `make audit` and PyInstaller checksums exist, but releases do not produce a repeatable dependency/license/security evidence bundle for optional parser, OCR, AI, and PyQt6 stacks.
+  Evidence: `Makefile:41`, `pyproject.toml:82`, `SECURITY.md:48`, pip-audit docs, CycloneDX docs, PyQt license docs.
+  Touches: `Makefile`, `tools/smoke_pyinstaller_build.py`, new local release-audit tool, packaging tests, README release docs.
+  Acceptance: A local `make release-audit` target emits SBOM JSON, license inventory, vulnerability report, and artifact checksum under `dist/UniFile/`; it fails on unfixed high-severity findings and tests cover report generation without leaking secrets.
+  Complexity: M
+
+- [ ] P2 — Add Windows-friendly Python dev task runner
+  Why: README and CONTRIBUTING document `make` as the main local workflow, but the project is Windows-first and every check already maps to Python-module commands.
+  Evidence: `README.md:312`, `CONTRIBUTING.md:114`, `Makefile`, Windows-first repo instructions.
+  Touches: `tools/dev_tasks.py`, `README.md`, `CONTRIBUTING.md`, developer-command tests.
+  Acceptance: `python tools/dev_tasks.py test|lint|audit|build|build-smoke|clean` mirrors Makefile behavior, exits nonzero on failure, works from PowerShell without GNU make, and README lists both command paths.
+  Complexity: S
+
+- [ ] P2 — Add rendered UI smoke screenshots for core panels
+  Why: pytest-qt currently proves the main window can instantiate, but it does not capture rendered main, Tag Library, Cleanup, or Settings surfaces to catch blank/overlapped UI regressions.
+  Evidence: `tests/test_main_window_smoke.py:43`, `tests/test_no_result_outcomes.py:16`, README screenshot, Qt accessibility docs.
+  Touches: `tests/test_main_window_smoke.py`, GUI dialog smoke tests, temporary test artifact handling, affected panel widgets.
+  Acceptance: Offscreen Qt tests grab fixed-size images for the main window, Tag Library, Cleanup, and Settings Hub panels; assert nonblank pixels and no uncaught Qt warnings; screenshots are written only to a temp directory and never tracked.
+  Complexity: M
