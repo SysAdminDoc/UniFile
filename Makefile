@@ -3,7 +3,7 @@
 
 PY ?= python
 
-.PHONY: help install dev deps-check test cov lint audit format build clean run
+.PHONY: help install dev deps-check test cov lint audit format build build-smoke clean run
 
 help:
 	@echo "UniFile developer targets:"
@@ -15,7 +15,8 @@ help:
 	@echo "  lint        Run ruff"
 	@echo "  audit       Run pip-audit against the local environment"
 	@echo "  format      Auto-fix ruff issues"
-	@echo "  build       Build a Windows exe via PyInstaller"
+	@echo "  build       Clean, build, smoke-test, and checksum the PyInstaller exe"
+	@echo "  build-smoke Smoke-test dist/UniFile/UniFile.exe and write SHA-256 sidecar"
 	@echo "  run         Launch the GUI"
 	@echo "  clean       Remove build artefacts and caches"
 
@@ -43,9 +44,13 @@ audit:
 format:
 	$(PY) -m ruff check --fix unifile tests
 
-build:
+build: clean
 	$(PY) -m pip install pyinstaller
 	$(PY) -m PyInstaller --clean --noconfirm UniFile.spec
+	$(PY) tools/smoke_pyinstaller_build.py
+
+build-smoke:
+	$(PY) tools/smoke_pyinstaller_build.py
 
 run:
 	$(PY) run.py

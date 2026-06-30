@@ -503,6 +503,13 @@ def main():
             QTimer.singleShot(1000, _check_and_apply)
         QTimer.singleShot(200, _auto_scan_apply)
 
+    smoke_exit_ms = os.environ.get("UNIFILE_GUI_SMOKE_EXIT_MS")
+    if smoke_exit_ms:
+        try:
+            QTimer.singleShot(max(0, int(smoke_exit_ms)), app.quit)
+        except ValueError:
+            QTimer.singleShot(1200, app.quit)
+
     sys.exit(app.exec())
 
 

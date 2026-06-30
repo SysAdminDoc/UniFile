@@ -1,6 +1,6 @@
 # UniFile
 
-![Version](https://img.shields.io/badge/version-9.3.29-blue)
+![Version](https://img.shields.io/badge/version-9.3.30-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
@@ -314,7 +314,8 @@ make deps-check  # verify pyproject/requirements/bootstrap alignment
 make test        # deps-check + full pytest, including pytest-qt smoke tests
 make lint        # Ruff
 make audit       # pip-audit --local
-make build       # PyInstaller build + frozen --version/classify/GUI smoke + SHA-256
+make build       # clean PyInstaller build + frozen --version/classify/GUI smoke + SHA-256
+make build-smoke # rerun frozen smoke/checksum against an existing dist/UniFile/UniFile.exe
 ```
 
 ## Related Tools

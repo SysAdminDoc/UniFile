@@ -2,6 +2,16 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.30] - Frozen Build Release Gate
+
+### Added
+- Checked-in PyInstaller runtime hook for frozen multiprocessing/startup safeguards.
+- `tools/smoke_pyinstaller_build.py` to verify frozen `--version`, `classify --json`, GUI startup, and SHA-256 sidecar generation.
+- `make build-smoke` and regression tests covering the frozen-build gate wiring.
+
+### Changed
+- `make build` now cleans stale artifacts, builds with PyInstaller, runs frozen smoke checks, and writes the checksum only after smoke passes.
+
 ## [v9.3.29] - Content Rules, Watch Jobs, TagSpaces Sidecars
 
 ### Added

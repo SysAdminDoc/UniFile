@@ -1,7 +1,7 @@
 ﻿# Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
-Current version: **v9.3.29**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
+Current version: **v9.3.30**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
 
 ---
 
@@ -320,13 +320,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Research-Driven Additions
 
-- [ ] P0 — Restore the frozen-build release gate and missing runtime hook
-  Why: The repo claims frozen smoke and SHA-256 release checks, but `UniFile.spec` points at missing `unifile/pyinstaller_runtime.py` and no checked-in smoke/checksum tool exists.
-  Evidence: `UniFile.spec`, `Makefile`, `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`; PyInstaller multiprocessing/frozen-app docs.
-  Touches: `UniFile.spec`, `unifile/pyinstaller_runtime.py`, `tools/smoke_pyinstaller_build.py`, `tests/test_pyinstaller_smoke.py`, `Makefile`, `README.md`, `CHANGELOG.md`.
-  Acceptance: `make build` cleans stale artifacts, builds `dist/UniFile/UniFile.exe`, runs frozen `--version`, `classify --json`, and GUI-start smoke checks, and writes a SHA-256 sidecar only after smoke passes.
-  Complexity: M
-
 - [ ] P0 — Pin and audit untrusted image/document parser dependencies
   Why: UniFile scans user-controlled media and documents, but `[full]` leaves parser-heavy packages unpinned while current Pillow advisories affect image formats UniFile can ingest.
   Evidence: `pyproject.toml:39`, Pillow GitHub advisories `GHSA-cfh3-3jmp-rvhc`, `GHSA-pwv6-vv43-88gr`, `GHSA-whj4-6x5x-4v2j`.
@@ -431,4 +424,3 @@ Strategic / aspirational features. Some require significant architecture changes
   Touches: `.gitignore`, repository hygiene test or local check script, release/check documentation if needed.
   Acceptance: Stale root output files are removed or converted into intentional fixtures; future ad-hoc smoke/audit/category dumps are ignored or rejected by a local hygiene check; normal tests and release smoke do not depend on root `.txt` artifacts.
   Complexity: S
-
