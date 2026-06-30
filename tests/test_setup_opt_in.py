@@ -22,13 +22,14 @@ def test_bootstrap_installs_only_when_opted_in(monkeypatch):
     monkeypatch.setattr(
         bootstrap.importlib.util,
         "find_spec",
-        lambda name: None if name == "pyqt6" else object(),
+        lambda name: None if name == "PyQt6" else object(),
     )
     monkeypatch.setattr(bootstrap.subprocess, "check_call", lambda cmd, **_kwargs: calls.append(cmd) or 0)
+    monkeypatch.setattr(bootstrap.importlib_metadata, "version", lambda _name: "99999999")
 
     bootstrap._bootstrap()
 
-    assert calls == [[sys.executable, "-m", "pip", "install", "PyQt6", "-q"]]
+    assert calls == [[sys.executable, "-m", "pip", "install", "PyQt6>=6.5", "-q"]]
 
 
 def test_ollama_setup_worker_does_not_install_by_default(monkeypatch):

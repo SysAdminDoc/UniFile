@@ -2,6 +2,17 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.31] - Parser Dependency Audit
+
+### Added
+- Dependency-manifest regression tests for parser-heavy optional extras and audited minimum versions.
+- Explicit `rarfile` and `py7zr` optional dependencies for archive metadata readers.
+
+### Changed
+- `[full]`, `[media]`, and `[ocr]` extras now require patched lower bounds for image, document, archive, media, OCR, and YAML parsers.
+- Legacy opt-in dependency bootstrap now installs versioned package specs, detects case-sensitive imports such as `PyQt6`, and upgrades old installed parser packages below the audited floor.
+- Replaced the invalid `acoustid` package requirement with `pyacoustid`, which provides the imported `acoustid` module.
+
 ## [v9.3.30] - Frozen Build Release Gate
 
 ### Added

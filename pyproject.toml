@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unifile"
-version = "9.3.30"
+version = "9.3.31"
 description = "Unified AI-powered file organization platform — tag library, 7-level classification, LLM intelligence, cleanup, dedup, photo library."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,49 +36,52 @@ dependencies = [
 [project.optional-dependencies]
 # Extras kept aligned with unifile/bootstrap.py optional imports.
 full = [
-    "Pillow",
-    "pillow-heif",
-    "exifread",
-    "mutagen",
-    "pypdf",
-    "python-docx",
-    "python-pptx",
-    "openpyxl",
-    "psd-tools",
-    "rapidfuzz",
-    "unidecode",
-    "reverse_geocoder",
-    "opencv-python-headless",
-    "send2trash",
-    "guessit",
-    "requests",
-    "requests-cache",
-    "babelfish",
-    "pydantic",
-    "platformdirs",
-    "PyYAML",
-    "tomli; python_version < '3.11'",
-    "tomli-w",
-    "acoustid",
-    "musicbrainzngs",
-    "pytesseract",
-    "easyocr",
-    "pdfminer.six",
-    "pymupdf",
-    "pdf2image",
+    "Pillow>=12.2.0",
+    "pillow-heif>=1.4.0",
+    "exifread>=3.5.1",
+    "mutagen>=1.48.1",
+    "pypdf>=6.14.2",
+    "python-docx>=1.2.0",
+    "python-pptx>=1.0.2",
+    "openpyxl>=3.1.5",
+    "psd-tools>=1.17.4",
+    "rarfile>=4.2",
+    "py7zr>=1.1.3",
+    "rapidfuzz>=3.14.5",
+    "unidecode>=1.4.0",
+    "reverse_geocoder>=1.5.1",
+    "opencv-python-headless>=4.13.0.92",
+    "send2trash>=2.1.0",
+    "guessit>=4.0.2",
+    "requests>=2.34.2",
+    "requests-cache>=1.3.2",
+    "babelfish>=0.6.1",
+    "pydantic>=2.13.4",
+    "platformdirs>=4.10.0",
+    "PyYAML>=6.0.3",
+    "tomli>=2.4.1; python_version < '3.11'",
+    "tomli-w>=1.2.0",
+    "pyacoustid>=1.3.1",
+    "musicbrainzngs>=0.7.1",
+    "pytesseract>=0.3.13",
+    "easyocr>=1.7.2",
+    "pdfminer.six>=20260107",
+    "pymupdf>=1.28.0",
+    "pdf2image>=1.17.0",
     "cmake",
     "dlib",
     "face_recognition",
     "nexaai",
 ]
-media = ["mutagen", "acoustid", "musicbrainzngs"]
-ocr = ["pytesseract", "easyocr", "pdfminer.six", "pymupdf", "pdf2image"]
+media = ["mutagen>=1.48.1", "pyacoustid>=1.3.1", "musicbrainzngs>=0.7.1"]
+ocr = ["pytesseract>=0.3.13", "easyocr>=1.7.2", "pdfminer.six>=20260107", "pymupdf>=1.28.0", "pdf2image>=1.17.0"]
 dev = [
     "pytest>=7",
     "pytest-cov>=4",
     "pytest-qt>=4",
     "ruff>=0.5",
     "pip-audit>=2.10",
+    "packaging>=25",
 ]
 
 [project.scripts]

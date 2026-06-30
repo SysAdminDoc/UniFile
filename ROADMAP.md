@@ -1,7 +1,7 @@
 ﻿# Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
-Current version: **v9.3.30**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
+Current version: **v9.3.31**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
 
 ---
 
@@ -319,13 +319,6 @@ Strategic / aspirational features. Some require significant architecture changes
 - **Sidecar-tag coexistence** — write `.xmp` sidecars in TagStudio format alongside originals; read them back on re-open so tags survive outside UniFile
 
 ## Research-Driven Additions
-
-- [ ] P0 — Pin and audit untrusted image/document parser dependencies
-  Why: UniFile scans user-controlled media and documents, but `[full]` leaves parser-heavy packages unpinned while current Pillow advisories affect image formats UniFile can ingest.
-  Evidence: `pyproject.toml:39`, Pillow GitHub advisories `GHSA-cfh3-3jmp-rvhc`, `GHSA-pwv6-vv43-88gr`, `GHSA-whj4-6x5x-4v2j`.
-  Touches: `pyproject.toml`, `requirements.txt`, `tools/check_dependency_manifests.py`, `unifile/bootstrap.py`, dependency/audit docs.
-  Acceptance: Full/dev installs resolve to patched parser versions, dependency-manifest checks enforce the bounds, and `make audit` has no unresolved high-severity findings from the pinned stack.
-  Complexity: S
 
 - [ ] P1 — Wire TagSpaces sidecar import/export into the GUI
   Why: `unifile/tagspaces.py` has sidecar import/export logic and tests, but current app-code grep finds no GUI or Settings Hub caller, so users cannot run it from UniFile.

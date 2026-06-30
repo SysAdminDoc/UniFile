@@ -1,7 +1,7 @@
 """UniFile — Dependency bootstrap and optional imports."""
 
 #!/usr/bin/env python3
-"""UniFile v9.3.27 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
+"""UniFile v9.3.31 - Context-Aware Classification + Smart Naming + Photo Library + Face Recognition + HEIC/WEBP Auto-Convert + File Type Filter"""
 
 import base64
 import csv
@@ -22,6 +22,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
 from functools import lru_cache
+from importlib import metadata as importlib_metadata
 
 _AUTO_INSTALL_ENV = "UNIFILE_INSTALL_DEPS"
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -53,18 +54,35 @@ def _bootstrap():
 
     # pip-name → actual import module name (only where they differ)
     _IMPORT_MAP = {
-        'Pillow': 'PIL', 'pillow-heif': 'pillow_heif',
-        'psd-tools': 'psd_tools', 'python-docx': 'docx',
-        'python-pptx': 'pptx', 'opencv-python-headless': 'cv2',
+        'pyqt6': 'PyQt6',
+        'pillow': 'PIL',
+        'pillow-heif': 'pillow_heif',
+        'psd-tools': 'psd_tools',
+        'python-docx': 'docx',
+        'python-pptx': 'pptx',
+        'opencv-python-headless': 'cv2',
         'requests-cache': 'requests_cache',
+        'pyyaml': 'yaml',
+        'pyacoustid': 'acoustid',
+        'pymupdf': 'fitz',
+        'pdfminer.six': 'pdfminer',
+        'tomli-w': 'tomli_w',
     }
-    required = ['PyQt6', 'sqlalchemy']
-    optional = ['rapidfuzz', 'psd-tools', 'unidecode',
-                'Pillow', 'pillow-heif', 'exifread', 'mutagen', 'pypdf', 'python-docx', 'openpyxl',
-                'python-pptx', 'reverse_geocoder', 'opencv-python-headless',
-                'cmake', 'dlib', 'face_recognition',
-                'guessit', 'requests', 'requests-cache', 'babelfish', 'pydantic',
-                'platformdirs', 'nexaai']
+    required = ['PyQt6>=6.5', 'SQLAlchemy>=2.0']
+    optional = [
+        'Pillow>=12.2.0', 'pillow-heif>=1.4.0', 'exifread>=3.5.1',
+        'mutagen>=1.48.1', 'pypdf>=6.14.2', 'python-docx>=1.2.0',
+        'python-pptx>=1.0.2', 'openpyxl>=3.1.5', 'psd-tools>=1.17.4',
+        'rarfile>=4.2', 'py7zr>=1.1.3', 'rapidfuzz>=3.14.5',
+        'unidecode>=1.4.0', 'reverse_geocoder>=1.5.1',
+        'opencv-python-headless>=4.13.0.92', 'send2trash>=2.1.0',
+        'guessit>=4.0.2', 'requests>=2.34.2', 'requests-cache>=1.3.2',
+        'babelfish>=0.6.1', 'pydantic>=2.13.4', 'platformdirs>=4.10.0',
+        'PyYAML>=6.0.3', 'tomli>=2.4.1', 'tomli-w>=1.2.0',
+        'pyacoustid>=1.3.1', 'musicbrainzngs>=0.7.1', 'pytesseract>=0.3.13',
+        'easyocr>=1.7.2', 'pdfminer.six>=20260107', 'pymupdf>=1.28.0',
+        'pdf2image>=1.17.0', 'cmake', 'dlib', 'face_recognition', 'nexaai',
+    ]
 
     # Cache failed optional installs so we don't retry pip every launch (7-day TTL)
     _cache_dir = os.path.join(os.path.expanduser('~'), '.unifile')
@@ -85,11 +103,41 @@ def _bootstrap():
     now = time.time()
     failed_pkgs = {p: ts for p, ts in failed_pkgs.items() if now - ts < _FAIL_TTL}
 
+    def _pkg_name(pkg):
+        match = re.match(r"\s*([A-Za-z0-9_.-]+)", pkg)
+        return (match.group(1) if match else pkg).lower().replace("_", "-")
+
     def _mod_name(pkg):
-        return _IMPORT_MAP.get(pkg, pkg.replace('-', '_').lower())
+        name = _pkg_name(pkg)
+        return _IMPORT_MAP.get(name, name.replace('-', '_').lower())
+
+    def _min_version(pkg):
+        match = re.search(r">=\s*([0-9][A-Za-z0-9_.!+-]*)", pkg)
+        return match.group(1) if match else ""
+
+    def _version_parts(version):
+        parts = [int(part) for part in re.findall(r"\d+", version)]
+        return tuple(parts or [0])
+
+    def _version_at_least(installed, minimum):
+        installed_parts = _version_parts(installed)
+        minimum_parts = _version_parts(minimum)
+        width = max(len(installed_parts), len(minimum_parts))
+        return installed_parts + (0,) * (width - len(installed_parts)) >= minimum_parts + (0,) * (
+            width - len(minimum_parts)
+        )
 
     def _is_installed(pkg):
-        return importlib.util.find_spec(_mod_name(pkg)) is not None
+        if importlib.util.find_spec(_mod_name(pkg)) is None:
+            return False
+        minimum = _min_version(pkg)
+        if not minimum:
+            return True
+        try:
+            installed = importlib_metadata.version(_pkg_name(pkg))
+        except importlib_metadata.PackageNotFoundError:
+            return True
+        return _version_at_least(installed, minimum)
 
     def _try_install(pkg):
         for flags in [[], ['--user'], ['--break-system-packages']]:
