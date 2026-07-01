@@ -484,7 +484,11 @@ class MetadataExtractor:
 
     @staticmethod
     def extract(filepath: str, log_cb=None) -> dict:
-        """Extract metadata from a file. Returns dict (may be empty)."""
+        """Extract metadata from a file. Returns dict (may be empty).
+
+        On Windows, Shell properties (title, author, keywords, rating,
+        etc.) are merged in after the format-specific extraction.
+        """
         meta = {}
         try:
             ext = os.path.splitext(filepath)[1].lower()
@@ -505,6 +509,14 @@ class MetadataExtractor:
         except Exception as e:
             if log_cb:
                 log_cb(f"    [META] Error extracting {os.path.basename(filepath)}: {e}")
+
+        try:
+            from unifile.win_properties import merge_with_metadata, read_shell_properties
+            shell = read_shell_properties(filepath)
+            if shell:
+                meta = merge_with_metadata(meta, shell)
+        except Exception:
+            pass
         return meta
 
     @staticmethod
