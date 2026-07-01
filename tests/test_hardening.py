@@ -149,3 +149,81 @@ def test_ignore_filter_dir_only_pattern_matches_dir():
     # The pattern is directory-only — as a file, it should not match
     # (gitignore semantics). We test the is_dir=True path works.
     assert filt.is_ignored('src/build', is_dir=True) is True
+
+
+# ── Audit regression: FTS5 query sanitization ────────────────────────────────
+
+def test_fts5_sanitize_strips_operators():
+    from unifile.tagging.library import _sanitize_fts
+    result = _sanitize_fts('hello*world')
+    assert '*' not in result or result.endswith('"*')
+    result2 = _sanitize_fts('test OR 1')
+    assert 'OR' not in result2.split('"')[1]
+
+
+def test_like_escape_wildcards():
+    from unifile.tagging.library import _escape_like
+    assert _escape_like('hello%world') == 'hello\\%world'
+    assert _escape_like('a_b') == 'a\\_b'
+    assert _escape_like('normal') == 'normal'
+
+
+# ── Audit regression: profile name path traversal ────────────────────────────
+
+def test_safe_name_prevents_traversal():
+    from unifile.plugins import _safe_name
+    assert _safe_name('../../evil') == 'evil'
+    assert _safe_name('..\\..\\bad') == 'bad'
+    assert _safe_name('normal-name') == 'normal-name'
+    with pytest.raises(ValueError):
+        _safe_name('...')
+
+
+# ── Audit regression: drive root protection ──────────────────────────────────
+
+def test_is_protected_blocks_mount_points():
+    import sys
+    from unifile.config import is_protected
+    if sys.platform == 'win32':
+        assert is_protected('C:\\') is True
+    else:
+        assert is_protected('/') is True
+
+
+# ── Audit regression: ratings connection safety ──────────────────────────────
+
+def test_ratings_get_rating_returns_default_on_missing(tmp_path, monkeypatch):
+    from unifile import ratings
+    monkeypatch.setattr(ratings, '_DB_PATH', str(tmp_path / 'ratings.sqlite'))
+    stars, flag = ratings.get_rating(str(tmp_path / 'nonexistent.txt'))
+    assert stars == 0
+    assert flag == ""
+
+
+def test_ratings_set_and_get_roundtrip(tmp_path, monkeypatch):
+    from unifile import ratings
+    monkeypatch.setattr(ratings, '_DB_PATH', str(tmp_path / 'ratings.sqlite'))
+    ratings.set_rating(str(tmp_path / 'test.txt'), 4, 'approved')
+    stars, flag = ratings.get_rating(str(tmp_path / 'test.txt'))
+    assert stars == 4
+    assert flag == 'approved'
+
+
+# ── Audit regression: watch job re-queue on FAILED ───────────────────────────
+
+def test_watch_job_requeue_failed():
+    from unifile.watch_jobs import STATE_FAILED, STATE_SETTLING, add_or_update_job
+    jobs = [{
+        'file_path': '/tmp/test.txt',
+        'folder': '/tmp',
+        'file_name': 'test.txt',
+        'detected_at': 0,
+        'last_stat': [100, 0],
+        'settle_deadline': 0,
+        'state': STATE_FAILED,
+        'retries': 3,
+        'error': 'prev error',
+    }]
+    result = add_or_update_job(jobs, '/tmp', '/tmp/test.txt', 1.0)
+    assert result[0]['state'] == STATE_SETTLING
+    assert result[0]['retries'] == 0

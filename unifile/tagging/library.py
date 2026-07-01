@@ -31,11 +31,13 @@ logger = logging.getLogger(__name__)
 import re as _re
 
 _FTS5_SPECIAL = _re.compile(r'[*():\-\^]')
+_FTS5_KEYWORDS = _re.compile(r'\b(AND|OR|NOT|NEAR)\b')
 
 
 def _sanitize_fts(query: str) -> str:
-    """Escape FTS5 special characters and wrap in phrase quotes."""
+    """Escape FTS5 special characters/operators and wrap in phrase quotes."""
     q = _FTS5_SPECIAL.sub(' ', query)
+    q = _FTS5_KEYWORDS.sub(' ', q)
     q = q.replace('"', '""')
     return f'"{q.strip()}"*'
 
