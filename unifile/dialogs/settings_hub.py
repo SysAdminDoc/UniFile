@@ -232,6 +232,12 @@ class SettingsHubDialog(QDialog):
                 ("Inbox / Quick Capture…",
                  "Designate a folder as Inbox; files placed there appear as a badge.",
                  self._open_inbox),
+                ("Backup Tag Library…",
+                 "Export tag database, config, and checksums to a timestamped ZIP.",
+                 self._backup_library),
+                ("Restore Tag Library…",
+                 "Import a previous backup; a pre-restore snapshot is created first.",
+                 self._restore_library),
                 ("Clear File Scan Cache…",
                  "Delete cached classification results so the next scan re-evaluates "
                  "all files from scratch.  Useful after changing profiles or rules.",
@@ -316,6 +322,69 @@ class SettingsHubDialog(QDialog):
             )
         except Exception as exc:
             QMessageBox.warning(self, "Diagnostics Export Failed", str(exc))
+
+    def _backup_library(self):
+        from pathlib import Path as _Path
+
+        from unifile.config import _APP_DATA_DIR
+        from unifile.tagging.db import export_library_backup, make_engine
+
+        dest = QFileDialog.getExistingDirectory(self, "Select Backup Destination")
+        if not dest:
+            return
+        lib_root = getattr(self._parent, '_tag_lib_root', None) if self._parent else None
+        if not lib_root:
+            QMessageBox.warning(self, "Backup", "No tag library is currently loaded.")
+            return
+        db_path = _Path(lib_root) / '.unifile' / 'unifile_tags.sqlite'
+        if not db_path.is_file():
+            QMessageBox.warning(self, "Backup", "Tag library database not found.")
+            return
+        try:
+            engine = make_engine(str(db_path))
+            zip_path = export_library_backup(engine, _Path(dest),
+                                             config_dir=_Path(_APP_DATA_DIR))
+            engine.dispose()
+            QMessageBox.information(self, "Backup Complete",
+                                   f"Tag library backed up to:\n{zip_path}")
+        except Exception as exc:
+            QMessageBox.warning(self, "Backup Failed", str(exc))
+
+    def _restore_library(self):
+        from pathlib import Path as _Path
+
+        from unifile.config import _APP_DATA_DIR
+        from unifile.tagging.db import make_engine, restore_library_backup, verify_library_backup
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Backup ZIP", "", "ZIP Files (*.zip)")
+        if not path:
+            return
+        ok, msg = verify_library_backup(_Path(path))
+        if not ok:
+            QMessageBox.warning(self, "Invalid Backup", msg)
+            return
+        answer = QMessageBox.question(
+            self, "Restore Tag Library",
+            "This will replace your current tag library with the backup contents.\n"
+            "A pre-restore snapshot will be created first.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        lib_root = getattr(self._parent, '_tag_lib_root', None) if self._parent else None
+        if not lib_root:
+            QMessageBox.warning(self, "Restore", "No tag library is currently loaded.")
+            return
+        db_path = _Path(lib_root) / '.unifile' / 'unifile_tags.sqlite'
+        try:
+            engine = make_engine(str(db_path))
+            restore_library_backup(engine, _Path(path),
+                                   config_dir=_Path(_APP_DATA_DIR))
+            QMessageBox.information(self, "Restore Complete",
+                                   "Tag library restored. Restart UniFile to load the restored data.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Restore Failed", str(exc))
 
     def _clear_scan_cache(self):
         """Count entries then ask for confirmation before wiping the scan cache."""

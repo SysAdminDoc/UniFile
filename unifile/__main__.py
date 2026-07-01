@@ -364,6 +364,21 @@ def main():
         help="Remove Windows Explorer shell integration",
     )
 
+    p_backup = subparsers.add_parser(
+        "backup",
+        help="Export tag library, config, and checksums to a ZIP",
+    )
+    p_backup.add_argument("library", type=str, help="Library root directory")
+    p_backup.add_argument("--dest", type=str, default=".",
+                          help="Destination directory for the backup ZIP")
+
+    p_restore = subparsers.add_parser(
+        "restore",
+        help="Restore a tag library from a backup ZIP",
+    )
+    p_restore.add_argument("zip", type=str, help="Path to backup ZIP")
+    p_restore.add_argument("library", type=str, help="Library root directory")
+
     args, qt_args = parser.parse_known_args()
 
     if args.install_deps:
@@ -397,6 +412,41 @@ def main():
         results = si.uninstall()
         for k, ok in results.items():
             print(f"{'Removed' if ok else 'Not found'}: {k}")
+        sys.exit(0)
+
+    if args.subcommand == "backup":
+        from pathlib import Path as _Path
+
+        from unifile.config import _APP_DATA_DIR
+        from unifile.tagging.db import export_library_backup, make_engine
+
+        db_path = _Path(args.library) / '.unifile' / 'unifile_tags.sqlite'
+        if not db_path.is_file():
+            print(f"ERROR: No tag library at {db_path}", file=sys.stderr)
+            sys.exit(1)
+        engine = make_engine(str(db_path))
+        zip_path = export_library_backup(engine, _Path(args.dest),
+                                         config_dir=_Path(_APP_DATA_DIR))
+        engine.dispose()
+        print(f"Backup saved: {zip_path}")
+        sys.exit(0)
+
+    if args.subcommand == "restore":
+        from pathlib import Path as _Path
+
+        from unifile.config import _APP_DATA_DIR
+        from unifile.tagging.db import make_engine, restore_library_backup, verify_library_backup
+
+        ok, msg = verify_library_backup(_Path(args.zip))
+        if not ok:
+            print(f"ERROR: {msg}", file=sys.stderr)
+            sys.exit(1)
+        db_path = _Path(args.library) / '.unifile' / 'unifile_tags.sqlite'
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        engine = make_engine(str(db_path))
+        restore_library_backup(engine, _Path(args.zip),
+                               config_dir=_Path(_APP_DATA_DIR))
+        print(f"Library restored from {args.zip}")
         sys.exit(0)
 
     # GUI path — install crash handler before touching Qt.

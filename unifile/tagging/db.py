@@ -1,7 +1,11 @@
 """UniFile — Tag Library database engine and base model."""
+import hashlib
+import json
 import logging
+import os
 import shutil
 import sqlite3
+import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -194,3 +198,140 @@ def make_tables(engine: Engine) -> None:
             except OperationalError as e:
                 logger.error("Could not initialize tag sequence: %s", e)
                 conn.rollback()
+
+
+# ── Full Library Backup / Restore ────────────────────────────────────────────
+
+_BACKUP_MANIFEST_VERSION = 1
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def export_library_backup(engine: Engine, dest_path: Path,
+                          config_dir: Path | None = None) -> Path:
+    """Export a full tag library backup as a timestamped ZIP.
+
+    Contents: tag DB snapshot, config files, SHA-256 manifest.
+    Returns the path of the created ZIP file.
+    """
+    db_path = _engine_db_path(engine)
+    if not db_path or not db_path.exists():
+        raise FileNotFoundError("No tag library database found to back up")
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    zip_name = f"unifile-backup-{timestamp}.zip"
+    zip_path = dest_path / zip_name if dest_path.is_dir() else dest_path
+
+    # Snapshot the DB via SQLite backup API (safe against WAL)
+    tmp_db = db_path.with_suffix('.backup_tmp')
+    try:
+        with sqlite3.connect(str(db_path)) as src, \
+             sqlite3.connect(str(tmp_db)) as dst:
+            src.backup(dst)
+
+        manifest = {'version': _BACKUP_MANIFEST_VERSION,
+                    'created': datetime.now().isoformat(),
+                    'files': {}}
+
+        with zipfile.ZipFile(str(zip_path), 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.write(str(tmp_db), 'unifile_tags.sqlite')
+            manifest['files']['unifile_tags.sqlite'] = _sha256_file(tmp_db)
+
+            if config_dir:
+                for name in ('settings.json', 'ai_providers.json',
+                             'tag_packs.json', 'profiles.json'):
+                    cfg = config_dir / name
+                    if cfg.is_file():
+                        zf.write(str(cfg), f'config/{name}')
+                        manifest['files'][f'config/{name}'] = _sha256_file(cfg)
+
+            zf.writestr('manifest.json', json.dumps(manifest, indent=2))
+
+        logger.info("Library backup exported to %s", zip_path)
+        return zip_path
+    finally:
+        try:
+            tmp_db.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def verify_library_backup(zip_path: Path) -> tuple[bool, str]:
+    """Validate a backup ZIP's integrity and manifest checksums.
+
+    Returns (ok, message).
+    """
+    try:
+        with zipfile.ZipFile(str(zip_path), 'r') as zf:
+            names = zf.namelist()
+            if 'manifest.json' not in names:
+                return False, "Missing manifest.json"
+            if 'unifile_tags.sqlite' not in names:
+                return False, "Missing tag library database"
+            manifest = json.loads(zf.read('manifest.json'))
+            if manifest.get('version', 0) > _BACKUP_MANIFEST_VERSION:
+                return False, (f"Backup version {manifest['version']} is "
+                               f"newer than supported v{_BACKUP_MANIFEST_VERSION}")
+            for fname, expected_hash in manifest.get('files', {}).items():
+                if fname not in names:
+                    return False, f"Missing file: {fname}"
+                actual = hashlib.sha256(zf.read(fname)).hexdigest()
+                if actual != expected_hash:
+                    return False, f"Checksum mismatch: {fname}"
+        return True, "Backup is valid"
+    except (zipfile.BadZipFile, KeyError, json.JSONDecodeError) as e:
+        return False, f"Corrupt backup: {e}"
+
+
+def restore_library_backup(engine: Engine, zip_path: Path,
+                           config_dir: Path | None = None) -> None:
+    """Restore a full tag library from a backup ZIP.
+
+    Creates a pre-restore backup of the current DB before overwriting.
+    """
+    ok, msg = verify_library_backup(zip_path)
+    if not ok:
+        raise MigrationError(f"Backup verification failed: {msg}")
+
+    db_path = _engine_db_path(engine)
+    if not db_path:
+        raise MigrationError("Cannot restore to in-memory database")
+
+    # Pre-restore safety backup
+    if db_path.exists():
+        current_ver = 0
+        try:
+            with sqlite3.connect(str(db_path)) as conn:
+                current_ver = int(conn.execute("PRAGMA user_version").fetchone()[0] or 0)
+        except Exception:
+            pass
+        _backup_database(db_path, current_ver)
+
+    engine.dispose()
+
+    with zipfile.ZipFile(str(zip_path), 'r') as zf:
+        # Restore DB
+        with open(str(db_path), 'wb') as f:
+            f.write(zf.read('unifile_tags.sqlite'))
+        # Clean WAL/SHM
+        for suffix in ('-wal', '-shm'):
+            try:
+                Path(str(db_path) + suffix).unlink()
+            except FileNotFoundError:
+                pass
+        # Restore config files
+        if config_dir:
+            config_dir.mkdir(parents=True, exist_ok=True)
+            for name in zf.namelist():
+                if name.startswith('config/'):
+                    dest = config_dir / os.path.basename(name)
+                    with open(str(dest), 'wb') as f:
+                        f.write(zf.read(name))
+
+    logger.info("Library restored from %s", zip_path)
