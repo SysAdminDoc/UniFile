@@ -324,10 +324,6 @@ No actionable items remain. All research-driven additions have been implemented.
 
 ## Audit-Identified Hardening
 
-- [ ] P2 — Add thread-safety lock to `archive_indexer._db()` singleton
-  Why: Module-level `_db_conn` can race between GUI thread and `ArchiveIndexWorker` QThread on first access.
-  Where: `unifile/archive_indexer.py:91`
-
 - [ ] P3 — Resolve `.stl` dual-mapping between 3D Models and 3D Printing categories
   Why: `.stl` appears in two extension maps with different confidence, producing inconsistent classification depending on sibling file mix.
   Where: `unifile/classifier.py:123,175`

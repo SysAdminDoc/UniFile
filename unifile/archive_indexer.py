@@ -89,13 +89,17 @@ def _get_db() -> sqlite3.Connection:
 
 
 _db_conn: sqlite3.Connection | None = None
+_db_lock = __import__('threading').Lock()
 
 
 def _db() -> sqlite3.Connection:
     global _db_conn
-    if _db_conn is None:
-        _db_conn = _get_db()
-    return _db_conn
+    if _db_conn is not None:
+        return _db_conn
+    with _db_lock:
+        if _db_conn is None:
+            _db_conn = _get_db()
+        return _db_conn
 
 
 # ── Archive readers ───────────────────────────────────────────────────────────
