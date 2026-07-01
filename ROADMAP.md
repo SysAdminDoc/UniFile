@@ -324,10 +324,6 @@ No actionable items remain. All research-driven additions have been implemented.
 
 ## Audit-Identified Hardening
 
-- [ ] P2 — Remove dead classification functions from classifier.py
-  Why: `classify_by_extensions`, `classify_by_content`, `classify_by_archive`, `_apply_context`, `infer_asset_type` are defined but never called — ~200 lines of unreachable code.
-  Where: `unifile/classifier.py:199,1084,1188,1212,1302`
-
 - [ ] P2 — Add thread-safety lock to `archive_indexer._db()` singleton
   Why: Module-level `_db_conn` can race between GUI thread and `ArchiveIndexWorker` QThread on first access.
   Where: `unifile/archive_indexer.py:91`
