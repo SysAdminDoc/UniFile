@@ -82,6 +82,30 @@ try:
 except ImportError:
     pass
 
+# ── Zone.Identifier / Mark-of-the-Web provenance ─────────────────────────────
+
+import sys as _sys
+
+def _read_zone_identifier_url(filepath: str) -> str:
+    """Read the HostUrl or ReferrerUrl from NTFS Zone.Identifier ADS.
+    Returns the URL string or '' on non-Windows / no ADS / failure."""
+    if _sys.platform != 'win32':
+        return ''
+    ads_path = filepath + ':Zone.Identifier'
+    try:
+        with open(ads_path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read(4096)
+    except (OSError, PermissionError):
+        return ''
+    for key in ('HostUrl=', 'ReferrerUrl='):
+        for line in content.splitlines():
+            if line.startswith(key):
+                url = line[len(key):].strip()
+                if url and url.lower() not in ('about:internet',):
+                    return url
+    return ''
+
+
 # ── Level 3: Metadata extraction ─────────────────────────────────────────────
 
 def extract_prproj_metadata(filepath: str) -> list:
@@ -517,6 +541,11 @@ class MetadataExtractor:
                 meta = merge_with_metadata(meta, shell)
         except Exception:
             pass
+
+        source_url = _read_zone_identifier_url(filepath)
+        if source_url:
+            meta['source_url'] = source_url
+
         return meta
 
     @staticmethod
