@@ -17,6 +17,11 @@ PROJECT_CONTEXT.md
 CONTINUATION_PROMPT.md
 RESEARCH_FEATURE_PLAN*.md
 
+# Ad-hoc smoke/audit/debug output
+audit*.txt
+cats.txt
+smoke*_out.txt
+
 # AI config
 CODEX_CHANGELOG.md
 AGENTS.md
