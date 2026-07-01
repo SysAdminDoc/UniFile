@@ -401,6 +401,92 @@ def scan_broken_files(root: str, *, depth: int = 99,
     return results
 
 
+# ── Extension Mismatch Scanner ───────────────────────────────────────────────
+
+_MAGIC_TO_EXT = {
+    b'\x89PNG': '.png',
+    b'\xff\xd8\xff': '.jpg',
+    b'GIF87a': '.gif',
+    b'GIF89a': '.gif',
+    b'RIFF': '.avi/.webp/.wav',
+    b'%PDF': '.pdf',
+    b'PK\x03\x04': '.zip/.docx/.xlsx',
+    b'\xd0\xcf\x11\xe0': '.doc/.xls/.ppt',
+    b'MZ': '.exe/.dll',
+    b'\x1f\x8b': '.gz',
+    b'Rar!\x1a\x07': '.rar',
+    b'7z\xbc\xaf\x27\x1c': '.7z',
+    b'fLaC': '.flac',
+    b'ID3': '.mp3',
+    b'\xff\xfb': '.mp3',
+    b'OggS': '.ogg',
+    b'\x1a\x45\xdf\xa3': '.mkv/.webm',
+}
+
+
+def _detect_actual_type(fpath: str) -> str | None:
+    """Identify a file's actual type from magic bytes. Returns extension hint or None."""
+    try:
+        with open(fpath, 'rb') as f:
+            header = f.read(16)
+    except (OSError, PermissionError):
+        return None
+    if not header or len(header) < 4:
+        return None
+    for magic, ext in _MAGIC_TO_EXT.items():
+        if header[:len(magic)] == magic:
+            return ext
+    return None
+
+
+def scan_mismatched_extensions(root: str, *, depth: int = 99,
+                               progress_cb: Callable = None,
+                               item_cb: Callable = None) -> list[CleanupItem]:
+    """Find files whose extension doesn't match their actual content type."""
+    results = []
+    root_depth = root.rstrip(os.sep).count(os.sep)
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        current_depth = dirpath.rstrip(os.sep).count(os.sep) - root_depth
+        if current_depth > depth:
+            dirnames.clear()
+            continue
+
+        for fname in filenames:
+            fpath = os.path.join(dirpath, fname)
+            _, ext = os.path.splitext(fname)
+            if not ext:
+                continue
+            ext_lower = ext.lower()
+
+            try:
+                st = os.stat(fpath)
+            except (OSError, PermissionError):
+                continue
+            if st.st_size < 8:
+                continue
+
+            actual = _detect_actual_type(fpath)
+            if not actual:
+                continue
+
+            actual_exts = set(actual.split('/'))
+            if ext_lower not in actual_exts:
+                item = CleanupItem(
+                    path=fpath, size=st.st_size,
+                    reason=f"Extension '{ext}' but content is {actual}",
+                    category="mismatched_extension",
+                    modified=st.st_mtime, selected=False,
+                )
+                results.append(item)
+                if progress_cb:
+                    progress_cb(f"Mismatch: {fpath}")
+                if item_cb:
+                    item_cb(item)
+
+    return results
+
+
 # ── Big File Finder ──────────────────────────────────────────────────────────
 
 def scan_big_files(root: str, *, min_size_mb: float = 100.0, depth: int = 99,

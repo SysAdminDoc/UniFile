@@ -222,6 +222,19 @@ class CleanupToolsDialog(QDialog):
         vb6.addLayout(opts6)
         self.tabs.addTab(tab_old, "Old Downloads")
 
+        tab_mismatch = QWidget()
+        vb7 = QVBoxLayout(tab_mismatch)
+        vb7.addWidget(QLabel("Find files whose extension doesn't match their actual content."))
+        fb7 = QHBoxLayout()
+        fb7.addWidget(QLabel("Folder:"))
+        self.txt_mismatch_path = QLineEdit()
+        fb7.addWidget(self.txt_mismatch_path, 1)
+        btn_mismatch_browse = QPushButton("Browse")
+        btn_mismatch_browse.clicked.connect(lambda: self._browse(self.txt_mismatch_path))
+        fb7.addWidget(btn_mismatch_browse)
+        vb7.addLayout(fb7)
+        self.tabs.addTab(tab_mismatch, "Bad Extensions")
+
         layout.addWidget(self.tabs)
 
         # ── Scan button + progress ────────────────────────────────────────
@@ -291,6 +304,7 @@ class CleanupToolsDialog(QDialog):
             scan_broken_files,
             scan_empty_files,
             scan_empty_folders,
+            scan_mismatched_extensions,
             scan_old_downloads,
             scan_temp_files,
         )
@@ -321,6 +335,9 @@ class CleanupToolsDialog(QDialog):
             5: (scan_old_downloads, self.txt_old_path, lambda: {
                 'root': self.txt_old_path.text(),
                 'days_old': self.spn_old_days.value(),
+            }),
+            6: (scan_mismatched_extensions, self.txt_mismatch_path, lambda: {
+                'root': self.txt_mismatch_path.text(),
             }),
         }
 
@@ -612,6 +629,20 @@ class CleanupPanel(QWidget):
         vb6.addLayout(opts6)
         self.tabs.addTab(tab_old, "Old Downloads")
 
+        tab_mismatch = QWidget()
+        vb7 = QVBoxLayout(tab_mismatch)
+        vb7.addWidget(QLabel("Find files whose extension doesn't match their actual content."))
+        fb7 = QHBoxLayout()
+        fb7.addWidget(QLabel("Folder:"))
+        self.txt_mismatch_path = QLineEdit()
+        fb7.addWidget(self.txt_mismatch_path, 1)
+        btn_mismatch_b = QPushButton("Browse")
+        btn_mismatch_b.setFixedWidth(75)
+        btn_mismatch_b.clicked.connect(lambda: self._browse(self.txt_mismatch_path))
+        fb7.addWidget(btn_mismatch_b)
+        vb7.addLayout(fb7)
+        self.tabs.addTab(tab_mismatch, "Bad Extensions")
+
         layout.addWidget(self.tabs)
 
         # ── Scan button + progress ────────────────────────────────────────
@@ -685,6 +716,7 @@ class CleanupPanel(QWidget):
             scan_broken_files,
             scan_empty_files,
             scan_empty_folders,
+            scan_mismatched_extensions,
             scan_old_downloads,
             scan_temp_files,
         )
@@ -714,6 +746,9 @@ class CleanupPanel(QWidget):
             5: (scan_old_downloads, self.txt_old_path, lambda: {
                 'root': self.txt_old_path.text(),
                 'days_old': self.spn_old_days.value(),
+            }),
+            6: (scan_mismatched_extensions, self.txt_mismatch_path, lambda: {
+                'root': self.txt_mismatch_path.text(),
             }),
         }
         scanner_fn, path_field, kwargs_fn = tab_map[tab_idx]
