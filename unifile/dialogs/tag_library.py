@@ -496,6 +496,14 @@ class TagLibraryPanel(QWidget):
             meta_parts.append("Inbox" if entry.is_inbox else "Archived")
         if entry.source_url:
             meta_parts.append(f"Source: {entry.source_url[:40]}...")
+        try:
+            from unifile.metadata import _read_zone_identifier_url
+            if os.path.exists(full_path):
+                motw_url = _read_zone_identifier_url(full_path)
+                if motw_url:
+                    meta_parts.append("⚠ Internet download")
+        except Exception:
+            pass
         if entry.word_count:
             meta_parts.append(f"{entry.word_count:,} words")
         if entry.media_duration:
