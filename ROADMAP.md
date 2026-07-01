@@ -320,13 +320,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Research-Driven Additions
 
-- [ ] P1 — Publish a current locally built release artifact
-  Why: The latest public GitHub release is `v9.3.15` while source/docs are `v9.3.32`, so users cannot download an artifact matching the current tested code.
-  Evidence: `pyproject.toml:7`, `README.md`, `unifile/__init__.py:2`, `ROADMAP.md:4`, `gh api repos/SysAdminDoc/UniFile/releases/latest`, `tools/smoke_pyinstaller_build.py`.
-  Touches: `CHANGELOG.md`, `README.md`, `UniFile.spec`, `tools/smoke_pyinstaller_build.py`, release notes, local release commands.
-  Acceptance: The latest GitHub release tag and asset match the current version, the artifact is built locally after tests/build smoke, checksums are attached, and the release body is traceable to `CHANGELOG.md`.
-  Complexity: M
-
 - [ ] P3 — Extend TagSpaces interop to folder metadata and saved searches
   Why: TagSpaces documents folder `.ts/tsm.json`, tag-library exports, location exports, and saved-search exports; UniFile's current module focuses on file sidecars only.
   Evidence: `unifile/tagspaces.py`, TagSpaces metafile format docs, TagSpaces Pro export docs.
