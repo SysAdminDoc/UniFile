@@ -275,18 +275,11 @@ class RuleEngine:
             'stream': False,
         }
         try:
-            import urllib.request
+            from unifile.ai_providers import ai_request
             data = _json.dumps(payload).encode()
-            req = urllib.request.Request(
-                f'{ollama_url.rstrip("/")}/api/chat',
-                data=data,
-                headers={'Content-Type': 'application/json'},
-                method='POST',
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                result = _json.loads(resp.read())
+            result = ai_request(f'{ollama_url.rstrip("/")}/api/chat',
+                                data=data, timeout=30, retries=1)
             content = result.get('message', {}).get('content', '').strip()
-            # Strip code fences (```json ... ``` or ``` ... ```)
             fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', content)
             if fence_match:
                 content = fence_match.group(1).strip()

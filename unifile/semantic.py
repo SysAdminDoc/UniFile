@@ -61,24 +61,18 @@ class SemanticIndex:
 
     def _get_embedding(self, text: str) -> list[float] | None:
         """Get an embedding vector from Ollama."""
-        import urllib.request
+        from unifile.ai_providers import AIRequestError, ai_request
         try:
             body = json.dumps({
                 'model': self._model,
                 'input': text,
             }).encode()
-            req = urllib.request.Request(
-                f"{self._url}/api/embed",
-                data=body,
-                headers={'Content-Type': 'application/json'},
-                method='POST',
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read())
+            data = ai_request(f"{self._url}/api/embed", data=body, timeout=15,
+                              retries=1)
             embeddings = data.get('embeddings', [])
             if embeddings:
                 return embeddings[0]
-        except Exception as e:
+        except (AIRequestError, Exception) as e:
             _log.debug("Embedding request failed for model %s: %s", self._model, e)
         return None
 

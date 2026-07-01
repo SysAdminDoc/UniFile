@@ -1890,18 +1890,15 @@ class VisionRunnable(QRunnable):
                     prompt = ("Describe this image concisely. "
                               "If there is text, include it verbatim under 'detected_text'. "
                               "Suggest a descriptive filename under 'suggested_name'.")
+                    from unifile.ai_providers import ai_request
                     payload = json.dumps({
                         "model": self.vision_model,
                         "prompt": prompt,
                         "images": [img_b64],
                         "stream": False
                     }).encode()
-                    req = urllib.request.Request(
-                        f"{self.ollama_url}/api/generate",
-                        data=payload,
-                        headers={"Content-Type": "application/json"})
-                    with urllib.request.urlopen(req, timeout=60) as resp:
-                        data = json.loads(resp.read())
+                    data = ai_request(f"{self.ollama_url}/api/generate",
+                                      data=payload, timeout=60)
                     response_text = data.get('response', '')
                     result['vision_description'] = response_text[:500]
                     # Try to parse JSON from response

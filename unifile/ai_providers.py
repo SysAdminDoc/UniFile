@@ -1,9 +1,68 @@
 """UniFile -- Multi-provider AI backend (Ollama, OpenAI-compatible, Groq)."""
 import base64
 import json
+import logging
 import os
+import re
+import time
+import urllib.error
+import urllib.request
 
 from unifile.config import _APP_DATA_DIR
+
+_log = logging.getLogger(__name__)
+
+
+class AIRequestError(Exception):
+    """Normalized error from an AI provider HTTP call."""
+
+
+def _redact(text: str) -> str:
+    """Scrub API keys, bearer tokens, and long base64 blobs from diagnostics."""
+    text = re.sub(r'(Bearer\s+)\S+', r'\1<REDACTED>', text)
+    text = re.sub(r'(api[_-]?key["\s:=]+)\S{8,}', r'\1<REDACTED>', text, flags=re.IGNORECASE)
+    text = re.sub(r'[A-Za-z0-9+/]{80,}={0,2}', '<BASE64_REDACTED>', text)
+    return text
+
+
+def ai_request(url: str, *, method: str = 'POST', data: bytes | None = None,
+               headers: dict | None = None, timeout: int = 30,
+               retries: int = 1, backoff: float = 1.0) -> dict:
+    """Unified HTTP helper for AI provider calls.
+
+    Returns parsed JSON response dict on success.
+    Raises ``AIRequestError`` with redacted diagnostics on failure.
+    Retries on 5xx and connection errors; does NOT retry 4xx (client bugs).
+    """
+    headers = dict(headers or {})
+    headers.setdefault('Content-Type', 'application/json')
+    last_exc = None
+    for attempt in range(1 + retries):
+        try:
+            req = urllib.request.Request(url, data=data, headers=headers,
+                                         method=method)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            body = ''
+            try:
+                body = exc.read().decode('utf-8', errors='replace')[:500]
+            except Exception:
+                pass
+            msg = _redact(f"HTTP {exc.code} from {url}: {body}")
+            if exc.code < 500:
+                raise AIRequestError(msg) from exc
+            last_exc = AIRequestError(msg)
+            _log.debug("AI request attempt %d/%d failed: %s",
+                       attempt + 1, 1 + retries, msg)
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            msg = _redact(f"Connection error for {url}: {exc}")
+            last_exc = AIRequestError(msg)
+            _log.debug("AI request attempt %d/%d failed: %s",
+                       attempt + 1, 1 + retries, msg)
+        if attempt < retries:
+            time.sleep(backoff * (2 ** attempt))
+    raise last_exc
 
 _PROVIDERS_FILE = os.path.join(_APP_DATA_DIR, 'ai_providers.json')
 
@@ -144,16 +203,16 @@ class AIProvider:
 
     def is_available(self) -> bool:
         """Check if the provider is reachable."""
-        import urllib.request
         try:
             if self.type == 'ollama':
                 url = f"{self.url}/api/tags"
             else:
                 url = f"{self.url}/models"
-            req = urllib.request.Request(url, method='GET')
+            headers = {}
             if self.api_key:
-                req.add_header('Authorization', f'Bearer {self.api_key}')
-            urllib.request.urlopen(req, timeout=5)
+                headers['Authorization'] = f'Bearer {self.api_key}'
+            ai_request(url, method='GET', data=None, headers=headers,
+                       timeout=5, retries=0)
             return True
         except Exception:
             return False
@@ -165,7 +224,6 @@ class AIProvider:
     def _ollama_generate(self, prompt: str, model: str, system: str = '',
                          format: dict | None = None) -> str:
         """Call Ollama's /api/generate endpoint."""
-        import urllib.request
         payload = {
             'model': model,
             'prompt': prompt,
@@ -175,45 +233,32 @@ class AIProvider:
         }
         if format is not None:
             payload['format'] = format
-        body = json.dumps(payload).encode()
-        req = urllib.request.Request(
-            f"{self.url}/api/generate",
-            data=body,
-            headers={'Content-Type': 'application/json'},
-            method='POST',
-        )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            data = json.loads(resp.read())
+        data = ai_request(f"{self.url}/api/generate",
+                          data=json.dumps(payload).encode(),
+                          timeout=self.timeout)
         self._cost_tracker['requests'] += 1
         return data.get('response', '').strip()
 
     def _ollama_vision(self, prompt: str, image_path: str, model: str) -> str:
         """Call Ollama with vision model (image as base64)."""
-        import urllib.request
         with open(image_path, 'rb') as f:
             img_b64 = base64.b64encode(f.read()).decode()
-        body = json.dumps({
+        payload = {
             'model': model,
             'prompt': prompt,
             'images': [img_b64],
             'stream': False,
             'options': {'temperature': 0.3, 'num_predict': 300},
-        }).encode()
-        req = urllib.request.Request(
-            f"{self.url}/api/generate",
-            data=body,
-            headers={'Content-Type': 'application/json'},
-            method='POST',
-        )
-        with urllib.request.urlopen(req, timeout=self.timeout * 2) as resp:
-            data = json.loads(resp.read())
+        }
+        data = ai_request(f"{self.url}/api/generate",
+                          data=json.dumps(payload).encode(),
+                          timeout=self.timeout * 2)
         self._cost_tracker['requests'] += 1
         return data.get('response', '').strip()
 
     def _openai_chat(self, prompt: str, model: str, system: str = '',
                      format: dict | None = None) -> str:
         """Call OpenAI-compatible /chat/completions endpoint."""
-        import urllib.request
         messages = []
         if system:
             messages.append({'role': 'system', 'content': system})
@@ -229,18 +274,12 @@ class AIProvider:
                 'type': 'json_schema',
                 'json_schema': {'name': 'response', 'schema': format},
             }
-        body = json.dumps(payload).encode()
-        headers = {'Content-Type': 'application/json'}
+        headers = {}
         if self.api_key:
             headers['Authorization'] = f'Bearer {self.api_key}'
-        req = urllib.request.Request(
-            f"{self.url}/chat/completions",
-            data=body,
-            headers=headers,
-            method='POST',
-        )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            data = json.loads(resp.read())
+        data = ai_request(f"{self.url}/chat/completions",
+                          data=json.dumps(payload).encode(),
+                          headers=headers, timeout=self.timeout)
         self._cost_tracker['requests'] += 1
         usage = data.get('usage', {})
         self._cost_tracker['input_tokens'] += usage.get('prompt_tokens', 0)
@@ -252,13 +291,12 @@ class AIProvider:
 
     def _openai_vision(self, prompt: str, image_path: str, model: str) -> str:
         """Call OpenAI-compatible vision endpoint."""
-        import urllib.request
         with open(image_path, 'rb') as f:
             img_b64 = base64.b64encode(f.read()).decode()
         ext = os.path.splitext(image_path)[1].lower().lstrip('.')
         mime = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png',
                 'gif': 'gif', 'webp': 'webp'}.get(ext, 'jpeg')
-        body = json.dumps({
+        payload = {
             'model': model,
             'messages': [{
                 'role': 'user',
@@ -271,18 +309,13 @@ class AIProvider:
             }],
             'temperature': 0.3,
             'max_tokens': 300,
-        }).encode()
-        headers = {'Content-Type': 'application/json'}
+        }
+        headers = {}
         if self.api_key:
             headers['Authorization'] = f'Bearer {self.api_key}'
-        req = urllib.request.Request(
-            f"{self.url}/chat/completions",
-            data=body,
-            headers=headers,
-            method='POST',
-        )
-        with urllib.request.urlopen(req, timeout=self.timeout * 2) as resp:
-            data = json.loads(resp.read())
+        data = ai_request(f"{self.url}/chat/completions",
+                          data=json.dumps(payload).encode(),
+                          headers=headers, timeout=self.timeout * 2)
         self._cost_tracker['requests'] += 1
         choices = data.get('choices', [])
         if choices:
