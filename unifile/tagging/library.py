@@ -28,6 +28,22 @@ from unifile.tagging.models import (  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+import re as _re
+
+_FTS5_SPECIAL = _re.compile(r'[*():\-\^]')
+
+
+def _sanitize_fts(query: str) -> str:
+    """Escape FTS5 special characters and wrap in phrase quotes."""
+    q = _FTS5_SPECIAL.sub(' ', query)
+    q = q.replace('"', '""')
+    return f'"{q.strip()}"*'
+
+
+def _escape_like(value: str) -> str:
+    """Escape SQL LIKE wildcard characters."""
+    return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
 DB_FILENAME = "unifile_tags.sqlite"
 
 
@@ -137,10 +153,9 @@ class TagLibrary:
 
     def search_tags(self, query: str, limit: int = 20) -> list[Tag]:
         try:
-            fts_q = query.replace('"', '""')
             rows = self._session.execute(
                 text("SELECT rowid FROM tags_fts WHERE name MATCH :q LIMIT :lim"),
-                {"q": f'"{fts_q}"*', "lim": limit},
+                {"q": _sanitize_fts(query), "lim": limit},
             ).fetchall()
             if rows:
                 ids = [r[0] for r in rows]
@@ -149,8 +164,10 @@ class TagLibrary:
                 ).scalars().all())
         except Exception:
             pass
+        escaped = _escape_like(query)
         return list(self._session.execute(
-            select(Tag).where(Tag.name.ilike(f"%{query}%")).limit(limit)
+            select(Tag).where(Tag.name.ilike(f"%{escaped}%", escape='\\'))
+            .limit(limit)
         ).scalars().all())
 
     def get_all_tags(self) -> list[Tag]:
@@ -742,10 +759,11 @@ class TagLibrary:
                 key, val = field_query.split('=', 1)
                 key = key.strip()
                 val = val.strip().strip('"')
+                escaped_val = _escape_like(val)
                 matching = self._session.execute(
                     select(TextField.entry_id).where(
                         TextField.type_key == key,
-                        TextField.value.ilike(f"%{val}%"),
+                        TextField.value.ilike(f"%{escaped_val}%", escape='\\'),
                     )
                 ).scalars().all()
                 if not matching:
@@ -811,10 +829,9 @@ class TagLibrary:
 
         # Default: filename search (FTS5 with ilike fallback)
         try:
-            fts_q = q.replace('"', '""')
             rows = self._session.execute(
                 text("SELECT rowid FROM entries_fts WHERE filename MATCH :q LIMIT :lim"),
-                {"q": f'"{fts_q}"*', "lim": limit},
+                {"q": _sanitize_fts(q), "lim": limit},
             ).fetchall()
             if rows:
                 ids = [r[0] for r in rows]
@@ -824,8 +841,9 @@ class TagLibrary:
                 ).scalars().all())
         except Exception:
             pass
+        escaped = _escape_like(q)
         return list(self._session.execute(
-            select(Entry).where(Entry.filename.ilike(f"%{q}%"))
+            select(Entry).where(Entry.filename.ilike(f"%{escaped}%", escape='\\'))
             .order_by(Entry.filename).limit(limit)
         ).scalars().all())
 

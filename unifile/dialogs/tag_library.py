@@ -32,12 +32,13 @@ from unifile.tagging.models import TAG_COLORS
 
 
 class _EntrySearchWorker(QThread):
-    """Run tag library search off the GUI thread."""
+    """Run tag library search off the GUI thread using its own Session."""
     results_ready = pyqtSignal(str, list)  # (query, entries)
 
-    def __init__(self, lib, query, parent=None):
+    def __init__(self, engine, library_dir, query, parent=None):
         super().__init__(parent)
-        self._lib = lib
+        self._engine = engine
+        self._library_dir = library_dir
         self._query = query
         self._cancelled = False
 
@@ -48,7 +49,17 @@ class _EntrySearchWorker(QThread):
         if self._cancelled:
             return
         try:
-            entries = self._lib.search_entries(self._query)
+            from unifile.tagging.library import TagLibrary
+            lib = TagLibrary.__new__(TagLibrary)
+            lib.library_dir = self._library_dir
+            lib.engine = self._engine
+            from sqlalchemy.orm import Session
+            lib._session = Session(self._engine)
+            lib._folder = None
+            try:
+                entries = lib.search_entries(self._query)
+            finally:
+                lib._session.close()
         except Exception:
             entries = []
         if not self._cancelled:
@@ -1062,7 +1073,8 @@ class TagLibraryPanel(QWidget):
         if not query or not self._lib.is_open:
             return
         self._cancel_search()
-        self._search_worker = _EntrySearchWorker(self._lib, query)
+        self._search_worker = _EntrySearchWorker(
+            self._lib.engine, self._lib.library_dir, query)
         self._search_worker.results_ready.connect(self._on_search_results)
         self._search_worker.start()
 

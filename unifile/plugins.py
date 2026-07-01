@@ -3,8 +3,19 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 
 from unifile.config import _APP_DATA_DIR, _PRESETS_DIR, _PROFILES_DIR, load_json_safe, save_json_safe
+
+
+def _safe_name(name: str) -> str:
+    """Sanitize a profile/preset name to prevent path traversal."""
+    name = os.path.basename(name)
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
+    name = name.strip('. ')
+    if not name:
+        raise ValueError("Name must not be empty after sanitization")
+    return name
 
 
 class ProfileManager:
@@ -23,21 +34,21 @@ class ProfileManager:
     @staticmethod
     def save(name: str, config: dict):
         """Save a profile to disk."""
-        path = os.path.join(_PROFILES_DIR, f"{name}.json")
+        path = os.path.join(_PROFILES_DIR, f"{_safe_name(name)}.json")
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
 
     @staticmethod
     def load(name: str) -> dict:
         """Load a profile from disk."""
-        path = os.path.join(_PROFILES_DIR, f"{name}.json")
+        path = os.path.join(_PROFILES_DIR, f"{_safe_name(name)}.json")
         with open(path, encoding='utf-8') as f:
             return json.load(f)
 
     @staticmethod
     def delete(name: str):
         """Delete a profile."""
-        path = os.path.join(_PROFILES_DIR, f"{name}.json")
+        path = os.path.join(_PROFILES_DIR, f"{_safe_name(name)}.json")
         if os.path.exists(path):
             os.remove(path)
 
@@ -86,13 +97,13 @@ class CategoryPresetManager:
 
     @staticmethod
     def save(name, categories):
-        path = os.path.join(_PRESETS_DIR, f"{name}.json")
+        path = os.path.join(_PRESETS_DIR, f"{_safe_name(name)}.json")
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(categories, f, indent=2)
 
     @staticmethod
     def load(name) -> list:
-        path = os.path.join(_PRESETS_DIR, f"{name}.json")
+        path = os.path.join(_PRESETS_DIR, f"{_safe_name(name)}.json")
         with open(path, encoding='utf-8') as f:
             return json.load(f)
 
@@ -105,7 +116,7 @@ class CategoryPresetManager:
 
     @staticmethod
     def delete(name):
-        path = os.path.join(_PRESETS_DIR, f"{name}.json")
+        path = os.path.join(_PRESETS_DIR, f"{_safe_name(name)}.json")
         if os.path.exists(path):
             os.remove(path)
 

@@ -1033,14 +1033,16 @@ class ArchivePeeker:
                             result['names'].append(info.filename)
             elif ext == '.7z' and HAS_PY7ZR:
                 with _py7zr.SevenZipFile(filepath, 'r') as sz:
-                    for name, bio in sz.read().items():
+                    for info in sz.list():
+                        if info.is_directory:
+                            continue
                         result['file_count'] += 1
-                        result['total_size'] += bio.getbuffer().nbytes if hasattr(bio, 'getbuffer') else 0
-                        fext = os.path.splitext(name)[1].lower()
+                        result['total_size'] += info.uncompressed or 0
+                        fext = os.path.splitext(info.filename)[1].lower()
                         if fext:
                             result['extensions'][fext] += 1
                         if len(result['names']) < 20:
-                            result['names'].append(name)
+                            result['names'].append(info.filename)
         except Exception:
             pass
         return result

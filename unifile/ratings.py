@@ -30,6 +30,8 @@ from unifile.config import _APP_DATA_DIR
 _DB_PATH = os.path.join(_APP_DATA_DIR, "ratings.sqlite")
 _VALID_FLAGS = {"pending", "approved", "rejected", ""}
 
+_BULK_CHUNK = 500
+
 
 def _conn() -> sqlite3.Connection:
     os.makedirs(_APP_DATA_DIR, exist_ok=True)
@@ -56,13 +58,15 @@ def get_rating(path: str) -> tuple[int, str]:
     """Return (stars, flag) for *path*, or (0, '') if not rated."""
     try:
         con = _conn()
-        row = con.execute(
-            "SELECT stars, flag FROM ratings WHERE path = ?", (_norm(path),)
-        ).fetchone()
-        con.close()
-        if row:
-            return int(row[0] or 0), str(row[1] or "")
-        return 0, ""
+        try:
+            row = con.execute(
+                "SELECT stars, flag FROM ratings WHERE path = ?", (_norm(path),)
+            ).fetchone()
+            if row:
+                return int(row[0] or 0), str(row[1] or "")
+            return 0, ""
+        finally:
+            con.close()
     except Exception:
         return 0, ""
 
@@ -75,14 +79,16 @@ def set_rating(path: str, stars: int, flag: str = "") -> None:
     now = datetime.now(timezone.utc).isoformat()
     try:
         con = _conn()
-        con.execute(
-            "INSERT INTO ratings (path, stars, flag, updated_at) VALUES (?,?,?,?) "
-            "ON CONFLICT(path) DO UPDATE SET stars=excluded.stars, flag=excluded.flag, "
-            "updated_at=excluded.updated_at",
-            (_norm(path), stars, flag, now),
-        )
-        con.commit()
-        con.close()
+        try:
+            con.execute(
+                "INSERT INTO ratings (path, stars, flag, updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(path) DO UPDATE SET stars=excluded.stars, flag=excluded.flag, "
+                "updated_at=excluded.updated_at",
+                (_norm(path), stars, flag, now),
+            )
+            con.commit()
+        finally:
+            con.close()
     except Exception:
         pass
 
@@ -91,9 +97,11 @@ def clear_rating(path: str) -> None:
     """Remove any rating record for *path*."""
     try:
         con = _conn()
-        con.execute("DELETE FROM ratings WHERE path = ?", (_norm(path),))
-        con.commit()
-        con.close()
+        try:
+            con.execute("DELETE FROM ratings WHERE path = ?", (_norm(path),))
+            con.commit()
+        finally:
+            con.close()
     except Exception:
         pass
 
@@ -110,14 +118,18 @@ def bulk_load(paths: list[str]) -> dict[str, tuple[int, str]]:
     result: dict[str, tuple[int, str]] = {}
     try:
         con = _conn()
-        placeholders = ",".join("?" * len(normed))
-        rows = con.execute(
-            f"SELECT path, stars, flag FROM ratings WHERE path IN ({placeholders})",
-            normed,
-        ).fetchall()
-        con.close()
-        for row in rows:
-            result[row[0]] = (int(row[1] or 0), str(row[2] or ""))
+        try:
+            for i in range(0, len(normed), _BULK_CHUNK):
+                chunk = normed[i:i + _BULK_CHUNK]
+                placeholders = ",".join("?" * len(chunk))
+                rows = con.execute(
+                    f"SELECT path, stars, flag FROM ratings WHERE path IN ({placeholders})",
+                    chunk,
+                ).fetchall()
+                for row in rows:
+                    result[row[0]] = (int(row[1] or 0), str(row[2] or ""))
+        finally:
+            con.close()
     except Exception:
         pass
     return result

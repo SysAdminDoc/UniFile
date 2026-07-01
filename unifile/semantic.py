@@ -220,4 +220,3 @@ class SemanticIndex:
             except Exception:
                 pass
             self._conn = None
-            self._conn = None
