@@ -5,6 +5,9 @@ All notable changes to UniFile will be documented in this file.
 ## [v9.3.32] - Research-Driven Hardening
 
 ### Added
+- TagSpaces folder metadata (`.ts/tsm.json`) import/export with unsupported-field reporting.
+- TagSpaces saved search import/export with round-trip support and unsupported-field warnings.
+- Tag Library import/export now includes folder-level tags alongside file sidecars.
 - Schema-validated structured outputs for all LLM classify calls (Ollama `format` + OpenAI `response_format`).
 - Centralized `ai_request()` helper with retry, backoff, API key redaction, and normalized errors.
 - Full tag library backup/restore with SHA-256 manifest (Settings Hub + CLI `unifile backup`/`restore`).

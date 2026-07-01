@@ -908,25 +908,41 @@ class TagLibraryPanel(QWidget):
             self, "Select folder containing TagSpaces .ts sidecars")
         if not directory:
             return
-        from unifile.tagspaces import dry_run_import, import_to_library
-        preview = dry_run_import(directory)
-        if not preview:
+        from unifile.tagspaces import (
+            dry_run_import,
+            dry_run_import_folders,
+            import_folders_to_library,
+            import_to_library,
+        )
+        file_preview = dry_run_import(directory)
+        folder_preview = dry_run_import_folders(directory)
+        if not file_preview and not folder_preview:
             QMessageBox.information(self, "TagSpaces Import",
                                    "No TagSpaces sidecars found in this folder.")
             return
-        total_tags = sum(len(p['tags']) for p in preview)
+        file_tags = sum(len(p['tags']) for p in file_preview)
+        folder_tags = sum(len(p['tags']) for p in folder_preview)
+        unsupported = set()
+        for fp in folder_preview:
+            unsupported.update(fp.get('unsupported_fields', []))
+        msg = (f"Found {len(file_preview)} file(s) with {file_tags} tag(s) "
+               f"and {len(folder_preview)} folder(s) with {folder_tags} tag(s).")
+        if unsupported:
+            msg += f"\n\nUnsupported TagSpaces fields (skipped): {', '.join(sorted(unsupported))}"
+        msg += "\n\nImport?"
         answer = QMessageBox.question(
-            self, "TagSpaces Import",
-            f"Found {len(preview)} file(s) with {total_tags} tag(s).\n\nImport?",
+            self, "TagSpaces Import", msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
-        count = import_to_library(self._lib, directory)
+        file_count = import_to_library(self._lib, directory)
+        folder_count = import_folders_to_library(self._lib, directory)
         self._refresh_tags()
         self._update_stats()
-        QMessageBox.information(self, "TagSpaces Import",
-                               f"Imported tags for {count} file(s).")
+        QMessageBox.information(
+            self, "TagSpaces Import",
+            f"Imported tags for {file_count} file(s) and {folder_count} folder(s).")
 
     def _export_tagspaces(self):
         if not self._lib.is_open:
@@ -936,10 +952,12 @@ class TagLibraryPanel(QWidget):
             self, "Select folder to write TagSpaces .ts sidecars")
         if not directory:
             return
-        from unifile.tagspaces import export_from_library
-        count = export_from_library(self._lib, directory)
-        QMessageBox.information(self, "TagSpaces Export",
-                               f"Wrote {count} sidecar file(s) to .ts/ folders.")
+        from unifile.tagspaces import export_folder_metadata_from_library, export_from_library
+        file_count = export_from_library(self._lib, directory)
+        folder_count = export_folder_metadata_from_library(self._lib, directory)
+        QMessageBox.information(
+            self, "TagSpaces Export",
+            f"Wrote {file_count} file sidecar(s) and {folder_count} folder metadata file(s).")
 
     def _on_semantic_search(self):
         query = self.txt_semantic.text().strip()

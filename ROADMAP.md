@@ -320,9 +320,4 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Research-Driven Additions
 
-- [ ] P3 — Extend TagSpaces interop to folder metadata and saved searches
-  Why: TagSpaces documents folder `.ts/tsm.json`, tag-library exports, location exports, and saved-search exports; UniFile's current module focuses on file sidecars only.
-  Evidence: `unifile/tagspaces.py`, TagSpaces metafile format docs, TagSpaces Pro export docs.
-  Touches: `unifile/tagspaces.py`, tag library import/export UI, migration tests.
-  Acceptance: UniFile imports/exports folder-level tags/descriptions and saved-search definitions where supported, reports unsupported TagSpaces fields, and keeps file-sidecar behavior backward compatible.
-  Complexity: L
+No actionable items remain. All research-driven additions have been implemented.
