@@ -27,7 +27,6 @@ from sqlalchemy.orm import DeclarativeBase
 
 logger = logging.getLogger(__name__)
 
-TAG_DB_SCHEMA_VERSION = 1
 RESERVED_TAG_END = 999
 TAG_ARCHIVED = 0
 TAG_FAVORITE = 1
@@ -98,8 +97,57 @@ def _migration_1(conn: Connection) -> None:
     _add_column_if_missing(conn, "entries", "word_count", "word_count INTEGER")
 
 
+def _migration_2(conn: Connection) -> None:
+    """Add FTS5 virtual tables and sync triggers for tag/entry search."""
+    conn.execute(text("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS tags_fts USING fts5(
+            name, content='tags', content_rowid='id'
+        )
+    """))
+    conn.execute(text("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
+            filename, suffix, content='entries', content_rowid='id'
+        )
+    """))
+    # Populate FTS from existing data
+    conn.execute(text(
+        "INSERT OR IGNORE INTO tags_fts(rowid, name) SELECT id, name FROM tags"
+    ))
+    conn.execute(text(
+        "INSERT OR IGNORE INTO entries_fts(rowid, filename, suffix) "
+        "SELECT id, filename, suffix FROM entries"
+    ))
+    # Sync triggers — keep FTS in lockstep with main tables
+    for trig in (
+        """CREATE TRIGGER IF NOT EXISTS tags_fts_insert AFTER INSERT ON tags BEGIN
+            INSERT INTO tags_fts(rowid, name) VALUES (new.id, new.name);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS tags_fts_delete AFTER DELETE ON tags BEGIN
+            INSERT INTO tags_fts(tags_fts, rowid, name) VALUES ('delete', old.id, old.name);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS tags_fts_update AFTER UPDATE OF name ON tags BEGIN
+            INSERT INTO tags_fts(tags_fts, rowid, name) VALUES ('delete', old.id, old.name);
+            INSERT INTO tags_fts(rowid, name) VALUES (new.id, new.name);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS entries_fts_insert AFTER INSERT ON entries BEGIN
+            INSERT INTO entries_fts(rowid, filename, suffix) VALUES (new.id, new.filename, new.suffix);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS entries_fts_delete AFTER DELETE ON entries BEGIN
+            INSERT INTO entries_fts(entries_fts, rowid, filename, suffix) VALUES ('delete', old.id, old.filename, old.suffix);
+        END""",
+        """CREATE TRIGGER IF NOT EXISTS entries_fts_update AFTER UPDATE OF filename, suffix ON entries BEGIN
+            INSERT INTO entries_fts(entries_fts, rowid, filename, suffix) VALUES ('delete', old.id, old.filename, old.suffix);
+            INSERT INTO entries_fts(rowid, filename, suffix) VALUES (new.id, new.filename, new.suffix);
+        END""",
+    ):
+        conn.execute(text(trig))
+
+
+TAG_DB_SCHEMA_VERSION = 2
+
 MIGRATIONS = (
     Migration(1, "legacy tag and entry metadata columns", _migration_1),
+    Migration(2, "FTS5 search indexes for tags and entries", _migration_2),
 )
 
 

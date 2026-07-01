@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session, joinedload
 
 # Sentinel for "not passed" (distinct from None, which means "clear the field")
@@ -136,6 +136,19 @@ class TagLibrary:
         ).scalar_one_or_none()
 
     def search_tags(self, query: str, limit: int = 20) -> list[Tag]:
+        try:
+            fts_q = query.replace('"', '""')
+            rows = self._session.execute(
+                text("SELECT rowid FROM tags_fts WHERE name MATCH :q LIMIT :lim"),
+                {"q": f'"{fts_q}"*', "lim": limit},
+            ).fetchall()
+            if rows:
+                ids = [r[0] for r in rows]
+                return list(self._session.execute(
+                    select(Tag).where(Tag.id.in_(ids))
+                ).scalars().all())
+        except Exception:
+            pass
         return list(self._session.execute(
             select(Tag).where(Tag.name.ilike(f"%{query}%")).limit(limit)
         ).scalars().all())
@@ -796,7 +809,21 @@ class TagLibrary:
                 return []
             return self.get_group_entries(group.id)[:limit]
 
-        # Default: filename search
+        # Default: filename search (FTS5 with ilike fallback)
+        try:
+            fts_q = q.replace('"', '""')
+            rows = self._session.execute(
+                text("SELECT rowid FROM entries_fts WHERE filename MATCH :q LIMIT :lim"),
+                {"q": f'"{fts_q}"*', "lim": limit},
+            ).fetchall()
+            if rows:
+                ids = [r[0] for r in rows]
+                return list(self._session.execute(
+                    select(Entry).where(Entry.id.in_(ids))
+                    .order_by(Entry.filename).limit(limit)
+                ).scalars().all())
+        except Exception:
+            pass
         return list(self._session.execute(
             select(Entry).where(Entry.filename.ilike(f"%{q}%"))
             .order_by(Entry.filename).limit(limit)
