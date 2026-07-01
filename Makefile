@@ -3,7 +3,7 @@
 
 PY ?= python
 
-.PHONY: help install dev deps-check test cov lint audit format build build-smoke clean run
+.PHONY: help install dev deps-check test cov lint audit format build build-smoke release-audit clean run
 
 help:
 	@echo "UniFile developer targets:"
@@ -51,6 +51,9 @@ build: clean
 
 build-smoke:
 	$(PY) tools/smoke_pyinstaller_build.py
+
+release-audit:
+	$(PY) tools/release_audit.py
 
 run:
 	$(PY) run.py
