@@ -57,7 +57,9 @@ class ArchiveScanResult:
 
 def _get_db() -> sqlite3.Connection:
     os.makedirs(_APP_DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(_DB_PATH, check_same_thread=False, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     register_sqlite_connection(conn)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS archive_meta (

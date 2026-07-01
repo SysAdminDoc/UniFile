@@ -49,6 +49,7 @@ class SemanticIndex:
         self._conn = sqlite3.connect(_EMBED_DB, check_same_thread=False, timeout=10)
         register_sqlite_connection(self._conn)
         self._conn.execute('PRAGMA journal_mode=WAL')
+        self._conn.execute('PRAGMA busy_timeout=5000')
         self._conn.execute('''CREATE TABLE IF NOT EXISTS embeddings (
             id TEXT PRIMARY KEY,
             filepath TEXT,

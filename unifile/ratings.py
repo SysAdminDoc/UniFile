@@ -33,7 +33,9 @@ _VALID_FLAGS = {"pending", "approved", "rejected", ""}
 
 def _conn() -> sqlite3.Connection:
     os.makedirs(_APP_DATA_DIR, exist_ok=True)
-    con = sqlite3.connect(_DB_PATH, check_same_thread=False)
+    con = sqlite3.connect(_DB_PATH, check_same_thread=False, timeout=10)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA busy_timeout=5000")
     con.execute(
         "CREATE TABLE IF NOT EXISTS ratings ("
         "path TEXT PRIMARY KEY, "
