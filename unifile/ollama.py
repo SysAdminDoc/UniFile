@@ -1117,7 +1117,7 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
         'format': _BATCH_CLASSIFY_SCHEMA,
         'options': {
             'temperature': s.get('temperature', 0.1),
-            'num_predict': s.get('num_predict', 4096) * len(folders),
+            'num_predict': min(s.get('num_predict', 4096) * len(folders), 16384),
         },
     }
 

@@ -168,7 +168,7 @@ QPushButton:focus {{ border-color: {t['accent']}; }}
 QPushButton:disabled {{ background-color: {t['bg_alt']}; color: {t['disabled']}; border-color: {t['btn_bg']}; }}
 QPushButton:checked {{ background-color: {t['selection']}; color: {t['fg_bright']}; border-color: {t['accent']}; }}
 QPushButton[class="primary"] {{
-    background-color: {t['accent']}; color: #ffffff;
+    background-color: {t['accent']}; color: {t['btn_on_accent']};
     border: 1px solid {t['accent']};
     min-height: 40px;
     padding: 0 18px;
@@ -179,7 +179,7 @@ QPushButton[class="primary"]:hover {{ background-color: {t['accent_hover']}; bor
 QPushButton[class="primary"]:pressed {{ background-color: {t['accent_pressed']}; }}
 QPushButton[class="primary"]:disabled {{ background-color: {t['btn_bg']}; color: {t['disabled']}; }}
 QPushButton[class="apply"] {{
-    background-color: {t['green']}; color: #ffffff;
+    background-color: {t['green']}; color: {t['btn_on_green']};
     border: 1px solid {t['green']};
     min-height: 40px;
     padding: 0 18px;
@@ -190,7 +190,7 @@ QPushButton[class="apply"]:hover {{ background-color: {t['green_hover']}; border
 QPushButton[class="apply"]:pressed {{ background-color: {t['green_pressed']}; }}
 QPushButton[class="apply"]:disabled {{ background-color: {t['btn_bg']}; color: {t['disabled']}; }}
 QPushButton[class="success"] {{
-    background-color: {t['green']}; color: #ffffff;
+    background-color: {t['green']}; color: {t['btn_on_green']};
     border: 1px solid {t['green']};
     min-height: 34px;
     padding: 0 16px;
@@ -199,15 +199,14 @@ QPushButton[class="success"] {{
 QPushButton[class="success"]:hover {{ background-color: {t['green_hover']}; border-color: {t['green_hover']}; }}
 QPushButton[class="success"]:pressed {{ background-color: {t['green_pressed']}; }}
 QPushButton[class="danger"] {{
-    background-color: #3a1f25;
-    color: #ffb4c0;
-    border: 1px solid #6e3241;
+    background-color: {t['danger_bg']}; color: {t['danger_fg']};
+    border: 1px solid {t['danger_border']};
     min-height: 34px;
     padding: 0 16px;
     font-weight: 700;
 }}
-QPushButton[class="danger"]:hover {{ background-color: #4a2730; color: #ffd5db; border-color: #8c4054; }}
-QPushButton[class="danger"]:pressed {{ background-color: #341b21; }}
+QPushButton[class="danger"]:hover {{ background-color: {t['danger_hover']}; }}
+QPushButton[class="danger"]:pressed {{ background-color: {t['danger_pressed']}; }}
 QPushButton[class="toolbar"] {{
     background-color: transparent; color: {t['muted']};
     border: 1px solid transparent;
@@ -420,8 +419,11 @@ THEME_STEAM_DARK = {
     'input_bg': '#141d26', 'header_bg': '#0a1219',
     'accent': '#1a6bc4', 'accent_hover': '#2080e0', 'accent_pressed': '#1560b0',
     'green': '#1b8553', 'green_hover': '#22a366', 'green_pressed': '#167045',
+    'btn_on_accent': '#ffffff', 'btn_on_green': '#ffffff',
     'selection': '#1a3a5c', 'row_hover': '#152535',
     'muted': '#6b7785', 'disabled': '#3a4654',
+    'danger_bg': '#3a1f25', 'danger_fg': '#ffb4c0', 'danger_border': '#6e3241',
+    'danger_hover': '#4a2730', 'danger_pressed': '#341b21',
 }
 
 THEME_CATPPUCCIN_MOCHA = {
@@ -438,8 +440,11 @@ THEME_CATPPUCCIN_MOCHA = {
     'input_bg': '#181825', 'header_bg': '#11111b',
     'accent': '#89b4fa', 'accent_hover': '#a6c8ff', 'accent_pressed': '#6d9de8',
     'green': '#a6e3a1', 'green_hover': '#b8f0b4', 'green_pressed': '#8ad085',
+    'btn_on_accent': '#1e1e2e', 'btn_on_green': '#1e1e2e',
     'selection': '#313244', 'row_hover': '#252536',
     'muted': '#6c7086', 'disabled': '#45475a',
+    'danger_bg': '#3a1f25', 'danger_fg': '#ffb4c0', 'danger_border': '#6e3241',
+    'danger_hover': '#4a2730', 'danger_pressed': '#341b21',
 }
 
 THEME_OLED_BLACK = {
@@ -456,8 +461,11 @@ THEME_OLED_BLACK = {
     'input_bg': '#0d0d0d', 'header_bg': '#000000',
     'accent': '#0099cc', 'accent_hover': '#00bbee', 'accent_pressed': '#007799',
     'green': '#00aa55', 'green_hover': '#00cc66', 'green_pressed': '#008844',
+    'btn_on_accent': '#ffffff', 'btn_on_green': '#ffffff',
     'selection': '#1a1a2e', 'row_hover': '#111118',
     'muted': '#666666', 'disabled': '#333333',
+    'danger_bg': '#3a1f25', 'danger_fg': '#ffb4c0', 'danger_border': '#6e3241',
+    'danger_hover': '#4a2730', 'danger_pressed': '#341b21',
 }
 
 THEME_GITHUB_DARK = {
@@ -474,8 +482,11 @@ THEME_GITHUB_DARK = {
     'input_bg': '#0d1117', 'header_bg': '#010409',
     'accent': '#1f6feb', 'accent_hover': '#388bfd', 'accent_pressed': '#1a5cc8',
     'green': '#238636', 'green_hover': '#2ea043', 'green_pressed': '#1a7f37',
+    'btn_on_accent': '#ffffff', 'btn_on_green': '#ffffff',
     'selection': '#1a2332', 'row_hover': '#131920',
     'muted': '#484f58', 'disabled': '#30363d',
+    'danger_bg': '#3a1f25', 'danger_fg': '#ffb4c0', 'danger_border': '#6e3241',
+    'danger_hover': '#4a2730', 'danger_pressed': '#341b21',
 }
 
 THEME_NORD = {
@@ -492,8 +503,11 @@ THEME_NORD = {
     'input_bg': '#2e3440', 'header_bg': '#242933',
     'accent': '#5e81ac', 'accent_hover': '#81a1c1', 'accent_pressed': '#4c6d96',
     'green': '#a3be8c', 'green_hover': '#b4d09c', 'green_pressed': '#8aab73',
+    'btn_on_accent': '#ffffff', 'btn_on_green': '#2e3440',
     'selection': '#3b4252', 'row_hover': '#353c4a',
     'muted': '#616e88', 'disabled': '#4c566a',
+    'danger_bg': '#3a1f25', 'danger_fg': '#ffb4c0', 'danger_border': '#6e3241',
+    'danger_hover': '#4a2730', 'danger_pressed': '#341b21',
 }
 
 THEME_DRACULA = {
@@ -510,8 +524,11 @@ THEME_DRACULA = {
     'input_bg': '#21222c', 'header_bg': '#191a23',
     'accent': '#bd93f9', 'accent_hover': '#d0aaff', 'accent_pressed': '#a77de0',
     'green': '#50fa7b', 'green_hover': '#70ff95', 'green_pressed': '#38d960',
+    'btn_on_accent': '#1a1a2e', 'btn_on_green': '#1a1a2e',
     'selection': '#383a4c', 'row_hover': '#30323f',
     'muted': '#6272a4', 'disabled': '#44475a',
+    'danger_bg': '#3a1f25', 'danger_fg': '#ffb4c0', 'danger_border': '#6e3241',
+    'danger_hover': '#4a2730', 'danger_pressed': '#341b21',
 }
 
 # High Contrast (WCAG AA — all foreground/background pairs exceed 4.5:1)
@@ -530,8 +547,11 @@ THEME_HIGH_CONTRAST = {
     'input_bg': '#111111', 'header_bg': '#0a0a0a',
     'accent': '#ffff00', 'accent_hover': '#ffff55', 'accent_pressed': '#cccc00',
     'green': '#00ff00', 'green_hover': '#44ff44', 'green_pressed': '#00cc00',
+    'btn_on_accent': '#000000', 'btn_on_green': '#000000',
     'selection': '#003300', 'row_hover': '#1a1a1a',
     'muted': '#cccccc', 'disabled': '#888888',
+    'danger_bg': '#440000', 'danger_fg': '#ff4444', 'danger_border': '#ff0000',
+    'danger_hover': '#660000', 'danger_pressed': '#330000',
 }
 
 # Registry: name → palette dict
@@ -564,11 +584,7 @@ def load_theme_name() -> str:
 def save_theme_name(name: str):
     global _cached_theme_name
     _cached_theme_name = name
-    try:
-        with open(_THEME_SETTINGS_FILE, 'w') as f:
-            json.dump({'theme': name}, f)
-    except OSError:
-        pass
+    save_json_safe(_THEME_SETTINGS_FILE, {'theme': name})
 
 def get_active_theme() -> dict:
     return THEMES.get(load_theme_name(), THEME_STEAM_DARK)
@@ -605,12 +621,7 @@ def save_font_size(size: int) -> None:
     global _cached_font_size
     size = max(8, min(24, int(size)))
     _cached_font_size = size
-    try:
-        os.makedirs(_APP_DATA_DIR, exist_ok=True)
-        with open(_FONT_SIZE_FILE, 'w') as f:
-            json.dump({'font_size': size}, f)
-    except OSError:
-        pass
+    save_json_safe(_FONT_SIZE_FILE, {'font_size': size})
 
 # ── Protected Paths ──────────────────────────────────────────────────────────
 # System folders and important files that should NEVER be moved/deleted/renamed.
@@ -673,15 +684,12 @@ def save_protected_paths(custom: list, enabled: bool = True):
         'custom': custom,
         'enabled': enabled,
     }
-    try:
-        with open(_PROTECTED_PATHS_FILE, 'w') as f:
-            json.dump({'custom': custom, 'enabled': enabled}, f, indent=2)
-    except OSError:
-        pass
+    save_json_safe(_PROTECTED_PATHS_FILE, {'custom': custom, 'enabled': enabled})
 
 def is_protected(path: str) -> bool:
     """Check if a path (file or folder) is protected from operations.
-    Matches by exact path, basename, or if the path is inside a protected directory."""
+    Matches by exact path, basename, or if the path is inside a protected directory.
+    Filesystem roots (C:\\, D:\\, /) are always protected."""
     if not path:
         return False
     prot = load_protected_paths()
@@ -691,6 +699,8 @@ def is_protected(path: str) -> bool:
         norm = os.path.normcase(os.path.normpath(path))
     except (ValueError, TypeError):
         return False
+    if os.path.ismount(norm):
+        return True
     basename = os.path.basename(norm)
     # Also check any parent directory's basename to catch cases like
     # ".git/config" where the protected entry is just ".git".

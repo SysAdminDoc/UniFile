@@ -342,27 +342,6 @@ def fuzzy_match_categories(name: str, threshold: int = 75) -> tuple:
 # Requires Ollama running locally (https://ollama.com)
 # ══════════════════════════════════════════════════════════════════════════════
 
-_OLLAMA_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'ollama_settings.json')
-
-_OLLAMA_DEFAULTS = {
-    'url': 'http://localhost:11434',
-    'model': 'qwen3.5:9b',
-    'enabled': True,
-    'timeout': 120,
-    'temperature': 0.1,
-    'num_predict': 4096,
-    'think': False,
-    'batch_size': 3,
-    'vision_enabled': True,
-    'vision_max_file_mb': 20,
-    'vision_max_pixels': 1024,
-    'content_extraction': True,
-    'content_max_chars': 800,
-    'convert_heic_to_jpg': True,
-    'convert_webp_to_jpg': True,
-}
-
-
 def scan_filenames_for_asset_clues(folder_path: str) -> dict:
     """Scan filenames inside a folder for asset-type keywords.
     Returns dict with detected asset type, design file count, and filename hints."""
