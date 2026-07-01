@@ -466,6 +466,10 @@ def main():
 
     app.setWindowIcon(branding_icon)
     app.setStyle("Fusion")
+
+    from unifile.i18n import install_translator
+    install_translator(app)
+
     app.setStyleSheet(get_active_stylesheet())
     window = UniFile()
     window._cli_dry_run = args.dry_run

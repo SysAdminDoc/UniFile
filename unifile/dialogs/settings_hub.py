@@ -196,7 +196,7 @@ class SettingsHubDialog(QDialog):
     def _tab_system(self, theme: dict) -> QWidget:
         return _section(
             "System & Safety",
-            "Color theme, font size, protected system paths, plugin manager, and "
+            "Color theme, font size, language, protected system paths, plugin manager, and "
             "category presets (preset packs for different user profiles).",
             [
                 ("Color Theme…",
@@ -205,6 +205,9 @@ class SettingsHubDialog(QDialog):
                 ("Accessibility…",
                  "Adjust the base UI font size (8–24 px) with a live preview.",
                  self._open_accessibility),
+                ("Language…",
+                 "Choose the UI language. Place .qm translation files in the translations folder.",
+                 self._open_language),
                 ("Protected Paths…",
                  "Folders and filenames that UniFile will never move or delete.",
                  self._open_protected),
@@ -294,6 +297,19 @@ class SettingsHubDialog(QDialog):
     def _open_protected(self):        self._call('_open_protected_paths')
     def _open_plugins(self):          self._call('_open_plugin_manager')
     def _open_shell(self):            self._call('_open_shell_integration')
+
+    def _open_language(self):
+        from unifile.i18n import get_available_languages, get_current_language, set_language
+        langs = get_available_languages()
+        current = get_current_language()
+        from PyQt6.QtWidgets import QInputDialog
+        chosen, ok = QInputDialog.getItem(
+            self, "Language", "Select UI language (restart required):",
+            langs, langs.index(current) if current in langs else 0, False)
+        if ok and chosen != current:
+            set_language(chosen)
+            QMessageBox.information(self, "Language Changed",
+                                   f"Language set to '{chosen}'. Restart UniFile to apply.")
 
     # Tools tab
     def _open_archive_indexer(self):  self._call('_open_archive_indexer')
