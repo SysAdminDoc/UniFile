@@ -140,7 +140,7 @@ def _bootstrap():
         return _version_at_least(installed, minimum)
 
     def _try_install(pkg):
-        for flags in [[], ['--user'], ['--break-system-packages']]:
+        for flags in [[], ['--user']]:
             try:
                 subprocess.check_call(
                     [sys.executable, '-m', 'pip', 'install', pkg, '-q'] + flags,
@@ -148,6 +148,10 @@ def _bootstrap():
                 return True
             except subprocess.CalledProcessError:
                 continue
+        import logging
+        logging.getLogger(__name__).warning(
+            "Could not install %s. If using an externally managed Python, "
+            "install it inside a virtualenv or with pipx.", pkg)
         return False
 
     for pkg in required:
