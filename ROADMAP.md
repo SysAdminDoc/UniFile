@@ -324,6 +324,4 @@ No actionable items remain. All research-driven additions have been implemented.
 
 ## Audit-Identified Hardening
 
-- [ ] P3 — Resolve `.stl` dual-mapping between 3D Models and 3D Printing categories
-  Why: `.stl` appears in two extension maps with different confidence, producing inconsistent classification depending on sibling file mix.
-  Where: `unifile/classifier.py:123,175`
+No actionable hardening items remain.
