@@ -689,6 +689,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         #  STACKED WIDGET — page 0 = Organizer, page 1 = Cleanup, page 2 = Duplicates
         # ══════════════════════════════════════════════════════════════
         self._content_stack = QStackedWidget()
+        self._content_stack.setAccessibleName("Main content area")
+        self._content_stack.setAccessibleDescription(
+            "Switch between Organizer, Cleanup, Duplicates, Tag Library, and Media Lookup panels")
 
         # ── Page 0: Organizer ────────────────────────────────────────
         organizer_page = QWidget()

@@ -58,6 +58,9 @@ class TagLibraryPanel(QWidget):
         self._lib.close()
 
     def _build_ui(self):
+        self.setAccessibleName("Tag Library")
+        self.setAccessibleDescription(
+            "Browse, search, and manage tags and file entries in the tag library")
         _t = get_active_theme()
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 16, 16, 16)
@@ -116,11 +119,14 @@ class TagLibraryPanel(QWidget):
         tag_search_row.setSpacing(6)
         self.txt_tag_search = QLineEdit()
         self.txt_tag_search.setPlaceholderText("Search tags…")
+        self.txt_tag_search.setAccessibleName("Tag search")
+        self.txt_tag_search.setAccessibleDescription("Filter tags by name")
         self.txt_tag_search.textChanged.connect(self._on_tag_search)
         tag_search_row.addWidget(self.txt_tag_search, 1)
         self.btn_add_tag = QPushButton("New Tag")
         self.btn_add_tag.setProperty("class", "success")
         self.btn_add_tag.setToolTip("Create a new reusable tag")
+        self.btn_add_tag.setAccessibleName("Create new tag")
         self.btn_add_tag.clicked.connect(self._on_add_tag)
         tag_search_row.addWidget(self.btn_add_tag)
         tag_lay.addLayout(tag_search_row)
@@ -188,10 +194,16 @@ class TagLibraryPanel(QWidget):
         ts_row.setSpacing(4)
         self.btn_ts_import = QPushButton("Import from TagSpaces")
         self.btn_ts_import.setProperty("class", "toolbar")
+        self.btn_ts_import.setAccessibleName("Import from TagSpaces")
+        self.btn_ts_import.setAccessibleDescription(
+            "Import tags from TagSpaces .ts sidecar files in a folder")
         self.btn_ts_import.clicked.connect(self._import_tagspaces)
         ts_row.addWidget(self.btn_ts_import)
         self.btn_ts_export = QPushButton("Export to TagSpaces")
         self.btn_ts_export.setProperty("class", "toolbar")
+        self.btn_ts_export.setAccessibleName("Export to TagSpaces")
+        self.btn_ts_export.setAccessibleDescription(
+            "Write TagSpaces .ts sidecar files for entries with tags")
         self.btn_ts_export.clicked.connect(self._export_tagspaces)
         ts_row.addWidget(self.btn_ts_export)
         ts_row.addStretch()
@@ -223,19 +235,25 @@ class TagLibraryPanel(QWidget):
         self.txt_entry_search.setPlaceholderText(
             "Search… (tag:Name, ext:pdf, rating:3, inbox:true, ns:namespace, group:name)"
         )
+        self.txt_entry_search.setAccessibleName("Entry search")
+        self.txt_entry_search.setAccessibleDescription(
+            "Filter entries by tag, extension, rating, or other query syntax")
         self.txt_entry_search.setFixedWidth(250)
         self.txt_entry_search.textChanged.connect(self._on_entry_search)
         entry_header.addWidget(self.txt_entry_search)
 
-        # Semantic search (natural language)
         self.txt_semantic = QLineEdit()
         self.txt_semantic.setPlaceholderText("Semantic search in natural language…")
+        self.txt_semantic.setAccessibleName("Semantic search")
+        self.txt_semantic.setAccessibleDescription(
+            "Search entries using natural language via AI embeddings")
         self.txt_semantic.setFixedWidth(200)
         self.txt_semantic.returnPressed.connect(self._on_semantic_search)
         entry_header.addWidget(self.txt_semantic)
 
         self.btn_add_files = QPushButton("Add Files")
         self.btn_add_files.setProperty("class", "primary")
+        self.btn_add_files.setAccessibleName("Add files to library")
         self.btn_add_files.clicked.connect(self._on_add_files)
         entry_header.addWidget(self.btn_add_files)
 
