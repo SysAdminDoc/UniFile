@@ -25,6 +25,8 @@ All notable changes to UniFile will be documented in this file.
 - FTS5 virtual tables and sync triggers for tag name and entry filename search (migration v2).
 - Zone.Identifier NTFS stream reader for download provenance (`source_url` auto-populated on Windows).
 - Mark-of-the-Web risk label shown in Tag Library file preview for internet-downloaded files.
+- Release audit tooling: `make release-audit` / `python tools/release_audit.py` generates SBOM, license inventory, vulnerability report, and checksums.
+- Rendered UI smoke screenshot tests for Tag Library, Settings Hub, and Cleanup panels (3 new tests).
 
 ### Removed
 - Tracked debug outputs (`audit2.txt`, `cats.txt`, `smoke86_out.txt`) from repo root.

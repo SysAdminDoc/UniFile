@@ -327,20 +327,6 @@ Strategic / aspirational features. Some require significant architecture changes
   Acceptance: The latest GitHub release tag and asset match the current version, the artifact is built locally after tests/build smoke, checksums are attached, and the release body is traceable to `CHANGELOG.md`.
   Complexity: M
 
-- [ ] P2 — Add release SBOM, license, and vulnerability artifacts
-  Why: `make audit` and PyInstaller checksums exist, but releases do not produce a repeatable dependency/license/security evidence bundle for optional parser, OCR, AI, and PyQt6 stacks.
-  Evidence: `Makefile:41`, `pyproject.toml:82`, `SECURITY.md:48`, pip-audit docs, CycloneDX docs, PyQt license docs.
-  Touches: `Makefile`, `tools/smoke_pyinstaller_build.py`, new local release-audit tool, packaging tests, README release docs.
-  Acceptance: A local `make release-audit` target emits SBOM JSON, license inventory, vulnerability report, and artifact checksum under `dist/UniFile/`; it fails on unfixed high-severity findings and tests cover report generation without leaking secrets.
-  Complexity: M
-
-- [ ] P2 — Add rendered UI smoke screenshots for core panels
-  Why: pytest-qt currently proves the main window can instantiate, but it does not capture rendered main, Tag Library, Cleanup, or Settings surfaces to catch blank/overlapped UI regressions.
-  Evidence: `tests/test_main_window_smoke.py:43`, `tests/test_no_result_outcomes.py:16`, README screenshot, Qt accessibility docs.
-  Touches: `tests/test_main_window_smoke.py`, GUI dialog smoke tests, temporary test artifact handling, affected panel widgets.
-  Acceptance: Offscreen Qt tests grab fixed-size images for the main window, Tag Library, Cleanup, and Settings Hub panels; assert nonblank pixels and no uncaught Qt warnings; screenshots are written only to a temp directory and never tracked.
-  Complexity: M
-
 - [ ] P3 — Extend TagSpaces interop to folder metadata and saved searches
   Why: TagSpaces documents folder `.ts/tsm.json`, tag-library exports, location exports, and saved-search exports; UniFile's current module focuses on file sidecars only.
   Evidence: `unifile/tagspaces.py`, TagSpaces metafile format docs, TagSpaces Pro export docs.
