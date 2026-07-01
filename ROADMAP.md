@@ -1,7 +1,7 @@
 ﻿# Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
-Current version: **v9.3.31**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
+Current version: **v9.3.32**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
 
 ---
 
@@ -320,83 +320,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Research-Driven Additions
 
-- [ ] P1 — Wire TagSpaces sidecar import/export into the GUI
-  Why: `unifile/tagspaces.py` has sidecar import/export logic and tests, but current app-code grep finds no GUI or Settings Hub caller, so users cannot run it from UniFile.
-  Evidence: `unifile/tagspaces.py`, `tests/test_tagspaces.py`, `unifile/dialogs/tag_library.py`, `unifile/dialogs/settings_hub.py`, TagSpaces metafile format docs.
-  Touches: `unifile/dialogs/tag_library.py`, `unifile/dialogs/settings_hub.py`, `unifile/tagspaces.py`, GUI tests.
-  Acceptance: Tag Library exposes Import from TagSpaces and Export to TagSpaces actions with dry-run preview, conflict counts, error reporting, and regression coverage for the GUI entry points.
-  Complexity: M
-
-- [ ] P1 — Merge Windows Shell properties into scan metadata
-  Why: `unifile/win_properties.py` reads title, author, keywords, comments, and ratings, but scan/metadata paths do not import it, leaving Windows metadata invisible.
-  Evidence: `unifile/win_properties.py`, `tests/test_win_properties.py`, `unifile/metadata.py`, `unifile/workers.py`, Microsoft Windows Property System docs.
-  Touches: `unifile/metadata.py`, `unifile/workers.py`, file preview/info UI, metadata tests.
-  Acceptance: On Windows, scans merge Shell properties into extracted metadata with source labels; non-Windows behavior stays no-op; tests cover merge precedence and UI-visible fields.
-  Complexity: M
-
-- [ ] P1 — Install the Qt translator at startup and expose language settings
-  Why: `unifile/i18n.py` implements QTranslator loading and language persistence, but startup/settings paths do not call it, so localization infrastructure is inert.
-  Evidence: `unifile/i18n.py`, `tests/test_i18n.py`, `unifile/__main__.py`, `unifile/dialogs/settings_hub.py`, Qt internationalization docs.
-  Touches: `unifile/__main__.py`, `unifile/dialogs/settings_hub.py`, `unifile/i18n.py`, translation resource packaging, startup tests.
-  Acceptance: `main()` installs the configured translator before window creation; Settings Hub lists available languages, persists selection, prompts restart when required, and packages `.qm` files into PyInstaller builds.
-  Complexity: M
-
-- [ ] P1 — Replace regex LLM cleanup with schema-validated structured outputs
-  Why: Ollama now supports JSON-schema structured outputs and OpenAI-compatible `response_format`, while UniFile still strips `<think>` blocks and parses raw model text after generation.
-  Evidence: `unifile/ollama.py:461`, `unifile/ollama.py:1102`, `unifile/workers.py:2219`, Ollama structured-output and OpenAI-compatibility docs.
-  Touches: `unifile/ollama.py`, `unifile/ai_providers.py`, `unifile/workers.py`, classifier parsing tests.
-  Acceptance: Classification, vision, and batch prompts send explicit JSON schemas, validate responses with typed models, surface schema failures as provider errors, and keep a fallback only for providers that lack structured output.
-  Complexity: M
-
-- [ ] P1 — Centralize AI HTTP timeouts, retries, redaction, and diagnostics
-  Why: Provider calls use raw `urllib.request.urlopen` across multiple modules, making timeout behavior, retry policy, and user-visible errors inconsistent.
-  Evidence: `unifile/ai_providers.py`, `unifile/ollama.py`, `unifile/semantic.py`, `unifile/engine.py`, `unifile/metadata.py`, `unifile/workers.py`, AI File Sorter custom endpoint and diagnostics patterns.
-  Touches: `unifile/ai_providers.py`, `unifile/ollama.py`, `unifile/semantic.py`, `unifile/engine.py`, diagnostics export tests.
-  Acceptance: All AI/network provider calls use one request helper with per-provider timeout config, redacted request diagnostics, normalized errors, retry policy tests, and no leaked API keys in logs.
-  Complexity: M
-
-- [ ] P1 — Convert shortcut-only roadmap flows into visible accessible commands
-  Why: Existing roadmap entries rely on Ctrl-key shortcuts, but project instructions prohibit keyboard shortcuts and Qt accessibility guidance requires reachable, semantic controls.
-  Evidence: `AGENTS.md`, existing `ROADMAP.md` Keyboard Navigation and UX sections, Qt accessibility docs.
-  Touches: `unifile/main_window.py`, `unifile/widgets.py`, `unifile/dialogs/settings_hub.py`, accessibility smoke tests.
-  Acceptance: New command/search/profile actions have visible buttons or menus, accessible names/descriptions, tab-order coverage, and no new shortcut-only default workflows.
-  Complexity: M
-
-- [ ] P2 — Split heavyweight face and local-AI packages out of the full extra
-  Why: `[full]` installs `cmake`, `dlib`, `face_recognition`, and `nexaai`, which makes routine source installs fragile and expands the attack/maintenance surface for users who only need tagging and cleanup.
-  Evidence: `pyproject.toml:68`, `pyproject.toml:70`, `pyproject.toml:71`, `pyproject.toml:72`, AI File Sorter optional visual backend pattern.
-  Touches: `pyproject.toml`, `requirements.txt`, `unifile/bootstrap.py`, README setup instructions, dependency-manifest tests.
-  Acceptance: Default/full installs remain useful without compiling face/Nexa stacks; new extras such as `[face]` and `[local-ai]` enable those features explicitly; disabled UI states explain how to install missing extras.
-  Complexity: M
-
-- [ ] P2 — Remove the `--break-system-packages` bootstrap fallback
-  Why: UniFile should not override externally managed Python protections during optional dependency bootstrap; the packaging spec says the override is risky and should not be default behavior.
-  Evidence: `unifile/bootstrap.py:95`, Python externally managed environment spec.
-  Touches: `unifile/bootstrap.py`, README setup troubleshooting, bootstrap tests.
-  Acceptance: Opt-in bootstrap tries normal/user-safe install paths only, reports virtualenv/pipx-style guidance on failure, and tests prove `--break-system-packages` is never invoked.
-  Complexity: S
-
-- [ ] P2 — Audit SQLite shared-connection ownership and busy-timeout behavior
-  Why: Several modules use `check_same_thread=False`; future scale/watch/semantic work needs explicit locking, WAL, timeouts, and close semantics instead of implicit cross-thread sharing.
-  Evidence: `unifile/archive_indexer.py:60`, `unifile/ratings.py:36`, `unifile/semantic.py:49`, SQLite threading docs.
-  Touches: `unifile/archive_indexer.py`, `unifile/ratings.py`, `unifile/semantic.py`, SQLite helper utilities, concurrency tests.
-  Acceptance: Each SQLite-backed service documents connection ownership, applies WAL/busy timeout consistently where appropriate, closes cleanly, and has a concurrent read/write regression test.
-  Complexity: M
-
-- [ ] P2 — Add bad-extension and corrupt-file cleanup analysis
-  Why: Czkawka treats content/extension mismatches and broken files as first-class cleanup tools, and UniFile already has file-type, checksum, and cleanup foundations to support a preview-only analyzer.
-  Evidence: Czkawka README feature list, `unifile/cleanup.py`, `unifile/metadata.py`, existing Cleanup & Safety roadmap section.
-  Touches: `unifile/cleanup.py`, `unifile/dialogs/cleanup.py`, `unifile/metadata.py`, cleanup tests.
-  Acceptance: Cleanup can detect mismatched extensions and unreadable/corrupt files without moving or deleting them, shows confidence/reason per result, and routes all actions through the normal preview/delete safety path.
-  Complexity: M
-
-- [ ] P3 — Extend TagSpaces interop to folder metadata and saved searches
-  Why: TagSpaces documents folder `.ts/tsm.json`, tag-library exports, location exports, and saved-search exports; UniFile's current module focuses on file sidecars only.
-  Evidence: `unifile/tagspaces.py`, TagSpaces metafile format docs, TagSpaces Pro export docs.
-  Touches: `unifile/tagspaces.py`, tag library import/export UI, migration tests.
-  Acceptance: UniFile imports/exports folder-level tags/descriptions and saved-search definitions where supported, reports unsupported TagSpaces fields, and keeps file-sidecar behavior backward compatible.
-  Complexity: L
-
 - [ ] P1 — Add indexed/FTS-backed Tag Library search with a scale benchmark
   Why: Tag and entry searches currently use unindexed `%ilike%` scans over tag names, filenames, and text field values, which will not hold up for large libraries.
   Evidence: `unifile/tagging/library.py:138`, `unifile/tagging/library.py:647`, `unifile/tagging/library.py:735`, `unifile/tagging/library.py:801`; SQLite FTS5 docs; paperless-ngx Tantivy indexing issue.
@@ -404,25 +327,18 @@ Strategic / aspirational features. Some require significant architecture changes
   Acceptance: Migration-backed indexes or FTS tables cover tag names, entry filenames/suffixes, and text fields; existing search results stay equivalent; a generated large-library fixture verifies query latency and migration integrity.
   Complexity: L
 
+- [ ] P1 — Publish a current locally built release artifact
+  Why: The latest public GitHub release is `v9.3.15` while source/docs are `v9.3.31`, so users cannot download an artifact matching the current tested code.
+  Evidence: `pyproject.toml:7`, `README.md`, `unifile/__init__.py:2`, `ROADMAP.md:4`, `gh api repos/SysAdminDoc/UniFile/releases/latest`, `tools/smoke_pyinstaller_build.py`.
+  Touches: `CHANGELOG.md`, `README.md`, `UniFile.spec`, `tools/smoke_pyinstaller_build.py`, release notes, local release commands.
+  Acceptance: The latest GitHub release tag and asset match the current version, the artifact is built locally after tests/build smoke, checksums are attached, and the release body is traceable to `CHANGELOG.md`.
+  Complexity: M
+
 - [ ] P2 — Capture platform download provenance into Source URL metadata
   Why: `Entry.source_url` exists and is manually editable, but scans do not import Windows Mark-of-the-Web/Zone.Identifier source/referrer URLs for downloaded files.
   Evidence: `unifile/tagging/models.py:217`, `unifile/tagging/library.py:455`, `unifile/dialogs/tag_library.py:1196`; Microsoft Zone.Identifier and IAttachmentExecute docs.
   Touches: `unifile/metadata.py`, `unifile/tagging/library.py`, `unifile/dialogs/tag_library.py`, platform metadata tests, diagnostics redaction tests.
   Acceptance: On Windows NTFS files with Zone.Identifier streams, scans populate `source_url` from `HostUrl` or `ReferrerUrl` with source labels; non-Windows behavior is no-op; diagnostics redact captured URLs when exporting support bundles.
-  Complexity: M
-
-- [ ] P2 — Remove tracked root debug outputs and enforce repository hygiene
-  Why: `audit2.txt`, `cats.txt`, and `smoke86_out.txt` are tracked ad-hoc outputs in the repo root, including stale smoke output and a traceback.
-  Evidence: `git ls-files audit2.txt cats.txt smoke86_out.txt`, `.gitignore`, `smoke86_out.txt`.
-  Touches: `.gitignore`, repository hygiene test or local check script, release/check documentation if needed.
-  Acceptance: Stale root output files are removed or converted into intentional fixtures; future ad-hoc smoke/audit/category dumps are ignored or rejected by a local hygiene check; normal tests and release smoke do not depend on root `.txt` artifacts.
-  Complexity: S
-
-- [ ] P1 — Add full-library backup, restore, and integrity verification
-  Why: Migration backups and move snapshots exist, but users have no full tag-library recovery path before larger sidecar, import/export, and search migrations.
-  Evidence: `unifile/tagging/db.py:116`, `tests/test_tagging_migrations.py:64`, `unifile/cache.py:198`, paperless-ngx and Immich backup guidance.
-  Touches: `unifile/tagging/db.py`, `unifile/dialogs/settings_hub.py`, `unifile/__main__.py`, backup/restore tests, README usage docs.
-  Acceptance: Settings and CLI can export a timestamped ZIP containing tag DB, relevant config, tag packs, sidecar manifest, and SHA-256 manifest; restore validates version/integrity, creates a pre-restore backup, and round-trips in tests.
   Complexity: M
 
 - [ ] P2 — Add release SBOM, license, and vulnerability artifacts
@@ -432,13 +348,6 @@ Strategic / aspirational features. Some require significant architecture changes
   Acceptance: A local `make release-audit` target emits SBOM JSON, license inventory, vulnerability report, and artifact checksum under `dist/UniFile/`; it fails on unfixed high-severity findings and tests cover report generation without leaking secrets.
   Complexity: M
 
-- [ ] P2 — Add Windows-friendly Python dev task runner
-  Why: README and CONTRIBUTING document `make` as the main local workflow, but the project is Windows-first and every check already maps to Python-module commands.
-  Evidence: `README.md:312`, `CONTRIBUTING.md:114`, `Makefile`, Windows-first repo instructions.
-  Touches: `tools/dev_tasks.py`, `README.md`, `CONTRIBUTING.md`, developer-command tests.
-  Acceptance: `python tools/dev_tasks.py test|lint|audit|build|build-smoke|clean` mirrors Makefile behavior, exits nonzero on failure, works from PowerShell without GNU make, and README lists both command paths.
-  Complexity: S
-
 - [ ] P2 — Add rendered UI smoke screenshots for core panels
   Why: pytest-qt currently proves the main window can instantiate, but it does not capture rendered main, Tag Library, Cleanup, or Settings surfaces to catch blank/overlapped UI regressions.
   Evidence: `tests/test_main_window_smoke.py:43`, `tests/test_no_result_outcomes.py:16`, README screenshot, Qt accessibility docs.
@@ -446,30 +355,16 @@ Strategic / aspirational features. Some require significant architecture changes
   Acceptance: Offscreen Qt tests grab fixed-size images for the main window, Tag Library, Cleanup, and Settings Hub panels; assert nonblank pixels and no uncaught Qt warnings; screenshots are written only to a temp directory and never tracked.
   Complexity: M
 
-- [ ] P1 — Make Tag Library search asynchronous and cancellable
-  Why: Existing FTS/indexing work improves query speed, but `TagLibraryPanel._on_entry_search()` still runs synchronous DB searches from a text-change handler and can freeze the GUI on large libraries.
-  Evidence: `unifile/dialogs/tag_library.py:915`, `unifile/dialogs/tag_library.py:921`, `unifile/tagging/library.py:647`, Hydrus tag-system docs, Qt async GUI guidance.
-  Touches: `unifile/dialogs/tag_library.py`, `unifile/tagging/library.py`, Tag Library GUI tests, generated large-library fixtures.
-  Acceptance: Entry search debounces typing, cancels stale queries, shows loading/empty/error states, ignores late results from older searches, and stays responsive during a generated 100k-entry search fixture.
-  Complexity: M
-
-- [ ] P1 — Publish a current locally built release artifact
-  Why: The latest public GitHub release is `v9.3.15` while source/docs are `v9.3.31`, so users cannot download an artifact matching the current tested code.
-  Evidence: `pyproject.toml:7`, `README.md`, `unifile/__init__.py:2`, `ROADMAP.md:4`, `gh api repos/SysAdminDoc/UniFile/releases/latest`, `tools/smoke_pyinstaller_build.py`.
-  Touches: `CHANGELOG.md`, `README.md`, `UniFile.spec`, `tools/smoke_pyinstaller_build.py`, release notes, local release commands.
-  Acceptance: The latest GitHub release tag and asset match the current version, the artifact is built locally after tests/build smoke, checksums are attached, and the release body is traceable to `CHANGELOG.md`.
-  Complexity: M
-
-- [ ] P2 — Add frozen-build Qt-binding isolation preflight
-  Why: Local audit shows PyQt5 and PyQt6 can coexist in the developer environment, while PyInstaller 6.21 aborts if hooks collect multiple Qt bindings.
-  Evidence: `python -m pip_audit --local`, `pyproject.toml:32`, `UniFile.spec`, `Makefile:49`, PyInstaller 6.21 changelog.
-  Touches: `Makefile`, `UniFile.spec`, `tools/smoke_pyinstaller_build.py`, release-audit tooling, README release docs.
-  Acceptance: Build commands either use an isolated packaging environment or fail before PyInstaller analysis when non-PyQt6 Qt bindings are importable; diagnostics name the conflicting packages and the smoke build proves only PyQt6 is bundled.
-  Complexity: S
-
 - [ ] P2 — Surface Mark-of-the-Web risk labels before file actions
   Why: The existing Source URL import item captures provenance, but users also need visible risk context before moving, deleting, or applying rules to internet-downloaded files.
   Evidence: `unifile/files.py:277`, `unifile/tagging/models.py:217`, `unifile/dialogs/tag_library.py:436`, Microsoft Zone.Identifier and IAttachmentExecute docs.
   Touches: `unifile/metadata.py`, `unifile/dialogs/tag_library.py`, scan/apply preview UI, diagnostics redaction tests, platform metadata tests.
   Acceptance: Files with Internet-zone Mark-of-the-Web metadata display a non-blocking risk label in preview/detail/apply flows, include source/referrer where safe, redact URLs in support exports, and keep non-Windows behavior as a no-op.
   Complexity: M
+
+- [ ] P3 — Extend TagSpaces interop to folder metadata and saved searches
+  Why: TagSpaces documents folder `.ts/tsm.json`, tag-library exports, location exports, and saved-search exports; UniFile's current module focuses on file sidecars only.
+  Evidence: `unifile/tagspaces.py`, TagSpaces metafile format docs, TagSpaces Pro export docs.
+  Touches: `unifile/tagspaces.py`, tag library import/export UI, migration tests.
+  Acceptance: UniFile imports/exports folder-level tags/descriptions and saved-search definitions where supported, reports unsupported TagSpaces fields, and keeps file-sidecar behavior backward compatible.
+  Complexity: L

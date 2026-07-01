@@ -2,6 +2,29 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.32] - Research-Driven Hardening
+
+### Added
+- Schema-validated structured outputs for all LLM classify calls (Ollama `format` + OpenAI `response_format`).
+- Centralized `ai_request()` helper with retry, backoff, API key redaction, and normalized errors.
+- Full tag library backup/restore with SHA-256 manifest (Settings Hub + CLI `unifile backup`/`restore`).
+- TagSpaces sidecar import/export wired into the Tag Library GUI with dry-run preview.
+- Windows Shell properties (title, author, keywords, rating) merged into file scan metadata.
+- Qt translator installed at startup; language picker in Settings Hub System tab.
+- Accessible names and descriptions on major widgets for NVDA/JAWS screen readers.
+- Async debounced Tag Library search (300ms settle, QThread worker, stale-query cancellation).
+- Bad-extension cleanup analyzer (content/extension mismatch detection via magic bytes).
+- Windows-friendly `python tools/dev_tasks.py` task runner mirroring Makefile.
+- Frozen-build Qt-binding isolation preflight (fails before PyInstaller on conflicting bindings).
+
+### Changed
+- `[full]` extra no longer pulls `cmake`, `dlib`, `face_recognition`, `nexaai`. Use `[face]` or `[nexa]` explicitly.
+- Bootstrap no longer tries `--break-system-packages`; reports virtualenv/pipx guidance on failure.
+- All SQLite connections (archive_indexer, ratings, semantic) consistently use WAL mode + busy_timeout.
+
+### Removed
+- Tracked debug outputs (`audit2.txt`, `cats.txt`, `smoke86_out.txt`) from repo root.
+
 ## [v9.3.31] - Parser Dependency Audit
 
 ### Added
