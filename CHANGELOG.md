@@ -22,6 +22,10 @@ All notable changes to UniFile will be documented in this file.
 - Bootstrap no longer tries `--break-system-packages`; reports virtualenv/pipx guidance on failure.
 - All SQLite connections (archive_indexer, ratings, semantic) consistently use WAL mode + busy_timeout.
 
+- FTS5 virtual tables and sync triggers for tag name and entry filename search (migration v2).
+- Zone.Identifier NTFS stream reader for download provenance (`source_url` auto-populated on Windows).
+- Mark-of-the-Web risk label shown in Tag Library file preview for internet-downloaded files.
+
 ### Removed
 - Tracked debug outputs (`audit2.txt`, `cats.txt`, `smoke86_out.txt`) from repo root.
 

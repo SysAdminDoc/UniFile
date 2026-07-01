@@ -320,25 +320,11 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Research-Driven Additions
 
-- [ ] P1 — Add indexed/FTS-backed Tag Library search with a scale benchmark
-  Why: Tag and entry searches currently use unindexed `%ilike%` scans over tag names, filenames, and text field values, which will not hold up for large libraries.
-  Evidence: `unifile/tagging/library.py:138`, `unifile/tagging/library.py:647`, `unifile/tagging/library.py:735`, `unifile/tagging/library.py:801`; SQLite FTS5 docs; paperless-ngx Tantivy indexing issue.
-  Touches: `unifile/tagging/models.py`, `unifile/tagging/db.py`, `unifile/tagging/library.py`, tag migration tests, search/query tests.
-  Acceptance: Migration-backed indexes or FTS tables cover tag names, entry filenames/suffixes, and text fields; existing search results stay equivalent; a generated large-library fixture verifies query latency and migration integrity.
-  Complexity: L
-
 - [ ] P1 — Publish a current locally built release artifact
-  Why: The latest public GitHub release is `v9.3.15` while source/docs are `v9.3.31`, so users cannot download an artifact matching the current tested code.
+  Why: The latest public GitHub release is `v9.3.15` while source/docs are `v9.3.32`, so users cannot download an artifact matching the current tested code.
   Evidence: `pyproject.toml:7`, `README.md`, `unifile/__init__.py:2`, `ROADMAP.md:4`, `gh api repos/SysAdminDoc/UniFile/releases/latest`, `tools/smoke_pyinstaller_build.py`.
   Touches: `CHANGELOG.md`, `README.md`, `UniFile.spec`, `tools/smoke_pyinstaller_build.py`, release notes, local release commands.
   Acceptance: The latest GitHub release tag and asset match the current version, the artifact is built locally after tests/build smoke, checksums are attached, and the release body is traceable to `CHANGELOG.md`.
-  Complexity: M
-
-- [ ] P2 — Capture platform download provenance into Source URL metadata
-  Why: `Entry.source_url` exists and is manually editable, but scans do not import Windows Mark-of-the-Web/Zone.Identifier source/referrer URLs for downloaded files.
-  Evidence: `unifile/tagging/models.py:217`, `unifile/tagging/library.py:455`, `unifile/dialogs/tag_library.py:1196`; Microsoft Zone.Identifier and IAttachmentExecute docs.
-  Touches: `unifile/metadata.py`, `unifile/tagging/library.py`, `unifile/dialogs/tag_library.py`, platform metadata tests, diagnostics redaction tests.
-  Acceptance: On Windows NTFS files with Zone.Identifier streams, scans populate `source_url` from `HostUrl` or `ReferrerUrl` with source labels; non-Windows behavior is no-op; diagnostics redact captured URLs when exporting support bundles.
   Complexity: M
 
 - [ ] P2 — Add release SBOM, license, and vulnerability artifacts
@@ -353,13 +339,6 @@ Strategic / aspirational features. Some require significant architecture changes
   Evidence: `tests/test_main_window_smoke.py:43`, `tests/test_no_result_outcomes.py:16`, README screenshot, Qt accessibility docs.
   Touches: `tests/test_main_window_smoke.py`, GUI dialog smoke tests, temporary test artifact handling, affected panel widgets.
   Acceptance: Offscreen Qt tests grab fixed-size images for the main window, Tag Library, Cleanup, and Settings Hub panels; assert nonblank pixels and no uncaught Qt warnings; screenshots are written only to a temp directory and never tracked.
-  Complexity: M
-
-- [ ] P2 — Surface Mark-of-the-Web risk labels before file actions
-  Why: The existing Source URL import item captures provenance, but users also need visible risk context before moving, deleting, or applying rules to internet-downloaded files.
-  Evidence: `unifile/files.py:277`, `unifile/tagging/models.py:217`, `unifile/dialogs/tag_library.py:436`, Microsoft Zone.Identifier and IAttachmentExecute docs.
-  Touches: `unifile/metadata.py`, `unifile/dialogs/tag_library.py`, scan/apply preview UI, diagnostics redaction tests, platform metadata tests.
-  Acceptance: Files with Internet-zone Mark-of-the-Web metadata display a non-blocking risk label in preview/detail/apply flows, include source/referrer where safe, redact URLs in support exports, and keep non-Windows behavior as a no-op.
   Complexity: M
 
 - [ ] P3 — Extend TagSpaces interop to folder metadata and saved searches
