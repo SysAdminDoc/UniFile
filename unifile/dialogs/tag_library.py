@@ -1,7 +1,7 @@
 """UniFile — Tag Library Panel (inline stacked widget page)."""
 import os
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -31,6 +31,30 @@ from unifile.tagging.library import TagLibrary
 from unifile.tagging.models import TAG_COLORS
 
 
+class _EntrySearchWorker(QThread):
+    """Run tag library search off the GUI thread."""
+    results_ready = pyqtSignal(str, list)  # (query, entries)
+
+    def __init__(self, lib, query, parent=None):
+        super().__init__(parent)
+        self._lib = lib
+        self._query = query
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        if self._cancelled:
+            return
+        try:
+            entries = self._lib.search_entries(self._query)
+        except Exception:
+            entries = []
+        if not self._cancelled:
+            self.results_ready.emit(self._query, entries)
+
+
 class TagLibraryPanel(QWidget):
     """Full-featured tag library browser panel for the content stack."""
 
@@ -40,6 +64,12 @@ class TagLibraryPanel(QWidget):
         super().__init__(parent)
         self._lib = TagLibrary()
         self._current_tag_id = None
+        self._search_worker = None
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(300)
+        self._search_timer.timeout.connect(self._run_entry_search)
+        self._pending_search = ''
         self._build_ui()
 
     @property
@@ -988,9 +1018,31 @@ class TagLibraryPanel(QWidget):
         if not self._lib.is_open:
             return
         if not text.strip():
+            self._cancel_search()
             self._refresh_entries(tag_id=self._current_tag_id)
             return
-        entries = self._lib.search_entries(text.strip())
+        self._pending_search = text.strip()
+        self.lbl_selection_info.setText("Searching…")
+        self._search_timer.start()
+
+    def _cancel_search(self):
+        self._search_timer.stop()
+        if self._search_worker and self._search_worker.isRunning():
+            self._search_worker.cancel()
+            self._search_worker = None
+
+    def _run_entry_search(self):
+        query = self._pending_search
+        if not query or not self._lib.is_open:
+            return
+        self._cancel_search()
+        self._search_worker = _EntrySearchWorker(self._lib, query)
+        self._search_worker.results_ready.connect(self._on_search_results)
+        self._search_worker.start()
+
+    def _on_search_results(self, query, entries):
+        if query != self._pending_search:
+            return
         self.tbl_entries.setRowCount(len(entries))
         for row, entry in enumerate(entries):
             item_name = QTableWidgetItem(entry.filename)
