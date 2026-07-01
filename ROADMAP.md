@@ -324,10 +324,6 @@ No actionable items remain. All research-driven additions have been implemented.
 
 ## Audit-Identified Hardening
 
-- [ ] P2 — Protect API keys at rest with Windows DPAPI or `keyring`
-  Why: Envato, AI provider keys stored as plaintext in `%APPDATA%\UniFile\`. Any user-level process can read them.
-  Where: `unifile/metadata.py:263`, `unifile/ai_providers.py:138`
-
 - [ ] P2 — Remove dead classification functions from classifier.py
   Why: `classify_by_extensions`, `classify_by_content`, `classify_by_archive`, `_apply_context`, `infer_asset_type` are defined but never called — ~200 lines of unreachable code.
   Where: `unifile/classifier.py:199,1084,1188,1212,1302`

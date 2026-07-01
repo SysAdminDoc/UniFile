@@ -261,20 +261,44 @@ _ENVATO_CAT_MAP = {
 
 # Persistent API key storage path
 _ENVATO_KEY_FILE = os.path.join(_APP_DATA_DIR, 'envato_api_key.txt')
+_KEYRING_SERVICE = 'UniFile'
+
 
 def _load_envato_api_key() -> str:
-    """Load Envato API key from file. Returns empty string if not set."""
+    """Load Envato API key. Tries keyring first, falls back to plaintext file."""
+    try:
+        import keyring as _kr
+        val = _kr.get_password(_KEYRING_SERVICE, 'envato_api_key')
+        if val:
+            return val
+    except Exception:
+        pass
     try:
         with open(_ENVATO_KEY_FILE) as f:
             return f.read().strip()
     except (FileNotFoundError, OSError):
         return ''
 
+
 def _save_envato_api_key(key: str):
-    """Save Envato API key to file."""
+    """Save Envato API key. Stores in keyring when available, plaintext fallback."""
+    key = key.strip()
+    try:
+        import keyring as _kr
+        if key:
+            _kr.set_password(_KEYRING_SERVICE, 'envato_api_key', key)
+        else:
+            _kr.delete_password(_KEYRING_SERVICE, 'envato_api_key')
+        try:
+            os.remove(_ENVATO_KEY_FILE)
+        except OSError:
+            pass
+        return
+    except Exception:
+        pass
     try:
         with open(_ENVATO_KEY_FILE, 'w') as f:
-            f.write(key.strip())
+            f.write(key)
     except OSError:
         pass
 

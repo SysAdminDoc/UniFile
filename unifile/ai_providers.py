@@ -115,8 +115,35 @@ _DEFAULT_PROVIDERS = {
 }
 
 
+_KEYRING_SERVICE = 'UniFile'
+
+
+def _load_key_from_keyring(provider_id: str) -> str:
+    try:
+        import keyring as _kr
+        return _kr.get_password(_KEYRING_SERVICE, f'provider_{provider_id}') or ''
+    except Exception:
+        return ''
+
+
+def _save_key_to_keyring(provider_id: str, key: str) -> bool:
+    try:
+        import keyring as _kr
+        if key:
+            _kr.set_password(_KEYRING_SERVICE, f'provider_{provider_id}', key)
+        else:
+            try:
+                _kr.delete_password(_KEYRING_SERVICE, f'provider_{provider_id}')
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
+
+
 def load_providers() -> dict:
-    """Load provider configurations from disk."""
+    """Load provider configurations from disk.
+    API keys are loaded from keyring when available, falling back to the JSON file."""
     providers = dict(_DEFAULT_PROVIDERS)
     if os.path.isfile(_PROVIDERS_FILE):
         try:
@@ -129,14 +156,26 @@ def load_providers() -> dict:
                     providers[key] = val
         except (json.JSONDecodeError, OSError):
             pass
+    for pid, cfg in providers.items():
+        kr_key = _load_key_from_keyring(pid)
+        if kr_key:
+            cfg['api_key'] = kr_key
     return providers
 
 
 def save_providers(providers: dict):
-    """Save provider configurations to disk."""
+    """Save provider configurations to disk.
+    API keys are stored in keyring when available and stripped from the JSON file."""
+    save_copy = {}
+    for pid, cfg in providers.items():
+        entry = dict(cfg)
+        api_key = entry.get('api_key', '')
+        if api_key and _save_key_to_keyring(pid, api_key):
+            entry['api_key'] = ''
+        save_copy[pid] = entry
     try:
         with open(_PROVIDERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(providers, f, indent=2)
+            json.dump(save_copy, f, indent=2)
     except OSError:
         pass
 
