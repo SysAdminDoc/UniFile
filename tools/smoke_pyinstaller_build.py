@@ -81,6 +81,22 @@ def write_sha256_sidecar(exe: Path, sidecar: Path | None = None) -> Path:
     return output
 
 
+def check_qt_binding_isolation() -> None:
+    """Fail early if conflicting Qt bindings are importable."""
+    conflicts = []
+    for pkg in ('PyQt5', 'PySide2', 'PySide6'):
+        try:
+            __import__(pkg)
+            conflicts.append(pkg)
+        except ImportError:
+            pass
+    if conflicts:
+        raise RuntimeError(
+            f"Conflicting Qt bindings detected: {', '.join(conflicts)}. "
+            "PyInstaller will abort if multiple Qt bindings are importable. "
+            "Uninstall them or build in an isolated environment.")
+
+
 def run_smoke(exe: Path, *, timeout: int, skip_gui: bool = False, checksum: Path | None = None) -> Path:
     if not exe.is_file():
         raise FileNotFoundError(f"frozen executable not found: {exe}")
@@ -104,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        check_qt_binding_isolation()
         sidecar = run_smoke(args.exe, timeout=args.timeout, skip_gui=args.skip_gui, checksum=args.checksum)
     except Exception as exc:
         print(f"build smoke failed: {exc}", file=sys.stderr)
