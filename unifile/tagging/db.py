@@ -97,8 +97,25 @@ def _migration_1(conn: Connection) -> None:
     _add_column_if_missing(conn, "entries", "word_count", "word_count INTEGER")
 
 
+def _fts5_available(conn: Connection) -> bool:
+    """Check if the SQLite build includes FTS5."""
+    try:
+        conn.execute(text(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x)"))
+        conn.execute(text("DROP TABLE IF EXISTS _fts5_probe"))
+        return True
+    except OperationalError:
+        return False
+
+
 def _migration_2(conn: Connection) -> None:
-    """Add FTS5 virtual tables and sync triggers for tag/entry search."""
+    """Add FTS5 virtual tables and sync triggers for tag/entry search.
+
+    Silently skips on SQLite builds without FTS5 — search falls back to LIKE.
+    """
+    if not _fts5_available(conn):
+        logger.warning("SQLite FTS5 not available; search will use LIKE fallback")
+        return
     conn.execute(text("""
         CREATE VIRTUAL TABLE IF NOT EXISTS tags_fts USING fts5(
             name, content='tags', content_rowid='id'
@@ -170,8 +187,16 @@ def _backup_database(db_path: Path, current_version: int) -> Path:
     backup_path = db_path.with_name(
         f"{db_path.name}.v{current_version}-backup-{timestamp}.bak"
     )
-    with sqlite3.connect(str(db_path)) as source, sqlite3.connect(str(backup_path)) as target:
-        source.backup(target)
+    try:
+        with sqlite3.connect(str(db_path)) as source, \
+             sqlite3.connect(str(backup_path)) as target:
+            source.backup(target)
+    except Exception:
+        try:
+            backup_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return backup_path
 
 

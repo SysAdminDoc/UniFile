@@ -1807,50 +1807,58 @@ class ApplyFilesWorker(QThread):
         ok = err = 0; undo_ops = []
         total = len(self.work_items)
         ts = datetime.now().isoformat()
-        for seq, (li, it) in enumerate(self.work_items):
-            if self._cancelled:
-                self.log.emit(f"  Apply cancelled at {seq}/{total}"); break
-            self.progress.emit(seq + 1, total)
-            if is_protected(it.full_src):
-                self.log.emit(f"  \u26D4 Skipped (protected): {it.name}")
-                self.item_done.emit(li, "Protected"); continue
-            label = "[DRY RUN] " if self.dry_run else ""
-            rename_info = f"  (→ {it.display_name})" if it.display_name != it.name else ""
-            self.log.emit(f"  {label}[{seq+1}/{total}] {it.name}{rename_info}  →  {it.category}/")
-            try:
-                if not self.dry_run:
-                    os.makedirs(os.path.dirname(it.full_dst), exist_ok=True)
-                    dst = it.full_dst
-                    if os.path.exists(dst):
-                        if it.is_folder:
-                            merged, skipped = safe_merge_move(it.full_src, dst,
-                                log_cb=self.log.emit, check_hashes=self.check_hashes)
-                            self.log.emit(f"    Merged ({merged} replaced, {skipped} skipped)")
-                        else:
-                            # File collision — keep both by suffixing
-                            base, ext2 = os.path.splitext(dst)
-                            n = 2
-                            while os.path.exists(dst):
-                                dst = f"{base} ({n}){ext2}"; n += 1
-                            shutil.move(it.full_src, dst)
-                    else:
-                        shutil.move(it.full_src, dst)
-                ok += 1
-                undo_ops.append({'type': 'move', 'src': it.full_dst, 'dst': it.full_src,
-                    'timestamp': ts, 'category': it.category,
-                    'confidence': str(it.confidence), 'status': 'Done'})
-                self.log.emit("    ✅ Done")
-                self.item_done.emit(li, "Done")
-                # Plugin post-move hooks
+        try:
+            for seq, (li, it) in enumerate(self.work_items):
+                if self._cancelled:
+                    self.log.emit(f"  Apply cancelled at {seq}/{total}"); break
+                self.progress.emit(seq + 1, total)
+                if is_protected(it.full_src):
+                    self.log.emit(f"  ⛔ Skipped (protected): {it.name}")
+                    self.item_done.emit(li, "Protected"); continue
+                label = "[DRY RUN] " if self.dry_run else ""
+                rename_info = f"  (→ {it.display_name})" if it.display_name != it.name else ""
+                self.log.emit(f"  {label}[{seq+1}/{total}] {it.name}{rename_info}  →  {it.category}/")
+                actual_dst = it.full_dst
                 try:
-                    PluginManager.run_post_move(it.full_src, it.full_dst, it.category)
-                except Exception:
-                    pass
-            except Exception as e:
-                err += 1
-                self.log.emit(f"    ❌ Error: {e}")
-                self.item_done.emit(li, "Error")
-        self.finished.emit(ok, err, undo_ops)
+                    if not self.dry_run:
+                        os.makedirs(os.path.dirname(it.full_dst), exist_ok=True)
+                        actual_dst = it.full_dst
+                        if os.path.exists(actual_dst):
+                            if it.is_folder:
+                                merged, skipped = safe_merge_move(it.full_src, actual_dst,
+                                    log_cb=self.log.emit, check_hashes=self.check_hashes)
+                                self.log.emit(f"    Merged ({merged} replaced, {skipped} skipped)")
+                            else:
+                                base, ext2 = os.path.splitext(actual_dst)
+                                n = 2
+                                while os.path.exists(actual_dst):
+                                    actual_dst = f"{base} ({n}){ext2}"; n += 1
+                                shutil.move(it.full_src, actual_dst)
+                        else:
+                            shutil.move(it.full_src, actual_dst)
+                    ok += 1
+                    undo_ops.append({'type': 'move', 'src': actual_dst,
+                        'dst': it.full_src, 'timestamp': ts, 'category': it.category,
+                        'confidence': str(it.confidence), 'status': 'Done'})
+                    self.log.emit("    ✅ Done")
+                    self.item_done.emit(li, "Done")
+                    try:
+                        PluginManager.run_post_move(it.full_src, actual_dst, it.category)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    err += 1
+                    self.log.emit(f"    ❌ Error: {e}")
+                    self.item_done.emit(li, "Error")
+                    if not self.dry_run:
+                        try:
+                            if os.path.exists(actual_dst) and not os.path.exists(it.full_src):
+                                shutil.move(actual_dst, it.full_src)
+                                self.log.emit("    ↩ Rolled back")
+                        except Exception:
+                            pass
+        finally:
+            self.finished.emit(ok, err, undo_ops)
 
 
 # ── Parallel Vision Runnable ──────────────────────────────────────────────────

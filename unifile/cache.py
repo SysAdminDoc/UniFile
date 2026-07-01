@@ -54,8 +54,8 @@ def save_correction(folder_name, category):
     if key:
         corrections[key] = category
     corrections[folder_name.lower()] = category
-    with open(_CORRECTIONS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(corrections, f, indent=2)
+    from unifile.config import save_json_safe
+    save_json_safe(_CORRECTIONS_FILE, corrections)
     _invalidate_corrections_cache()
 
 def check_corrections(folder_name):
@@ -266,8 +266,8 @@ def _load_undo_stack() -> list:
     return []
 
 def _save_undo_stack(stack: list):
-    with open(_UNDO_STACK_FILE, 'w', encoding='utf-8') as f:
-        json.dump(stack, f, indent=2)
+    from unifile.config import save_json_safe
+    save_json_safe(_UNDO_STACK_FILE, stack)
 
 def save_undo_log(operations, **meta):
     """Push a new batch onto the undo stack (preserves previous batches, max 50).

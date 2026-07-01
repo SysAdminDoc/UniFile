@@ -43,13 +43,12 @@ def add_or_update_job(jobs: list[dict], folder: str, file_path: str, settle_secs
     stat = _file_stat(file_path)
     for job in jobs:
         if job.get('file_path') == file_path:
-            if job['state'] in (STATE_COMPLETED,):
-                job['state'] = STATE_SETTLING
-            if job['state'] in (STATE_SETTLING, STATE_READY):
-                job['detected_at'] = now
-                job['last_stat'] = list(stat)
-                job['settle_deadline'] = now + settle_secs
-                job['state'] = STATE_SETTLING
+            if job['state'] in (STATE_COMPLETED, STATE_FAILED, STATE_RUNNING):
+                job['retries'] = 0
+            job['detected_at'] = now
+            job['last_stat'] = list(stat)
+            job['settle_deadline'] = now + settle_secs
+            job['state'] = STATE_SETTLING
             return jobs
     jobs.append({
         'folder': folder,
@@ -152,10 +151,10 @@ def get_pending_count(jobs: list[dict]) -> int:
 
 
 def purge_completed(jobs: list[dict], max_age_secs: float = 86400) -> list[dict]:
-    """Remove completed jobs older than max_age_secs."""
+    """Remove completed and stale failed jobs older than max_age_secs."""
     now = time.time()
     return [j for j in jobs if not (
-        j['state'] == STATE_COMPLETED and
+        j['state'] in (STATE_COMPLETED, STATE_FAILED) and
         now - j.get('detected_at', 0) > max_age_secs
     )]
 
