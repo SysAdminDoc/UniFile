@@ -445,3 +445,31 @@ Strategic / aspirational features. Some require significant architecture changes
   Touches: `tests/test_main_window_smoke.py`, GUI dialog smoke tests, temporary test artifact handling, affected panel widgets.
   Acceptance: Offscreen Qt tests grab fixed-size images for the main window, Tag Library, Cleanup, and Settings Hub panels; assert nonblank pixels and no uncaught Qt warnings; screenshots are written only to a temp directory and never tracked.
   Complexity: M
+
+- [ ] P1 — Make Tag Library search asynchronous and cancellable
+  Why: Existing FTS/indexing work improves query speed, but `TagLibraryPanel._on_entry_search()` still runs synchronous DB searches from a text-change handler and can freeze the GUI on large libraries.
+  Evidence: `unifile/dialogs/tag_library.py:915`, `unifile/dialogs/tag_library.py:921`, `unifile/tagging/library.py:647`, Hydrus tag-system docs, Qt async GUI guidance.
+  Touches: `unifile/dialogs/tag_library.py`, `unifile/tagging/library.py`, Tag Library GUI tests, generated large-library fixtures.
+  Acceptance: Entry search debounces typing, cancels stale queries, shows loading/empty/error states, ignores late results from older searches, and stays responsive during a generated 100k-entry search fixture.
+  Complexity: M
+
+- [ ] P1 — Publish a current locally built release artifact
+  Why: The latest public GitHub release is `v9.3.15` while source/docs are `v9.3.31`, so users cannot download an artifact matching the current tested code.
+  Evidence: `pyproject.toml:7`, `README.md`, `unifile/__init__.py:2`, `ROADMAP.md:4`, `gh api repos/SysAdminDoc/UniFile/releases/latest`, `tools/smoke_pyinstaller_build.py`.
+  Touches: `CHANGELOG.md`, `README.md`, `UniFile.spec`, `tools/smoke_pyinstaller_build.py`, release notes, local release commands.
+  Acceptance: The latest GitHub release tag and asset match the current version, the artifact is built locally after tests/build smoke, checksums are attached, and the release body is traceable to `CHANGELOG.md`.
+  Complexity: M
+
+- [ ] P2 — Add frozen-build Qt-binding isolation preflight
+  Why: Local audit shows PyQt5 and PyQt6 can coexist in the developer environment, while PyInstaller 6.21 aborts if hooks collect multiple Qt bindings.
+  Evidence: `python -m pip_audit --local`, `pyproject.toml:32`, `UniFile.spec`, `Makefile:49`, PyInstaller 6.21 changelog.
+  Touches: `Makefile`, `UniFile.spec`, `tools/smoke_pyinstaller_build.py`, release-audit tooling, README release docs.
+  Acceptance: Build commands either use an isolated packaging environment or fail before PyInstaller analysis when non-PyQt6 Qt bindings are importable; diagnostics name the conflicting packages and the smoke build proves only PyQt6 is bundled.
+  Complexity: S
+
+- [ ] P2 — Surface Mark-of-the-Web risk labels before file actions
+  Why: The existing Source URL import item captures provenance, but users also need visible risk context before moving, deleting, or applying rules to internet-downloaded files.
+  Evidence: `unifile/files.py:277`, `unifile/tagging/models.py:217`, `unifile/dialogs/tag_library.py:436`, Microsoft Zone.Identifier and IAttachmentExecute docs.
+  Touches: `unifile/metadata.py`, `unifile/dialogs/tag_library.py`, scan/apply preview UI, diagnostics redaction tests, platform metadata tests.
+  Acceptance: Files with Internet-zone Mark-of-the-Web metadata display a non-blocking risk label in preview/detail/apply flows, include source/referrer where safe, redact URLs in support exports, and keep non-Windows behavior as a no-op.
+  Complexity: M
