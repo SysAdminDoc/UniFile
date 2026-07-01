@@ -321,3 +321,25 @@ Strategic / aspirational features. Some require significant architecture changes
 ## Research-Driven Additions
 
 No actionable items remain. All research-driven additions have been implemented.
+
+## Audit-Identified Hardening
+
+- [ ] P1 — Add hard timeout wrapper to `_ollama_classify_batch_chunk` HTTP call
+  Why: Unlike `_ollama_generate`, the batch classify uses raw `urlopen` without a daemon-thread deadline. A slow model can hang the scan worker indefinitely.
+  Where: `unifile/ollama.py:1135`
+
+- [ ] P2 — Protect API keys at rest with Windows DPAPI or `keyring`
+  Why: Envato, AI provider keys stored as plaintext in `%APPDATA%\UniFile\`. Any user-level process can read them.
+  Where: `unifile/metadata.py:263`, `unifile/ai_providers.py:138`
+
+- [ ] P2 — Remove dead classification functions from classifier.py
+  Why: `classify_by_extensions`, `classify_by_content`, `classify_by_archive`, `_apply_context`, `infer_asset_type` are defined but never called — ~200 lines of unreachable code.
+  Where: `unifile/classifier.py:199,1084,1188,1212,1302`
+
+- [ ] P2 — Add thread-safety lock to `archive_indexer._db()` singleton
+  Why: Module-level `_db_conn` can race between GUI thread and `ArchiveIndexWorker` QThread on first access.
+  Where: `unifile/archive_indexer.py:91`
+
+- [ ] P3 — Resolve `.stl` dual-mapping between 3D Models and 3D Printing categories
+  Why: `.stl` appears in two extension maps with different confidence, producing inconsistent classification depending on sibling file mix.
+  Where: `unifile/classifier.py:123,175`

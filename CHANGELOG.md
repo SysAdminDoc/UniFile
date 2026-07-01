@@ -4,6 +4,29 @@ All notable changes to UniFile will be documented in this file.
 
 ## [v9.3.32] - Research-Driven Hardening
 
+### Security
+- Tag Library search: FTS5 MATCH queries strip operator characters (*, OR, AND, NOT, NEAR); LIKE queries escape `%` and `_` wildcards.
+- Profile/preset names sanitized to prevent path traversal via `../` components.
+- Filesystem mount points (drive roots) are now always protected from scan-apply operations.
+
+### Fixed
+- Tag Library async search worker now creates its own SQLAlchemy Session per thread instead of sharing the GUI thread's Session, preventing crashes and corrupted results.
+- ApplyFilesWorker undo log now records the actual destination path after collision renames, not the original (pre-suffix) path — fixes silent undo failures for renamed files.
+- ApplyFilesWorker adds rollback on move failure and wraps `run()` in `try/finally` to guarantee the `finished` signal fires (prevents stuck progress dialogs).
+- 7z archive peek uses `.list()` instead of `.read()` to prevent out-of-memory on large archives.
+- Ratings module connection leak fixed with `try/finally` for close; `bulk_load` chunked to 500 to avoid SQLite variable limit.
+- Watch jobs: files changed during RUNNING/FAILED state are re-queued instead of silently dropped; stale FAILED jobs are now purged alongside COMPLETED ones.
+- Undo stack and corrections file writes now use atomic `save_json_safe` (tmp-then-rename) instead of raw `open('w')`.
+- FTS5 migration detects availability before creating virtual tables; falls back to LIKE on SQLite builds without FTS5.
+- Database backup cleans up partial files on failure to prevent corrupt backups from being restored.
+- Batch LLM classify `num_predict` capped to 16384 to prevent JSON truncation from unbounded token generation.
+- Button text contrast fixed across all themes: light-background themes (Catppuccin, Dracula, Nord, High Contrast) now use dark text on accent/green buttons instead of invisible white-on-pastel.
+- Danger button uses theme tokens instead of hardcoded dark-theme hex values.
+- Theme/font/protected-paths saves converted to atomic `save_json_safe`.
+- Extension mismatch scanner expanded to cover `.jar`, `.apk`, `.epub`, `.pptx`, `.odt`, `.cbz` and other ZIP-based formats.
+- Removed dead `_OLLAMA_DEFAULTS` / `_OLLAMA_SETTINGS_FILE` from classifier.py.
+- Removed duplicate `_conn = None` assignment in semantic.py close().
+
 ### Added
 - TagSpaces folder metadata (`.ts/tsm.json`) import/export with unsupported-field reporting.
 - TagSpaces saved search import/export with round-trip support and unsupported-field warnings.
