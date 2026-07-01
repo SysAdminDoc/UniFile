@@ -2140,6 +2140,38 @@ class ScanFilesLLMWorker(QThread):
         use_vision = bool(_v_enabled and _v_pil and has_images and vision_model and _is_vision_model(vision_model))
         self.log.emit(f"  Vision active: {use_vision}" + (f" [{vision_model}]" if use_vision else ""))
 
+        _vision_schema = {
+            'type': 'object',
+            'properties': {
+                'category': {'type': 'string'},
+                'confidence': {'type': 'integer'},
+                'reason': {'type': 'string'},
+                'description': {'type': 'string'},
+                'suggested_name': {'type': 'string'},
+                'detected_text': {'type': 'string'},
+            },
+            'required': ['category', 'confidence', 'reason',
+                         'description', 'suggested_name'],
+        }
+        _vision_photo_schema = dict(_vision_schema)
+        _vision_photo_schema['properties'] = dict(_vision_schema['properties'],
+                                                   photo_type={'type': 'string'})
+
+        _file_classify_schema = {
+            'type': 'object',
+            'properties': {
+                'category': {'type': 'string'},
+                'confidence': {'type': 'integer'},
+                'reason': {'type': 'string'},
+                'suggested_name': {'type': 'string'},
+            },
+            'required': ['category', 'confidence', 'reason', 'suggested_name'],
+        }
+        _file_batch_schema = {
+            'type': 'array',
+            'items': _file_classify_schema,
+        }
+
         system_vision = (
             f"You are a file organizer with vision. Classify this image into "
             f"exactly ONE category: {', '.join(cat_names)}.\n"
@@ -2153,6 +2185,7 @@ class ScanFilesLLMWorker(QThread):
             "dog_wearing_bandana_on_chair, sunset_over_mountain_lake, error_dialog_task_failed. "
             "NEVER copy or reuse the original filename."
         )
+        active_vision_schema = _vision_schema
 
         # Enhanced vision prompt for photo organization (scene tagging)
         _photo_s = load_photo_settings()
@@ -2171,6 +2204,7 @@ class ScanFilesLLMWorker(QThread):
                 "Use lowercase_with_underscores, max 60 chars. "
                 "NEVER copy or reuse the original filename."
             )
+            active_vision_schema = _vision_photo_schema
 
         BATCH_SIZE = 5
         system_batch = (
@@ -2500,12 +2534,15 @@ class ScanFilesLLMWorker(QThread):
             try:
                 raw = _ollama_generate(prompt, system=system_vision,
                                        url=settings['url'], model=vision_model,
-                                       images=[b64], log_cb=self.log.emit)
-                # Try JSON parse first
+                                       images=[b64], log_cb=self.log.emit,
+                                       format=active_vision_schema)
                 try:
-                    parsed = _parse_llm(raw)
+                    parsed = json.loads(raw)
                 except (json.JSONDecodeError, ValueError):
-                    parsed = None
+                    try:
+                        parsed = _parse_llm(raw)
+                    except (json.JSONDecodeError, ValueError):
+                        parsed = None
 
                 if parsed and isinstance(parsed, dict):
                     cat = parsed.get('category', '')
@@ -2527,8 +2564,7 @@ class ScanFilesLLMWorker(QThread):
                     return (cat, conf, reason, vision_data)
 
                 # ── Fallback: vision model returned free text instead of JSON ──
-                # Extract what we can from the natural language response
-                raw_clean = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+                raw_clean = raw.strip()
                 # Strip common LLM preamble to isolate actual descriptive content
                 _preamble_re = re.compile(
                     r'^(?:according to[^.]*[.:]|here is[^.]*[.:]|based on[^.]*[.:]|'
@@ -2579,8 +2615,12 @@ class ScanFilesLLMWorker(QThread):
                                                            log_cb=self.log.emit, auto_pull=False)
                         if text_model:
                             raw2 = _ollama_generate(reclassify_prompt,
-                                                    url=settings['url'], model=text_model)
-                            p2 = _parse_llm(raw2)
+                                                    url=settings['url'], model=text_model,
+                                                    format=_file_classify_schema)
+                            try:
+                                p2 = json.loads(raw2)
+                            except (json.JSONDecodeError, ValueError):
+                                p2 = _parse_llm(raw2)
                             cat2 = p2.get('category', '')
                             if cat2 in cat_names:
                                 conf2 = int(p2.get('confidence', 65))
@@ -2658,18 +2698,24 @@ class ScanFilesLLMWorker(QThread):
             if len(text_batch_data) == 1:
                 prompt = _prep_item(text_batch_data[0]['item_path'], text_batch_data[0]['is_folder'], text_batch_data[0]['name'])
                 system = system_single
+                fmt = _file_classify_schema
             else:
                 sections = []
                 for i, bd in enumerate(text_batch_data):
                     sections.append(f"[{i+1}] {_prep_item(bd['item_path'], bd['is_folder'], bd['name'])}")
                 prompt = '\n---\n'.join(sections)
                 system = system_batch
+                fmt = _file_batch_schema
 
             classifications = [None] * len(text_batch_data)
             try:
                 raw = _ollama_generate(prompt, system=system,
-                                       url=settings['url'], model=settings['model'])
-                parsed = _parse_llm(raw)
+                                       url=settings['url'], model=settings['model'],
+                                       format=fmt)
+                try:
+                    parsed = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    parsed = _parse_llm(raw)
                 if len(text_batch_data) == 1:
                     classifications[0] = parsed
                 elif isinstance(parsed, list):

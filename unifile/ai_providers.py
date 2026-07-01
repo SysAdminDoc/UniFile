@@ -118,13 +118,20 @@ class AIProvider:
         self._cost_tracker = {'requests': 0, 'input_tokens': 0, 'output_tokens': 0}
 
     def classify(self, prompt: str, model: str | None = None,
-                 system: str = '') -> str:
-        """Send a text classification prompt and return the response."""
+                 system: str = '', format: dict | None = None) -> str:
+        """Send a text classification prompt and return the response.
+
+        When *format* is a JSON Schema dict, providers that support
+        structured output will constrain the model to return valid JSON
+        matching the schema.
+        """
         model = model or self.config.get('model', '')
         if self.type == 'ollama':
-            return self._ollama_generate(prompt, model, system=system)
+            return self._ollama_generate(prompt, model, system=system,
+                                         format=format)
         else:
-            return self._openai_chat(prompt, model, system=system)
+            return self._openai_chat(prompt, model, system=system,
+                                     format=format)
 
     def classify_with_vision(self, prompt: str, image_path: str,
                              model: str | None = None) -> str:
@@ -155,16 +162,20 @@ class AIProvider:
     def cost_stats(self) -> dict:
         return dict(self._cost_tracker)
 
-    def _ollama_generate(self, prompt: str, model: str, system: str = '') -> str:
+    def _ollama_generate(self, prompt: str, model: str, system: str = '',
+                         format: dict | None = None) -> str:
         """Call Ollama's /api/generate endpoint."""
         import urllib.request
-        body = json.dumps({
+        payload = {
             'model': model,
             'prompt': prompt,
             'system': system,
             'stream': False,
             'options': {'temperature': 0.3, 'num_predict': 200},
-        }).encode()
+        }
+        if format is not None:
+            payload['format'] = format
+        body = json.dumps(payload).encode()
         req = urllib.request.Request(
             f"{self.url}/api/generate",
             data=body,
@@ -199,19 +210,26 @@ class AIProvider:
         self._cost_tracker['requests'] += 1
         return data.get('response', '').strip()
 
-    def _openai_chat(self, prompt: str, model: str, system: str = '') -> str:
+    def _openai_chat(self, prompt: str, model: str, system: str = '',
+                     format: dict | None = None) -> str:
         """Call OpenAI-compatible /chat/completions endpoint."""
         import urllib.request
         messages = []
         if system:
             messages.append({'role': 'system', 'content': system})
         messages.append({'role': 'user', 'content': prompt})
-        body = json.dumps({
+        payload = {
             'model': model,
             'messages': messages,
             'temperature': 0.3,
             'max_tokens': 200,
-        }).encode()
+        }
+        if format is not None:
+            payload['response_format'] = {
+                'type': 'json_schema',
+                'json_schema': {'name': 'response', 'schema': format},
+            }
+        body = json.dumps(payload).encode()
         headers = {'Content-Type': 'application/json'}
         if self.api_key:
             headers['Authorization'] = f'Bearer {self.api_key}'

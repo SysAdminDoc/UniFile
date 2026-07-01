@@ -387,10 +387,14 @@ def ollama_test_connection(url: str = None, model: str = None) -> tuple:
 
 def _ollama_generate(prompt: str, system: str = '', url: str = None,
                      model: str = None, timeout: int = None,
-                     log_cb=None, images: list = None) -> str:
+                     log_cb=None, images: list = None,
+                     format: dict | None = None) -> str:
     """Send a prompt to Ollama via /api/chat and return the response text.
     Uses the chat endpoint so that 'think: false' is honored via the chat
     template (the /api/generate endpoint ignores this option for Qwen3.x).
+
+    When *format* is a JSON Schema dict, Ollama constrains the model to
+    produce valid JSON matching that schema (structured outputs).
     Raises on connection/timeout errors.
     """
     import urllib.error
@@ -420,6 +424,8 @@ def _ollama_generate(prompt: str, system: str = '', url: str = None,
             'num_predict': s.get('num_predict', 4096),
         },
     }
+    if format is not None:
+        payload['format'] = format
 
     data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(
@@ -458,9 +464,10 @@ def _ollama_generate(prompt: str, system: str = '', url: str = None,
         prompt_tokens = result.get('prompt_eval_count', '?')
         log_cb(f"    [dbg] done_reason={done_reason} prompt_tokens={prompt_tokens} gen_tokens={eval_count} raw={repr(raw[:120])}")
 
-    # Safety strip — remove any thinking blocks that slipped through
-    raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL)
-    raw = re.sub(r'<think>.*$', '', raw, flags=re.DOTALL)
+    if format is None:
+        # Safety strip — remove any thinking blocks that slipped through
+        raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL)
+        raw = re.sub(r'<think>.*$', '', raw, flags=re.DOTALL)
     return raw.strip()
 
 
@@ -805,6 +812,36 @@ def _build_llm_system_prompt() -> str:
     )
 
 
+_CLASSIFY_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'name': {'type': 'string'},
+        'category': {'type': 'string'},
+        'confidence': {'type': 'integer'},
+    },
+    'required': ['name', 'category', 'confidence'],
+}
+
+_BATCH_CLASSIFY_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'results': {
+            'type': 'array',
+            'items': {
+                'type': 'object',
+                'properties': {
+                    'name': {'type': 'string'},
+                    'category': {'type': 'string'},
+                    'confidence': {'type': 'integer'},
+                },
+                'required': ['name', 'category', 'confidence'],
+            },
+        },
+    },
+    'required': ['results'],
+}
+
+
 def ollama_classify_folder(folder_name: str, folder_path: str = None,
                            url: str = None, model: str = None,
                            log_cb=None) -> dict:
@@ -889,20 +926,19 @@ def ollama_classify_folder(folder_name: str, folder_path: str = None,
 
     try:
         system = _build_llm_system_prompt()
-        raw = _ollama_generate(prompt, system=system, url=url, model=model, log_cb=log_cb)
+        raw = _ollama_generate(prompt, system=system, url=url, model=model,
+                               log_cb=log_cb, format=_CLASSIFY_SCHEMA)
 
         raw = raw.strip()
         if not raw:
             result['detail'] = 'llm:empty_response'
             return result
 
-        # Robust JSON extraction — works whether model wraps in markdown or not
         parsed = None
-        # Try direct parse first
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
-            # Try to find a JSON object anywhere in the response
+            # Fallback: extract JSON from prose/markdown (non-schema providers)
             match = re.search(r'\{[^{}]*"name"[^{}]*"category"[^{}]*\}', raw, re.DOTALL)
             if match:
                 try:
@@ -910,7 +946,6 @@ def ollama_classify_folder(folder_name: str, folder_path: str = None,
                 except json.JSONDecodeError:
                     pass
             if parsed is None:
-                # Last resort: any JSON object
                 match = re.search(r'\{.*?\}', raw, re.DOTALL)
                 if match:
                     try:
@@ -1079,6 +1114,7 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
         'messages': messages,
         'stream': False,
         'think': think,   # top-level /api/chat flag — suppresses Qwen3.x CoT
+        'format': _BATCH_CLASSIFY_SCHEMA,
         'options': {
             'temperature': s.get('temperature', 0.1),
             'num_predict': s.get('num_predict', 4096) * len(folders),
@@ -1099,9 +1135,6 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             result = json.loads(resp.read().decode())
         raw = result.get('message', {}).get('content', '').strip()
-        raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL)
-        raw = re.sub(r'<think>.*$', '', raw, flags=re.DOTALL)
-        raw = raw.strip()
         if not raw:
             for r in empty: r['detail'] = 'batch:empty_response'
             return empty
