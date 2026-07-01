@@ -324,10 +324,6 @@ No actionable items remain. All research-driven additions have been implemented.
 
 ## Audit-Identified Hardening
 
-- [ ] P1 — Add hard timeout wrapper to `_ollama_classify_batch_chunk` HTTP call
-  Why: Unlike `_ollama_generate`, the batch classify uses raw `urlopen` without a daemon-thread deadline. A slow model can hang the scan worker indefinitely.
-  Where: `unifile/ollama.py:1135`
-
 - [ ] P2 — Protect API keys at rest with Windows DPAPI or `keyring`
   Why: Envato, AI provider keys stored as plaintext in `%APPDATA%\UniFile\`. Any user-level process can read them.
   Where: `unifile/metadata.py:263`, `unifile/ai_providers.py:138`

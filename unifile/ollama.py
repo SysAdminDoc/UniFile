@@ -1132,8 +1132,25 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
             headers={'Content-Type': 'application/json'},
             method='POST'
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            result = json.loads(resp.read().decode())
+        import threading
+        _result_box = [None, None]
+
+        def _do_batch_request():
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    _result_box[0] = json.loads(resp.read().decode())
+            except Exception as exc:
+                _result_box[1] = exc
+
+        t = threading.Thread(target=_do_batch_request, daemon=True)
+        t.start()
+        t.join(timeout=timeout + 30)
+        if t.is_alive():
+            for r in empty: r['detail'] = 'batch:hard_timeout'
+            return empty
+        if _result_box[1]:
+            raise _result_box[1]
+        result = _result_box[0]
         raw = result.get('message', {}).get('content', '').strip()
         if not raw:
             for r in empty: r['detail'] = 'batch:empty_response'
