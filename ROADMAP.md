@@ -28,17 +28,9 @@ Current version: **v9.3.32**. Merges TagStudio, FileOrganizer, Local-File-Organi
 
 High-impact, achievable improvements. Each item is scoped to a few days–one week of work.
 
-### Keyboard Navigation & Accessibility
-- Full Tab-order through all panels (main tree → tag library → results → toolbar)
-- Space/Enter to expand folders and trigger actions; arrow keys to navigate trees
-
 ### Archive Content Indexing
 - Scan inside `.zip`, `.rar`, `.7z`, `.tar.*` archives without extracting — index the file listing and inner filenames into the tag library and semantic search index
 - Extraction mode (per-profile toggle): "Extract to temp → classify → repackage" for full AI classification of archive contents; temp path `%LOCALAPPDATA%\UniFile\temp`, always cleaned up
-
-### Spotlight-Style Search Bar
-
-### Saved Searches with Cached Results
 
 ---
 

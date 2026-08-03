@@ -29,6 +29,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Keyboard navigation now spans the main results, Tag Library, and Virtual Library surfaces; tree containers toggle with Space/Enter, leaf activation is routed to the owning panel, and arrow-key navigation remains native.
 - Quick Capture inbox sync: a configured folder now receives the system `tag:inbox` in an open Tag Library without moving files; dashboard/sidebar counts and a filtered view expose pending files, and the Inbox panel can move selected files into a chosen library destination while clearing the inbox tag.
 - Safe archive extraction/repackaging helpers with traversal, link, archive-size, and file-count guards; the Extract + classify profile mode always removes its temporary workspace.
 - Tag Library filename search now includes indexed archive members with an `inner file (inside archive)` breadcrumb and read-only preview.
