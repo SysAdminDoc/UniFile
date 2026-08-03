@@ -308,6 +308,8 @@ Install optional dependencies with `pip install -e ".[full]"`. Missing optional 
 
 For local semantic embeddings, install `pip install -e ".[onnx]"` (or `.[onnx-gpu]` instead for the CUDA runtime) and place an exported `all-MiniLM-L6-v2` ONNX graph (`model.onnx`) plus `tokenizer.json` under `%APPDATA%\UniFile\models\all-MiniLM-L6-v2` (or select another folder in Semantic Search Settings). Auto mode prefers CUDA when available, falls back to the ONNX CPU provider, and then uses Ollama when no local graph is present.
 
+For optional semantic duplicate detection, use the same ONNX extra and select the **Semantic duplicates (CLIP/SigLIP)** option in Duplicate Finder. Choose a local exported image graph named `model.onnx` or `vision_model.onnx`; it must accept NCHW float32 `pixel_values` and return one `[batch, embedding]` vector per image. The default cosine threshold is `0.92` and can be changed in the dialog. UniFile never downloads the image model or requires PyTorch for this feature.
+
 Developer checks:
 
 ```bash

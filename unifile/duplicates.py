@@ -3,6 +3,7 @@ audio fingerprinting, and similar-content detection.
 
 Inspired by Czkawka, Duplicate Cleaner Pro, dupeGuru, and pHash."""
 import hashlib
+import math
 import os
 import subprocess
 from collections import defaultdict
@@ -167,6 +168,104 @@ IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff', '.webp'}
 _PHASH_IMAGE_EXTS = IMAGE_EXTS | {'.heic', '.heif', '.avif', '.jxl'}
 
 
+def _safe_size(filepath: str) -> int:
+    try:
+        return os.path.getsize(filepath)
+    except OSError:
+        return 0
+
+
+def cluster_semantic_embeddings(embeddings: dict[str, list[float]], threshold: float = 0.92):
+    """Cluster image embeddings by cosine similarity.
+
+    Embeddings are compared in blocks so a large image collection does not
+    allocate one unbounded all-pairs matrix.  Union-find keeps transitive
+    matches together: if A matches B and B matches C, all three remain in one
+    review group even when A/C fall just below the threshold.
+
+    Returns ``[(paths, strongest_similarity), ...]`` for groups containing at
+    least two images.
+    """
+    threshold = min(0.99, max(0.80, float(threshold)))
+    values = [(str(path), vector) for path, vector in embeddings.items()
+              if vector and all(isinstance(item, (int, float)) for item in vector)]
+    if len(values) < 2:
+        return []
+
+    paths = [path for path, _ in values]
+    parent = list(range(len(paths)))
+    rank = [0] * len(paths)
+
+    def find(index):
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(left, right):
+        left_root, right_root = find(left), find(right)
+        if left_root == right_root:
+            return
+        if rank[left_root] < rank[right_root]:
+            left_root, right_root = right_root, left_root
+        parent[right_root] = left_root
+        if rank[left_root] == rank[right_root]:
+            rank[left_root] += 1
+
+    edges = []
+    try:
+        import numpy as np
+        dimensions = {len(vector) for _, vector in values}
+        if len(dimensions) == 1 and next(iter(dimensions), 0) > 0:
+            matrix = np.asarray([vector for _, vector in values], dtype=np.float32)
+            norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+            matrix = matrix / np.clip(norms, 1e-12, None)
+            block_size = 256
+            for start in range(0, len(paths), block_size):
+                end = min(len(paths), start + block_size)
+                scores = matrix[start:end] @ matrix.T
+                for local_index in range(end - start):
+                    left = start + local_index
+                    candidates = np.flatnonzero(scores[local_index, left + 1:] >= threshold)
+                    for offset in candidates.tolist():
+                        right = left + 1 + int(offset)
+                        similarity = float(scores[local_index, right])
+                        union(left, right)
+                        edges.append((left, right, similarity))
+        else:
+            raise ValueError("embedding dimensions differ")
+    except (ImportError, ValueError, TypeError):
+        for left in range(len(values)):
+            vector_left = values[left][1]
+            norm_left = math.sqrt(sum(value * value for value in vector_left))
+            if not norm_left:
+                continue
+            for right in range(left + 1, len(values)):
+                vector_right = values[right][1]
+                if len(vector_left) != len(vector_right):
+                    continue
+                norm_right = math.sqrt(sum(value * value for value in vector_right))
+                if not norm_right:
+                    continue
+                similarity = sum(a * b for a, b in zip(vector_left, vector_right, strict=True))
+                similarity /= norm_left * norm_right
+                if similarity >= threshold:
+                    union(left, right)
+                    edges.append((left, right, similarity))
+
+    groups = defaultdict(list)
+    for index, path in enumerate(paths):
+        groups[find(index)].append(path)
+    strongest = defaultdict(float)
+    for left, right, similarity in edges:
+        strongest[find(left)] = max(strongest[find(left)], similarity)
+    return [
+        (members, strongest[root])
+        for root, members in groups.items()
+        if len(members) >= 2
+    ]
+
+
 class ProgressiveDuplicateDetector:
     """Multi-stage duplicate detection pipeline for files.
 
@@ -175,6 +274,8 @@ class ProgressiveDuplicateDetector:
     Stage 3: Hash last 64KB of each file (suffix hash)
     Stage 4: Full SHA-256 content hash for final confirmation
     Stage 5 (optional): Perceptual hash for image near-duplicates
+    Stage 6 (optional): CLIP/SigLIP image embeddings for semantic near-duplicates
+    Stage 7 (optional): Audio fingerprinting
 
     Results:
         dup_map:  {filepath: DupInfo} where DupInfo has group_id, is_original, detail
@@ -184,19 +285,30 @@ class ProgressiveDuplicateDetector:
     PHASH_THRESHOLD = 4    # Hamming distance ≤4 = near-duplicate
 
     class DupInfo:
-        __slots__ = ('group_id', 'is_original', 'detail', 'is_perceptual')
-        def __init__(self, group_id=0, is_original=True, detail='', is_perceptual=False):
+        __slots__ = ('group_id', 'is_original', 'detail', 'is_perceptual', 'is_semantic')
+        def __init__(self, group_id=0, is_original=True, detail='',
+                     is_perceptual=False, is_semantic=False):
             self.group_id = group_id
             self.is_original = is_original
             self.detail = detail
             self.is_perceptual = is_perceptual
+            self.is_semantic = is_semantic
 
     AUDIO_SIM_THRESHOLD = 0.85  # 85% fingerprint similarity = duplicate audio
 
-    def __init__(self, enable_perceptual=True, enable_audio=True, phash_threshold=4):
+    def __init__(self, enable_perceptual=True, enable_audio=True, phash_threshold=4,
+                 enable_semantic=False, semantic_threshold=0.92,
+                 semantic_embedder=None, semantic_model_dir=None,
+                 semantic_provider='auto', semantic_batch_size=32):
         self.enable_perceptual = enable_perceptual and HAS_PILLOW
         self.enable_audio = enable_audio
         self.phash_threshold = phash_threshold
+        self.enable_semantic = bool(enable_semantic)
+        self.semantic_threshold = min(0.99, max(0.80, float(semantic_threshold)))
+        self.semantic_embedder = semantic_embedder
+        self.semantic_model_dir = semantic_model_dir
+        self.semantic_provider = semantic_provider
+        self.semantic_batch_size = max(1, int(semantic_batch_size))
         self.dup_map = {}        # filepath → DupInfo
         self._group_counter = 0
 
@@ -238,8 +350,7 @@ class ProgressiveDuplicateDetector:
             log_cb(f"  [DEDUP] Stage 1: {n_eliminated} unique sizes eliminated, "
                    f"{n_candidates} candidates in {len(candidates)} size groups")
         if not candidates:
-            self._run_perceptual(file_entries, log_cb)
-            self._run_audio_fingerprint(file_entries, log_cb)
+            self._run_optional_stages(file_entries, log_cb)
             return self.dup_map
 
         # ── Stage 2: Prefix hash (first 64KB) ───────────────────────────────
@@ -264,8 +375,7 @@ class ProgressiveDuplicateDetector:
         if log_cb:
             log_cb(f"  [DEDUP] Stage 2: {n_prefix} files share prefix hashes")
         if not prefix_groups:
-            self._run_perceptual(file_entries, log_cb)
-            self._run_audio_fingerprint(file_entries, log_cb)
+            self._run_optional_stages(file_entries, log_cb)
             return self.dup_map
 
         # ── Stage 3: Suffix hash (last 64KB) ────────────────────────────────
@@ -291,8 +401,7 @@ class ProgressiveDuplicateDetector:
         if log_cb:
             log_cb(f"  [DEDUP] Stage 3: {n_suffix} files share prefix+suffix hashes")
         if not suffix_groups:
-            self._run_perceptual(file_entries, log_cb)
-            self._run_audio_fingerprint(file_entries, log_cb)
+            self._run_optional_stages(file_entries, log_cb)
             return self.dup_map
 
         # ── Stage 4: Full content hash ───────────────────────────────────────
@@ -338,13 +447,15 @@ class ProgressiveDuplicateDetector:
             log_cb(f"  [DEDUP] Stage 4: {n_groups} duplicate groups, "
                    f"{total_dup_files} duplicate files")
 
-        # ── Stage 5: Perceptual image hashing ────────────────────────────────
-        self._run_perceptual(file_entries, log_cb)
-
-        # ── Stage 6: Audio fingerprinting (Chromaprint) ──────────────────────
-        self._run_audio_fingerprint(file_entries, log_cb)
+        self._run_optional_stages(file_entries, log_cb)
 
         return self.dup_map
+
+    def _run_optional_stages(self, file_entries: list, log_cb=None):
+        """Run optional visual/audio stages in a stable, non-overwriting order."""
+        self._run_perceptual(file_entries, log_cb)
+        self._run_semantic(file_entries, log_cb)
+        self._run_audio_fingerprint(file_entries, log_cb)
 
     def _run_perceptual(self, file_entries: list, log_cb=None):
         """Stage 5: Find near-duplicate images via perceptual hashing."""
@@ -409,6 +520,85 @@ class ProgressiveDuplicateDetector:
 
         if log_cb and n_perceptual > 0:
             log_cb(f"  [DEDUP] Stage 5: {n_perceptual} near-duplicate images found")
+
+    def _run_semantic(self, file_entries: list, log_cb=None):
+        """Stage 6: Find semantic image matches with a local ONNX encoder."""
+        if not self.enable_semantic:
+            return
+        images = [
+            (fp, sz) for fp, sz in file_entries
+            if os.path.splitext(fp)[1].lower() in _PHASH_IMAGE_EXTS
+            and fp not in self.dup_map
+        ]
+        if len(images) < 2:
+            return
+
+        embedder = self.semantic_embedder
+        if embedder is None:
+            try:
+                from unifile.clip_duplicates import OnnxClipEmbedder, default_clip_model_dir
+                embedder = OnnxClipEmbedder(
+                    self.semantic_model_dir or default_clip_model_dir(),
+                    provider=self.semantic_provider,
+                    batch_size=self.semantic_batch_size,
+                )
+            except (ImportError, ValueError, OSError) as exc:
+                if log_cb:
+                    log_cb(f"  [DEDUP] Stage 6: Skipped ({exc})")
+                return
+
+        is_available = getattr(embedder, 'is_available', None)
+        if is_available is not None and not is_available():
+            detail = getattr(embedder, 'error', '') or 'local CLIP/SigLIP model unavailable'
+            if log_cb:
+                log_cb(f"  [DEDUP] Stage 6: Skipped ({detail})")
+            return
+
+        if log_cb:
+            log_cb(
+                f"  [DEDUP] Stage 6: Encoding {len(images)} images for semantic matches "
+                f"(threshold {self.semantic_threshold:.2f})…"
+            )
+        try:
+            embeddings = embedder.embed_paths([fp for fp, _ in images])
+        except Exception as exc:
+            if log_cb:
+                log_cb(f"  [DEDUP] Stage 6: Skipped ({exc})")
+            return
+        if not embeddings:
+            return
+
+        size_by_path = dict(images)
+        groups = cluster_semantic_embeddings(embeddings, self.semantic_threshold)
+        n_semantic = 0
+        for members, similarity in groups:
+            members = [path for path in members if path not in self.dup_map]
+            if len(members) < 2:
+                continue
+            gid = self._next_group()
+            group_sorted = sorted(
+                members,
+                key=lambda path: size_by_path.get(path, _safe_size(path)),
+                reverse=True,
+            )
+            original = group_sorted[0]
+            for index, fpath in enumerate(group_sorted):
+                is_orig = index == 0
+                detail = (
+                    f"Group {gid} (semantic {similarity:.0%} match): "
+                    f"{'original (largest)' if is_orig else f'near-duplicate of {os.path.basename(original)}'}"
+                )
+                self.dup_map[fpath] = self.DupInfo(
+                    group_id=gid,
+                    is_original=is_orig,
+                    detail=detail,
+                    is_perceptual=True,
+                    is_semantic=True,
+                )
+                if not is_orig:
+                    n_semantic += 1
+        if log_cb and n_semantic:
+            log_cb(f"  [DEDUP] Stage 6: {n_semantic} semantic near-duplicate images found")
 
     def _run_audio_fingerprint(self, file_entries: list, log_cb=None):
         """Stage 6: Find similar audio files via Chromaprint acoustic fingerprinting."""
@@ -575,5 +765,3 @@ class ConflictResolver:
                     it.detail = "Conflict: skipped"
                     count += 1
         return count
-
-

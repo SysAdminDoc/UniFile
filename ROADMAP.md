@@ -34,12 +34,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 Larger features requiring non-trivial architecture or multi-week effort.
 
-### CLIP-Based Near-Duplicate Detection
-- OpenAI CLIP (or SigLIP) vision encoder to detect near-duplicate images that differ by crop, compression, slight color shift, or watermark removal — cases perceptual hashing misses
-- GPU-batch encode all images → cosine similarity matrix → cluster at configurable threshold (0.92 default)
-- Results integrated into the existing Duplicate Finder dialog: new "Semantic Duplicates" tab alongside hash-based results
-- Optional: `clip-embed` via ONNX to avoid PyTorch dependency
-
 ### Workflow Scripting (Python Hooks)
 - Expose `classifier`, `tag_library`, `file_ops` to user-authored hook scripts via a sandboxed `unifile.script` API
 - Script editor embedded in the Plugin panel with live debugger output

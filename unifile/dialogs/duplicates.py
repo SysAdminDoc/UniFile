@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -18,6 +19,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -27,6 +29,84 @@ from PyQt6.QtWidgets import (
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.workers import format_size
+
+
+def _duplicate_match_type(info) -> str:
+    """Return the stable result type used by both duplicate surfaces."""
+    if getattr(info, "is_semantic", False):
+        return "Semantic"
+    if "(audio" in info.detail.lower():
+        return "Audio"
+    return "Visual" if info.is_perceptual else "Exact"
+
+
+def _file_size(path: str) -> int:
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
+
+
+def _new_duplicate_tree() -> QTreeWidget:
+    tree = QTreeWidget()
+    tree.setHeaderLabels(["", "File", "Size", "Modified", "Match Type"])
+    tree.setColumnWidth(0, 30)
+    tree.setColumnWidth(1, 400)
+    tree.setColumnWidth(2, 80)
+    tree.setColumnWidth(3, 140)
+    tree.setColumnWidth(4, 140)
+    tree.setAlternatingRowColors(True)
+    tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+    tree.setRootIsDecorated(True)
+    return tree
+
+
+def _populate_duplicate_tree(tree: QTreeWidget, groups: dict) -> tuple[int, int, int]:
+    """Populate a result tree and return (groups, duplicate_count, wasted_bytes)."""
+    tree.clear()
+    total_waste = 0
+    total_dupes = 0
+    for gid, members in sorted(
+        groups.items(),
+        key=lambda group: sum(_file_size(path) for path, info in group[1]
+                              if not info.is_original),
+        reverse=True,
+    ):
+        members.sort(key=lambda item: (not item[1].is_original, item[0]))
+        first = members[0]
+        match_type = _duplicate_match_type(first[1])
+        group_size = sum(_file_size(path) for path, _ in members)
+        header = QTreeWidgetItem([
+            "", f"Group {gid} — {len(members)} files",
+            format_size(group_size), "", match_type,
+        ])
+        header.setForeground(1, QColor("#4fc3f7"))
+        header.setForeground(4, QColor("#a78bfa") if match_type != "Exact"
+                             else QColor("#4ade80"))
+        tree.addTopLevelItem(header)
+
+        for path, info in members:
+            try:
+                size = os.path.getsize(path)
+                modified = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M")
+            except OSError:
+                size = 0
+                modified = "-"
+            child = QTreeWidgetItem([
+                "", path, format_size(size), modified,
+                "KEEP" if info.is_original else "DUPLICATE",
+            ])
+            child.setCheckState(0, Qt.CheckState.Unchecked)
+            child.setForeground(4, QColor("#4ade80") if info.is_original
+                                else QColor("#f87171"))
+            child.setData(0, Qt.ItemDataRole.UserRole, path)
+            child.setData(1, Qt.ItemDataRole.UserRole, info)
+            header.addChild(child)
+            if not info.is_original:
+                total_dupes += 1
+                total_waste += size
+        header.setExpanded(True)
+    return len(groups), total_dupes, total_waste
 
 
 class DuplicateCompareDialog(QDialog):
@@ -243,6 +323,11 @@ class _DupScanWorker(QThread):
             det = ProgressiveDuplicateDetector(
                 enable_perceptual=self.opts.get('perceptual', True),
                 enable_audio=self.opts.get('audio', True),
+                enable_semantic=self.opts.get('semantic', False),
+                semantic_threshold=self.opts.get('semantic_threshold', 0.92),
+                semantic_model_dir=self.opts.get('semantic_model_dir'),
+                semantic_provider=self.opts.get('semantic_provider', 'auto'),
+                semantic_batch_size=self.opts.get('semantic_batch_size', 32),
             )
 
             def _prog(cur, total):
@@ -282,7 +367,7 @@ class DuplicateFinderDialog(QDialog):
             _t,
             "Duplicates",
             "Duplicate Finder",
-            "Review exact and likely duplicates using content hashes, perceptual image matching, and optional audio fingerprinting before you remove anything."
+            "Review exact and likely duplicates using content hashes, perceptual image matching, optional semantic image embeddings, and audio fingerprinting before you remove anything."
         ))
         self.lbl_status = QLabel("Choose a folder to scan, then review duplicate groups before applying an action.")
         self.lbl_status.setWordWrap(True)
@@ -331,6 +416,28 @@ class DuplicateFinderDialog(QDialog):
         self.chk_audio.setToolTip(tip)
         opts.addWidget(self.chk_audio)
 
+        self.chk_semantic = QCheckBox("Semantic duplicates (CLIP/SigLIP)")
+        self.chk_semantic.setChecked(False)
+        self.chk_semantic.setToolTip(
+            "Optional local ONNX image embeddings. Enable only after selecting an exported "
+            "CLIP/SigLIP image model below; no model is downloaded automatically."
+        )
+        opts.addWidget(self.chk_semantic)
+
+        opts.addWidget(QLabel("Threshold:"))
+        from unifile.clip_duplicates import load_clip_settings
+        clip_settings = load_clip_settings()
+        self.spn_semantic_threshold = QDoubleSpinBox()
+        self.spn_semantic_threshold.setRange(0.80, 0.99)
+        self.spn_semantic_threshold.setSingleStep(0.01)
+        self.spn_semantic_threshold.setDecimals(2)
+        self.spn_semantic_threshold.setValue(clip_settings["threshold"])
+        self.spn_semantic_threshold.setFixedWidth(70)
+        self.spn_semantic_threshold.setToolTip(
+            "Cosine similarity required for a semantic duplicate; higher values are stricter."
+        )
+        opts.addWidget(self.spn_semantic_threshold)
+
         opts.addWidget(QLabel("Min size:"))
         self.spn_min = QComboBox()
         self.spn_min.addItems(["No minimum", "1 KB", "64 KB", "1 MB", "10 MB", "100 MB"])
@@ -340,6 +447,19 @@ class DuplicateFinderDialog(QDialog):
 
         opts.addStretch()
         lay.addLayout(opts)
+
+        semantic_model_row = QHBoxLayout()
+        semantic_model_row.addWidget(QLabel("Local image model:"))
+        self.txt_semantic_model = QLineEdit(clip_settings["model_dir"])
+        self.txt_semantic_model.setPlaceholderText(
+            "Folder containing model.onnx or vision_model.onnx"
+        )
+        semantic_model_row.addWidget(self.txt_semantic_model, 1)
+        btn_semantic_browse = QPushButton("Browse")
+        btn_semantic_browse.setFixedWidth(75)
+        btn_semantic_browse.clicked.connect(self._browse_semantic_model)
+        semantic_model_row.addWidget(btn_semantic_browse)
+        lay.addLayout(semantic_model_row)
 
         # ── Match-type filter row — hides groups of unwanted types ────────
         filter_row = QHBoxLayout()
@@ -381,18 +501,29 @@ class DuplicateFinderDialog(QDialog):
         scan_row.addWidget(self.lbl_status)
         lay.addLayout(scan_row)
 
-        # ── Results tree (grouped by duplicate set) ───────────────────────
-        self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["", "File", "Size", "Modified", "Match Type"])
-        self.tree.setColumnWidth(0, 30)
-        self.tree.setColumnWidth(1, 400)
-        self.tree.setColumnWidth(2, 80)
-        self.tree.setColumnWidth(3, 140)
-        self.tree.setColumnWidth(4, 140)
-        self.tree.setAlternatingRowColors(True)
-        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.tree.setRootIsDecorated(True)
-        lay.addWidget(self.tree, 1)
+        # ── Results tabs (hash/audio vs semantic image matches) ───────────
+        self.result_tabs = QTabWidget()
+        hash_page = QWidget()
+        hash_layout = QVBoxLayout(hash_page)
+        hash_layout.setContentsMargins(0, 8, 0, 0)
+        self.tree = _new_duplicate_tree()
+        hash_layout.addWidget(self.tree)
+        self.result_tabs.addTab(hash_page, "Hash & Audio")
+
+        semantic_page = QWidget()
+        semantic_layout = QVBoxLayout(semantic_page)
+        semantic_layout.setContentsMargins(0, 8, 0, 0)
+        semantic_hint = QLabel(
+            "Semantic Duplicates uses the selected local CLIP/SigLIP ONNX model and the "
+            "configured cosine threshold. Exact and perceptual-hash matches are kept in the first tab."
+        )
+        semantic_hint.setWordWrap(True)
+        semantic_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        semantic_layout.addWidget(semantic_hint)
+        self.semantic_tree = _new_duplicate_tree()
+        semantic_layout.addWidget(self.semantic_tree)
+        self.result_tabs.addTab(semantic_page, "Semantic Duplicates")
+        lay.addWidget(self.result_tabs, 1)
 
         # ── Summary + Actions ─────────────────────────────────────────────
         summary_row = QHBoxLayout()
@@ -444,6 +575,11 @@ class DuplicateFinderDialog(QDialog):
         if folder:
             self.txt_path.setText(folder)
 
+    def _browse_semantic_model(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Local CLIP/SigLIP Model Folder")
+        if folder:
+            self.txt_semantic_model.setText(folder)
+
     def _get_min_size(self) -> int:
         """Parse the min size combo into bytes."""
         idx = self.spn_min.currentIndex()
@@ -460,6 +596,7 @@ class DuplicateFinderDialog(QDialog):
         self.btn_select_dupes.setEnabled(False)
         self.btn_apply.setEnabled(False)
         self.tree.clear()
+        self.semantic_tree.clear()
         self.progress.setVisible(True)
         self.progress.setValue(0)
 
@@ -468,7 +605,15 @@ class DuplicateFinderDialog(QDialog):
             'min_size': self._get_min_size(),
             'perceptual': self.chk_perceptual.isChecked(),
             'audio': self.chk_audio.isChecked(),
+            'semantic': self.chk_semantic.isChecked(),
+            'semantic_threshold': self.spn_semantic_threshold.value(),
+            'semantic_model_dir': self.txt_semantic_model.text().strip(),
         }
+        from unifile.clip_duplicates import save_clip_settings
+        save_clip_settings({
+            'model_dir': opts['semantic_model_dir'],
+            'threshold': opts['semantic_threshold'],
+        })
 
         self._worker = _DupScanWorker(path, opts)
         self._worker.progress.connect(lambda msg: self.lbl_status.setText(msg))
@@ -492,6 +637,7 @@ class DuplicateFinderDialog(QDialog):
             skipped = getattr(self._worker, 'total_skipped', 0)
             criteria = []
             if self.chk_perceptual.isChecked(): criteria.append("perceptual image hash")
+            if self.chk_semantic.isChecked(): criteria.append("semantic CLIP/SigLIP embeddings")
             if self.chk_audio.isChecked() and self.chk_audio.isEnabled(): criteria.append("audio fingerprint")
             criteria.append("SHA-256 content hash")
             criteria_str = ", ".join(criteria)
@@ -508,62 +654,24 @@ class DuplicateFinderDialog(QDialog):
         for path, info in dup_map.items():
             self._groups.setdefault(info.group_id, []).append((path, info))
 
-        # Sort groups: largest wasted space first
-        sorted_groups = sorted(self._groups.items(),
-                               key=lambda g: sum(os.path.getsize(p)
-                                                 for p, i in g[1] if not i.is_original),
-                               reverse=True)
-
-        total_waste = 0
-        total_dupes = 0
-
-        for gid, members in sorted_groups:
-            members.sort(key=lambda x: (not x[1].is_original, x[0]))
-            first = members[0]
-            match_type = "Audio" if "(audio" in first[1].detail else \
-                         "Visual" if first[1].is_perceptual else "Exact"
-
-            # Group header
-            try:
-                group_size = sum(os.path.getsize(p) for p, _ in members)
-            except OSError:
-                group_size = 0
-
-            header = QTreeWidgetItem([
-                "", f"Group {gid} — {len(members)} files",
-                format_size(group_size), "", match_type
-            ])
-            header.setForeground(1, QColor("#4fc3f7"))
-            header.setForeground(4, QColor("#a78bfa") if match_type != "Exact"
-                                 else QColor("#4ade80"))
-            self.tree.addTopLevelItem(header)
-
-            for path, info in members:
-                try:
-                    sz = os.path.getsize(path)
-                    mtime = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M")
-                except OSError:
-                    sz = 0
-                    mtime = "-"
-
-                tag = "KEEP" if info.is_original else "DUPLICATE"
-                child = QTreeWidgetItem([
-                    "", path, format_size(sz), mtime, tag
-                ])
-                child.setCheckState(0, Qt.CheckState.Unchecked)
-
-                if info.is_original:
-                    child.setForeground(4, QColor("#4ade80"))
-                else:
-                    child.setForeground(4, QColor("#f87171"))
-                    total_dupes += 1
-                    total_waste += sz
-
-                child.setData(0, Qt.ItemDataRole.UserRole, path)
-                child.setData(1, Qt.ItemDataRole.UserRole, info)
-                header.addChild(child)
-
-            header.setExpanded(True)
+        hash_groups = {
+            gid: members for gid, members in self._groups.items()
+            if _duplicate_match_type(members[0][1]) != "Semantic"
+        }
+        semantic_groups = {
+            gid: members for gid, members in self._groups.items()
+            if _duplicate_match_type(members[0][1]) == "Semantic"
+        }
+        _populate_duplicate_tree(self.tree, hash_groups)
+        _populate_duplicate_tree(self.semantic_tree, semantic_groups)
+        total_waste = sum(
+            _file_size(path) for members in self._groups.values()
+            for path, info in members if not info.is_original
+        )
+        total_dupes = sum(
+            1 for members in self._groups.values()
+            for _, info in members if not info.is_original
+        )
 
         self.lbl_summary.setText(
             f"{len(self._groups)} duplicate groups  |  "
@@ -611,34 +719,40 @@ class DuplicateFinderDialog(QDialog):
 
     def _auto_select(self):
         """Auto-check all non-original (duplicate) files for action."""
-        for i in range(self.tree.topLevelItemCount()):
-            group = self.tree.topLevelItem(i)
-            for j in range(group.childCount()):
-                child = group.child(j)
-                info = child.data(1, Qt.ItemDataRole.UserRole)
-                if info and not info.is_original:
-                    child.setCheckState(0, Qt.CheckState.Checked)
-                else:
-                    child.setCheckState(0, Qt.CheckState.Unchecked)
+        for tree in self._result_trees():
+            for i in range(tree.topLevelItemCount()):
+                group = tree.topLevelItem(i)
+                for j in range(group.childCount()):
+                    child = group.child(j)
+                    info = child.data(1, Qt.ItemDataRole.UserRole)
+                    if info and not info.is_original:
+                        child.setCheckState(0, Qt.CheckState.Checked)
+                    else:
+                        child.setCheckState(0, Qt.CheckState.Unchecked)
 
     def _deselect_all(self):
-        for i in range(self.tree.topLevelItemCount()):
-            group = self.tree.topLevelItem(i)
-            for j in range(group.childCount()):
-                group.child(j).setCheckState(0, Qt.CheckState.Unchecked)
+        for tree in self._result_trees():
+            for i in range(tree.topLevelItemCount()):
+                group = tree.topLevelItem(i)
+                for j in range(group.childCount()):
+                    group.child(j).setCheckState(0, Qt.CheckState.Unchecked)
 
     def _get_checked_paths(self) -> list:
         """Collect all checked file paths."""
         paths = []
-        for i in range(self.tree.topLevelItemCount()):
-            group = self.tree.topLevelItem(i)
-            for j in range(group.childCount()):
-                child = group.child(j)
-                if child.checkState(0) == Qt.CheckState.Checked:
-                    path = child.data(0, Qt.ItemDataRole.UserRole)
-                    if path:
-                        paths.append(path)
+        for tree in self._result_trees():
+            for i in range(tree.topLevelItemCount()):
+                group = tree.topLevelItem(i)
+                for j in range(group.childCount()):
+                    child = group.child(j)
+                    if child.checkState(0) == Qt.CheckState.Checked:
+                        path = child.data(0, Qt.ItemDataRole.UserRole)
+                        if path:
+                            paths.append(path)
         return paths
+
+    def _result_trees(self):
+        return (self.tree, self.semantic_tree)
 
     def _apply_action(self):
         paths = self._get_checked_paths()
@@ -648,7 +762,7 @@ class DuplicateFinderDialog(QDialog):
 
         action_idx = self.cmb_action.currentIndex()
 
-        total_size = sum(os.path.getsize(p) for p in paths if os.path.exists(p))
+        total_size = sum(_file_size(path) for path in paths)
         confirm = QMessageBox.question(
             self, "Confirm Action",
             f"Apply action to {len(paths)} files ({format_size(total_size)})?\n\n"
@@ -673,26 +787,27 @@ class DuplicateFinderDialog(QDialog):
 
         elif action_idx == 2:  # Replace with hard links
             # For each checked file, find its group's original and hardlink
-            for i in range(self.tree.topLevelItemCount()):
-                group = self.tree.topLevelItem(i)
-                original_path = None
-                checked_in_group = []
-                for j in range(group.childCount()):
-                    child = group.child(j)
-                    info = child.data(1, Qt.ItemDataRole.UserRole)
-                    path = child.data(0, Qt.ItemDataRole.UserRole)
-                    if info and info.is_original:
-                        original_path = path
-                    if child.checkState(0) == Qt.CheckState.Checked and path:
-                        checked_in_group.append(path)
+            for tree in self._result_trees():
+                for i in range(tree.topLevelItemCount()):
+                    group = tree.topLevelItem(i)
+                    original_path = None
+                    checked_in_group = []
+                    for j in range(group.childCount()):
+                        child = group.child(j)
+                        info = child.data(1, Qt.ItemDataRole.UserRole)
+                        path = child.data(0, Qt.ItemDataRole.UserRole)
+                        if info and info.is_original:
+                            original_path = path
+                        if child.checkState(0) == Qt.CheckState.Checked and path:
+                            checked_in_group.append(path)
 
-                if original_path:
-                    for p in checked_in_group:
-                        ok, detail = action_hardlink(original_path, p)
-                        if ok:
-                            success += 1
-                        else:
-                            failed += 1
+                    if original_path:
+                        for p in checked_in_group:
+                            ok, detail = action_hardlink(original_path, p)
+                            if ok:
+                                success += 1
+                            else:
+                                failed += 1
 
         elif action_idx == 3:  # Move to folder
             dest = QFileDialog.getExistingDirectory(self, "Select Destination Folder")
@@ -738,7 +853,7 @@ class DuplicatePanel(QWidget):
         lbl_title = QLabel("Duplicate Finder")
         lbl_title.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 16px; font-weight: 700;")
         header_lay.addWidget(lbl_title)
-        hdr = QLabel("Review exact and likely duplicates using content hashes, perceptual image matching, and optional audio fingerprinting.")
+        hdr = QLabel("Review exact and likely duplicates using content hashes, perceptual image matching, optional semantic image embeddings, and audio fingerprinting.")
         hdr.setWordWrap(True)
         hdr.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
         header_lay.addWidget(hdr)
@@ -784,6 +899,27 @@ class DuplicatePanel(QWidget):
         self.chk_audio.setToolTip(_tip)
         opts.addWidget(self.chk_audio)
 
+        self.chk_semantic = QCheckBox("Semantic duplicates (CLIP/SigLIP)")
+        self.chk_semantic.setChecked(False)
+        self.chk_semantic.setToolTip(
+            "Optional local ONNX image embeddings. Select an exported CLIP/SigLIP "
+            "model below; no model is downloaded automatically."
+        )
+        opts.addWidget(self.chk_semantic)
+        opts.addWidget(QLabel("Threshold:"))
+        from unifile.clip_duplicates import load_clip_settings
+        clip_settings = load_clip_settings()
+        self.spn_semantic_threshold = QDoubleSpinBox()
+        self.spn_semantic_threshold.setRange(0.80, 0.99)
+        self.spn_semantic_threshold.setSingleStep(0.01)
+        self.spn_semantic_threshold.setDecimals(2)
+        self.spn_semantic_threshold.setValue(clip_settings["threshold"])
+        self.spn_semantic_threshold.setFixedWidth(70)
+        self.spn_semantic_threshold.setToolTip(
+            "Cosine similarity required for a semantic duplicate; higher values are stricter."
+        )
+        opts.addWidget(self.spn_semantic_threshold)
+
         opts.addWidget(QLabel("Min size:"))
         self.spn_min = QComboBox()
         self.spn_min.addItems(["No minimum", "1 KB", "64 KB", "1 MB", "10 MB", "100 MB"])
@@ -792,6 +928,19 @@ class DuplicatePanel(QWidget):
         opts.addWidget(self.spn_min)
         opts.addStretch()
         lay.addLayout(opts)
+
+        semantic_model_row = QHBoxLayout()
+        semantic_model_row.addWidget(QLabel("Local image model:"))
+        self.txt_semantic_model = QLineEdit(clip_settings["model_dir"])
+        self.txt_semantic_model.setPlaceholderText(
+            "Folder containing model.onnx or vision_model.onnx"
+        )
+        semantic_model_row.addWidget(self.txt_semantic_model, 1)
+        btn_semantic_browse = QPushButton("Browse")
+        btn_semantic_browse.setFixedWidth(75)
+        btn_semantic_browse.clicked.connect(self._browse_semantic_model)
+        semantic_model_row.addWidget(btn_semantic_browse)
+        lay.addLayout(semantic_model_row)
 
         # Match-type filter for the panel too, mirroring the standalone dialog.
         filter_row = QHBoxLayout()
@@ -832,18 +981,29 @@ class DuplicatePanel(QWidget):
         scan_row.addWidget(self.lbl_status)
         lay.addLayout(scan_row)
 
-        # ── Results tree (grouped by duplicate set) ───────────────────────
-        self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["", "File", "Size", "Modified", "Match Type"])
-        self.tree.setColumnWidth(0, 30)
-        self.tree.setColumnWidth(1, 400)
-        self.tree.setColumnWidth(2, 80)
-        self.tree.setColumnWidth(3, 140)
-        self.tree.setColumnWidth(4, 140)
-        self.tree.setAlternatingRowColors(True)
-        self.tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.tree.setRootIsDecorated(True)
-        lay.addWidget(self.tree, 1)
+        # ── Results tabs (hash/audio vs semantic image matches) ───────────
+        self.result_tabs = QTabWidget()
+        hash_page = QWidget()
+        hash_layout = QVBoxLayout(hash_page)
+        hash_layout.setContentsMargins(0, 8, 0, 0)
+        self.tree = _new_duplicate_tree()
+        hash_layout.addWidget(self.tree)
+        self.result_tabs.addTab(hash_page, "Hash & Audio")
+
+        semantic_page = QWidget()
+        semantic_layout = QVBoxLayout(semantic_page)
+        semantic_layout.setContentsMargins(0, 8, 0, 0)
+        semantic_hint = QLabel(
+            "Semantic Duplicates uses the selected local CLIP/SigLIP ONNX model and "
+            "cosine threshold. Hash and audio matches remain in the first tab."
+        )
+        semantic_hint.setWordWrap(True)
+        semantic_hint.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        semantic_layout.addWidget(semantic_hint)
+        self.semantic_tree = _new_duplicate_tree()
+        semantic_layout.addWidget(self.semantic_tree)
+        self.result_tabs.addTab(semantic_page, "Semantic Duplicates")
+        lay.addWidget(self.result_tabs, 1)
 
         # ── Summary + Actions ─────────────────────────────────────────────
         summary_row = QHBoxLayout()
@@ -893,6 +1053,11 @@ class DuplicatePanel(QWidget):
         if folder:
             self.txt_path.setText(folder)
 
+    def _browse_semantic_model(self):
+        folder = QFileDialog.getExistingDirectory(self, "Select Local CLIP/SigLIP Model Folder")
+        if folder:
+            self.txt_semantic_model.setText(folder)
+
     def _get_min_size(self) -> int:
         idx = self.spn_min.currentIndex()
         return [0, 1024, 65536, 1048576, 10485760, 104857600][idx]
@@ -907,6 +1072,7 @@ class DuplicatePanel(QWidget):
         self.btn_select_dupes.setEnabled(False)
         self.btn_apply.setEnabled(False)
         self.tree.clear()
+        self.semantic_tree.clear()
         self.progress.setVisible(True)
         self.progress.setValue(0)
         opts = {
@@ -914,7 +1080,15 @@ class DuplicatePanel(QWidget):
             'min_size': self._get_min_size(),
             'perceptual': self.chk_perceptual.isChecked(),
             'audio': self.chk_audio.isChecked(),
+            'semantic': self.chk_semantic.isChecked(),
+            'semantic_threshold': self.spn_semantic_threshold.value(),
+            'semantic_model_dir': self.txt_semantic_model.text().strip(),
         }
+        from unifile.clip_duplicates import save_clip_settings
+        save_clip_settings({
+            'model_dir': opts['semantic_model_dir'],
+            'threshold': opts['semantic_threshold'],
+        })
         self._worker = _DupScanWorker(path, opts)
         self._worker.progress.connect(lambda msg: self.lbl_status.setText(msg))
         self._worker.stage.connect(self._on_stage_progress)
@@ -938,51 +1112,24 @@ class DuplicatePanel(QWidget):
         self._groups = {}
         for path, info in dup_map.items():
             self._groups.setdefault(info.group_id, []).append((path, info))
-        sorted_groups = sorted(self._groups.items(),
-                               key=lambda g: sum(os.path.getsize(p)
-                                                 for p, i in g[1] if not i.is_original),
-                               reverse=True)
-        total_waste = 0
-        total_dupes = 0
-        for gid, members in sorted_groups:
-            members.sort(key=lambda x: (not x[1].is_original, x[0]))
-            first = members[0]
-            match_type = "Audio" if "(audio" in first[1].detail else \
-                         "Visual" if first[1].is_perceptual else "Exact"
-            try:
-                group_size = sum(os.path.getsize(p) for p, _ in members)
-            except OSError:
-                group_size = 0
-            header = QTreeWidgetItem([
-                "", f"Group {gid} — {len(members)} files",
-                format_size(group_size), "", match_type
-            ])
-            header.setForeground(1, QColor("#4fc3f7"))
-            header.setForeground(4, QColor("#a78bfa") if match_type != "Exact"
-                                 else QColor("#4ade80"))
-            self.tree.addTopLevelItem(header)
-            for path, info in members:
-                try:
-                    sz = os.path.getsize(path)
-                    mtime = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M")
-                except OSError:
-                    sz = 0
-                    mtime = "-"
-                tag = "KEEP" if info.is_original else "DUPLICATE"
-                child = QTreeWidgetItem([
-                    "", path, format_size(sz), mtime, tag
-                ])
-                child.setCheckState(0, Qt.CheckState.Unchecked)
-                if info.is_original:
-                    child.setForeground(4, QColor("#4ade80"))
-                else:
-                    child.setForeground(4, QColor("#f87171"))
-                    total_dupes += 1
-                    total_waste += sz
-                child.setData(0, Qt.ItemDataRole.UserRole, path)
-                child.setData(1, Qt.ItemDataRole.UserRole, info)
-                header.addChild(child)
-            header.setExpanded(True)
+        hash_groups = {
+            gid: members for gid, members in self._groups.items()
+            if _duplicate_match_type(members[0][1]) != "Semantic"
+        }
+        semantic_groups = {
+            gid: members for gid, members in self._groups.items()
+            if _duplicate_match_type(members[0][1]) == "Semantic"
+        }
+        _populate_duplicate_tree(self.tree, hash_groups)
+        _populate_duplicate_tree(self.semantic_tree, semantic_groups)
+        total_waste = sum(
+            _file_size(path) for members in self._groups.values()
+            for path, info in members if not info.is_original
+        )
+        total_dupes = sum(
+            1 for members in self._groups.values()
+            for _, info in members if not info.is_original
+        )
         self.lbl_summary.setText(
             f"{len(self._groups)} duplicate groups  •  "
             f"{total_dupes} duplicate files  •  "
@@ -1020,33 +1167,39 @@ class DuplicatePanel(QWidget):
             )
 
     def _auto_select(self):
-        for i in range(self.tree.topLevelItemCount()):
-            group = self.tree.topLevelItem(i)
-            for j in range(group.childCount()):
-                child = group.child(j)
-                info = child.data(1, Qt.ItemDataRole.UserRole)
-                if info and not info.is_original:
-                    child.setCheckState(0, Qt.CheckState.Checked)
-                else:
-                    child.setCheckState(0, Qt.CheckState.Unchecked)
+        for tree in self._result_trees():
+            for i in range(tree.topLevelItemCount()):
+                group = tree.topLevelItem(i)
+                for j in range(group.childCount()):
+                    child = group.child(j)
+                    info = child.data(1, Qt.ItemDataRole.UserRole)
+                    if info and not info.is_original:
+                        child.setCheckState(0, Qt.CheckState.Checked)
+                    else:
+                        child.setCheckState(0, Qt.CheckState.Unchecked)
 
     def _deselect_all(self):
-        for i in range(self.tree.topLevelItemCount()):
-            group = self.tree.topLevelItem(i)
-            for j in range(group.childCount()):
-                group.child(j).setCheckState(0, Qt.CheckState.Unchecked)
+        for tree in self._result_trees():
+            for i in range(tree.topLevelItemCount()):
+                group = tree.topLevelItem(i)
+                for j in range(group.childCount()):
+                    group.child(j).setCheckState(0, Qt.CheckState.Unchecked)
 
     def _get_checked_paths(self) -> list:
         paths = []
-        for i in range(self.tree.topLevelItemCount()):
-            group = self.tree.topLevelItem(i)
-            for j in range(group.childCount()):
-                child = group.child(j)
-                if child.checkState(0) == Qt.CheckState.Checked:
-                    path = child.data(0, Qt.ItemDataRole.UserRole)
-                    if path:
-                        paths.append(path)
+        for tree in self._result_trees():
+            for i in range(tree.topLevelItemCount()):
+                group = tree.topLevelItem(i)
+                for j in range(group.childCount()):
+                    child = group.child(j)
+                    if child.checkState(0) == Qt.CheckState.Checked:
+                        path = child.data(0, Qt.ItemDataRole.UserRole)
+                        if path:
+                            paths.append(path)
         return paths
+
+    def _result_trees(self):
+        return (self.tree, self.semantic_tree)
 
     def _apply_action(self):
         paths = self._get_checked_paths()
@@ -1054,7 +1207,7 @@ class DuplicatePanel(QWidget):
             self.lbl_status.setText("Select at least one duplicate first.")
             return
         action_idx = self.cmb_action.currentIndex()
-        total_size = sum(os.path.getsize(p) for p in paths if os.path.exists(p))
+        total_size = sum(_file_size(path) for path in paths)
         confirm = QMessageBox.question(
             self, "Confirm Action",
             f"Apply action to {len(paths)} files ({format_size(total_size)})?\n\n"
@@ -1076,25 +1229,26 @@ class DuplicatePanel(QWidget):
                 else:
                     failed += 1
         elif action_idx == 2:
-            for i in range(self.tree.topLevelItemCount()):
-                group = self.tree.topLevelItem(i)
-                original_path = None
-                checked_in_group = []
-                for j in range(group.childCount()):
-                    child = group.child(j)
-                    info = child.data(1, Qt.ItemDataRole.UserRole)
-                    path = child.data(0, Qt.ItemDataRole.UserRole)
-                    if info and info.is_original:
-                        original_path = path
-                    if child.checkState(0) == Qt.CheckState.Checked and path:
-                        checked_in_group.append(path)
-                if original_path:
-                    for p in checked_in_group:
-                        ok, detail = action_hardlink(original_path, p)
-                        if ok:
-                            success += 1
-                        else:
-                            failed += 1
+            for tree in self._result_trees():
+                for i in range(tree.topLevelItemCount()):
+                    group = tree.topLevelItem(i)
+                    original_path = None
+                    checked_in_group = []
+                    for j in range(group.childCount()):
+                        child = group.child(j)
+                        info = child.data(1, Qt.ItemDataRole.UserRole)
+                        path = child.data(0, Qt.ItemDataRole.UserRole)
+                        if info and info.is_original:
+                            original_path = path
+                        if child.checkState(0) == Qt.CheckState.Checked and path:
+                            checked_in_group.append(path)
+                    if original_path:
+                        for p in checked_in_group:
+                            ok, detail = action_hardlink(original_path, p)
+                            if ok:
+                                success += 1
+                            else:
+                                failed += 1
         elif action_idx == 3:
             dest = QFileDialog.getExistingDirectory(self, "Select Destination Folder")
             if not dest:
