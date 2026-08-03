@@ -40,11 +40,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 ### Saved Searches with Cached Results
 
-### Inbox / Quick Capture Pattern
-- Designate any folder as the "Inbox" — files added there auto-receive `tag:inbox` (no moving)
-- Dashboard widget: "X files in inbox" → click → filter to inbox files
-- Batch action on selected inbox files: "Move to Library" → applies chosen destination rule and clears `tag:inbox`
-
 ---
 
 ## Medium-Term (v10.x)

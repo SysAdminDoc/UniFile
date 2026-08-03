@@ -83,6 +83,7 @@ class TagLibraryPanel(QWidget):
     """Full-featured tag library browser panel for the content stack."""
 
     tag_applied = pyqtSignal(str)  # emits tag name when applied
+    library_opened = pyqtSignal(str)  # emits library root after a successful open
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -106,6 +107,7 @@ class TagLibraryPanel(QWidget):
             self._refresh_tags()
             self._refresh_entries()
             self._update_stats()
+            self.library_opened.emit(str(path))
         return result
 
     def close_library(self):

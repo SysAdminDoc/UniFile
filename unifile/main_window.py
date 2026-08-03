@@ -2,6 +2,7 @@
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -189,6 +190,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self._build_ui()
         self._load_settings()
+        self._inbox_sync_timer = QTimer(self)
+        self._inbox_sync_timer.setInterval(5_000)
+        self._inbox_sync_timer.timeout.connect(self._sync_inbox_library)
+        self._inbox_sync_timer.start()
+        self._refresh_inbox_badge()
         self._saved_refresh_marker = None
         self._saved_refresh_timer = QTimer(self)
         self._saved_refresh_timer.setInterval(60_000)
@@ -466,6 +472,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             btn.clicked.connect(lambda checked, idx=op_idx: self._on_sidebar_nav(idx))
             sb_lay.addWidget(btn)
             self._nav_buttons.append(('op', op_idx, btn))
+            if label == "Inbox / Archive":
+                self._inbox_nav_button = btn
 
         # ── Saved Smart Views ────────────────────────────────────────────────
         self._smart_views_section = QWidget()
@@ -1226,6 +1234,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         dash_copy.addWidget(self.lbl_dash_summary)
         dash_top.addLayout(dash_copy)
         dash_top.addStretch()
+        self.btn_dash_inbox = QPushButton("Inbox: 0")
+        self.btn_dash_inbox.setProperty("class", "toolbar")
+        self.btn_dash_inbox.setAccessibleName("Dashboard inbox count")
+        self.btn_dash_inbox.setAccessibleDescription(
+            "Open the Tag Library filtered to inbox files")
+        self.btn_dash_inbox.clicked.connect(self._open_inbox_filter)
+        dash_top.addWidget(self.btn_dash_inbox)
         btn_hide_dash = QPushButton("Hide overview")
         self._themed_btn_hide_dash = btn_hide_dash
         btn_hide_dash.setFixedHeight(28)
@@ -1485,6 +1500,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         # ── Page 3: Tag Library (from TagStudio integration) ─────────
         self._tag_panel = TagLibraryPanel()
+        self._tag_panel.library_opened.connect(lambda _path: self._sync_inbox_library())
         self._content_stack.addWidget(self._tag_panel)  # index 3
 
         # ── Page 4: Media Lookup (from mnamer integration) ─────────────
@@ -4013,6 +4029,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         lbl_title = QLabel("Inbox / Archive")
         lbl_title.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 22px; font-weight: 700;")
         h_lay.addWidget(lbl_title)
+        self.btn_inbox_count = QPushButton("0 files in inbox")
+        self.btn_inbox_count.setProperty("class", "toolbar")
+        self.btn_inbox_count.setAccessibleName("Inbox file count")
+        self.btn_inbox_count.setAccessibleDescription(
+            "Show files tagged inbox in the Tag Library")
+        self.btn_inbox_count.clicked.connect(self._open_inbox_filter)
+        h_lay.addWidget(self.btn_inbox_count)
         h_lay.addStretch()
         self.btn_inbox_refresh = QPushButton("Refresh")
         self.btn_inbox_refresh.setProperty("class", "primary")
@@ -4037,6 +4060,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         btn_arch.setProperty("class", "toolbar")
         btn_arch.clicked.connect(lambda: self._inbox_move_selected(False))
         row_btns.addWidget(btn_arch)
+        btn_move = QPushButton("Move to Library…")
+        btn_move.setProperty("class", "primary")
+        btn_move.setToolTip("Move selected inbox files to a chosen library folder and clear tag:inbox")
+        btn_move.clicked.connect(self._inbox_move_to_library)
+        row_btns.addWidget(btn_move)
         row_btns.addStretch()
         inbox_lay.addLayout(row_btns)
         tabs.addTab(inbox_w, "Inbox")
@@ -4108,6 +4136,104 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         lay.addWidget(hint)
         return panel
 
+    def _sync_inbox_library(self):
+        """Mirror configured physical inbox files into the open tag library."""
+        lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
+        if not lib or not lib.is_open:
+            self._refresh_inbox_badge()
+            return
+        try:
+            from unifile.inbox import sync_inbox_library
+            changed = sync_inbox_library(lib)
+            if changed:
+                self._log(f"Inbox: synchronized {changed} tag/library change(s)")
+                self._tag_panel._refresh_tags()
+                self._tag_panel._refresh_entries()
+                self._tag_panel._update_stats()
+                if self._content_stack.currentIndex() == 7:
+                    self._refresh_inbox_panel()
+        except Exception as exc:
+            self._log(f"Inbox sync failed: {exc}")
+        self._refresh_inbox_badge()
+
+    def _refresh_inbox_badge(self):
+        """Update the physical inbox count in the sidebar and inbox panel."""
+        try:
+            from unifile.inbox import get_inbox_count
+            count = get_inbox_count()
+        except Exception:
+            count = 0
+        if hasattr(self, '_inbox_nav_button'):
+            self._inbox_nav_button.setText(f"  Inbox / Archive ({count})")
+        if hasattr(self, 'btn_inbox_count'):
+            self.btn_inbox_count.setText(
+                f"{count} file{'s' if count != 1 else ''} in inbox")
+        if hasattr(self, 'btn_dash_inbox'):
+            self.btn_dash_inbox.setText(f"Inbox: {count}")
+
+    def _open_inbox_filter(self):
+        """Open the Tag Library filtered to physical inbox entries."""
+        if hasattr(self, '_tag_panel') and self._tag_panel._lib.is_open:
+            self._content_stack.setCurrentIndex(3)
+            self._tag_panel.txt_entry_search.setText('tag:inbox')
+            self._tag_panel.txt_entry_search.setFocus()
+            return
+        self._on_sidebar_nav(self.OP_INBOX)
+
+    def _inbox_move_to_library(self):
+        """Move selected physical inbox files and clear their inbox tag."""
+        lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
+        if not lib or not lib.is_open:
+            return
+        destination = QFileDialog.getExistingDirectory(
+            self, "Choose Library Destination", self.txt_dst.text() if hasattr(self, 'txt_dst') else '')
+        if not destination:
+            return
+        rows = sorted({index.row() for index in self.tbl_inbox.selectedIndexes()})
+        if not rows:
+            return
+        inbox_tag = lib.get_tag_by_name('inbox')
+        moved = 0
+        failed = 0
+        for row in rows:
+            item = self.tbl_inbox.item(row, 0)
+            path_item = self.tbl_inbox.item(row, 3)
+            if not item or not path_item:
+                continue
+            entry_id = item.data(Qt.ItemDataRole.UserRole)
+            source = path_item.text()
+            if not os.path.isfile(source):
+                failed += 1
+                continue
+            name = os.path.basename(source)
+            target = os.path.join(destination, name)
+            stem, ext = os.path.splitext(name)
+            suffix = 2
+            while os.path.exists(target):
+                target = os.path.join(destination, f"{stem} ({suffix}){ext}")
+                suffix += 1
+            try:
+                os.makedirs(destination, exist_ok=True)
+                shutil.move(source, target)
+                if lib.relink_entry(entry_id, target):
+                    lib.set_entry_inbox(entry_id, False)
+                    if inbox_tag:
+                        lib.remove_tags_from_entry(entry_id, [inbox_tag.id])
+                    moved += 1
+                else:
+                    try:
+                        shutil.move(target, source)
+                    except OSError:
+                        pass
+                    failed += 1
+            except (OSError, ValueError):
+                failed += 1
+        self._refresh_inbox_panel()
+        self._tag_panel._refresh_entries()
+        self._refresh_inbox_badge()
+        self._log(f"Inbox: moved {moved} file(s) to library" +
+                  (f"; {failed} failed" if failed else ""))
+
     def _refresh_inbox_panel(self):
         lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
         if not lib or not lib.is_open:
@@ -4128,6 +4254,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         _fill(self.tbl_inbox, inbox)
         _fill(self.tbl_archive, archived)
+        self._refresh_inbox_badge()
 
     def _inbox_move_selected(self, to_inbox: bool):
         lib = self._tag_panel._lib if hasattr(self, '_tag_panel') else None
