@@ -33,6 +33,7 @@ All notable changes to UniFile will be documented in this file.
 - Tag Library filename search now includes indexed archive members with an `inner file (inside archive)` breadcrumb and read-only preview.
 - Scan profiles now persist an archive-content mode: read-only listing index or temporary extraction/classification.
 - Ctrl+K now searches current scan files, saved query history, profiles, categories, and commands; file results are capped at five and expose a hover thumbnail preview.
+- Smart Views now materialize in the sidebar, cache result paths with update/change metadata, support optional in-app nightly refresh, and export cached results as JSON or CSV.
 - TagSpaces folder metadata (`.ts/tsm.json`) import/export with unsupported-field reporting.
 - TagSpaces saved search import/export with round-trip support and unsupported-field warnings.
 - Tag Library import/export now includes folder-level tags alongside file sidecars.

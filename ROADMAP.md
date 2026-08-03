@@ -39,10 +39,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 ### Spotlight-Style Search Bar
 
 ### Saved Searches with Cached Results
-- Save any tag/filter query as a named Smart View; materialized as a sidebar item under "Smart Views"
-- Cache result set (file list + date computed); show "Last updated X ago" with Refresh button
-- Optional scheduled refresh: nightly rescan at configurable time, badge sidebar icon when results change
-- Export cached results to JSON or CSV
 
 ### Inbox / Quick Capture Pattern
 - Designate any folder as the "Inbox" — files added there auto-receive `tag:inbox` (no moving)

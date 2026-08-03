@@ -189,6 +189,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self._build_ui()
         self._load_settings()
+        self._saved_refresh_marker = None
+        self._saved_refresh_timer = QTimer(self)
+        self._saved_refresh_timer.setInterval(60_000)
+        self._saved_refresh_timer.timeout.connect(self._refresh_scheduled_saved_searches)
+        self._saved_refresh_timer.start()
 
         # Check Ollama availability without installing binaries or pulling models.
         self._start_ollama_setup()
@@ -383,6 +388,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             f"color: {_t['sidebar_section']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
             f"padding: 12px 16px 4px 16px; background: transparent;"
         )
+        self._nav_btn_style = _NAV_BTN
+        self._nav_section_style = _NAV_SECTION
 
         # ── ORGANIZE section ─────────────────────────────────────────────
         lbl_sec_org = QLabel("ORGANIZE")
@@ -459,6 +466,23 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             btn.clicked.connect(lambda checked, idx=op_idx: self._on_sidebar_nav(idx))
             sb_lay.addWidget(btn)
             self._nav_buttons.append(('op', op_idx, btn))
+
+        # ── Saved Smart Views ────────────────────────────────────────────────
+        self._smart_views_section = QWidget()
+        self._smart_views_section.setStyleSheet("background: transparent;")
+        smart_lay = QVBoxLayout(self._smart_views_section)
+        smart_lay.setContentsMargins(0, 4, 0, 4)
+        smart_lay.setSpacing(2)
+        self._smart_views_label = QLabel("SMART VIEWS")
+        self._smart_views_label.setStyleSheet(_NAV_SECTION)
+        self._nav_section_labels.append(self._smart_views_label)
+        smart_lay.addWidget(self._smart_views_label)
+        self._smart_views_layout = QVBoxLayout()
+        self._smart_views_layout.setContentsMargins(0, 0, 0, 0)
+        self._smart_views_layout.setSpacing(2)
+        smart_lay.addLayout(self._smart_views_layout)
+        sb_lay.addWidget(self._smart_views_section)
+        self._refresh_smart_views_sidebar()
 
         sb_lay.addStretch()
 
@@ -2168,6 +2192,92 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
     # Filter/search slots moved to unifile.filter_mixin.FilterMixin in v9.3.9
 
+    def _refresh_scheduled_saved_searches(self):
+        """Refresh due nightly Smart Views once per local hour."""
+        from datetime import datetime
+
+        now = datetime.now()
+        marker = (now.date().isoformat(), now.hour)
+        if marker == self._saved_refresh_marker:
+            return
+        self._saved_refresh_marker = marker
+        try:
+            from unifile.dialogs.saved_searches_dialog import resolve_saved_search_paths
+            from unifile.saved_searches import load_saved_searches, update_cache
+            changed = False
+            for search in load_saved_searches():
+                if not search.nightly_refresh or search.refresh_hour != now.hour:
+                    continue
+                if search.cached_at and datetime.fromtimestamp(search.cached_at).date() == now.date():
+                    continue
+                paths = resolve_saved_search_paths(self, search)
+                update_cache(search.name, paths)
+                changed = True
+            if changed:
+                self._refresh_smart_views_sidebar()
+        except Exception as exc:
+            self._log(f"Smart View nightly refresh skipped: {exc}")
+
+    def _refresh_smart_views_sidebar(self):
+        """Rebuild the saved-search buttons shown in the sidebar."""
+        if not hasattr(self, '_smart_views_layout'):
+            return
+        self._nav_buttons = [entry for entry in self._nav_buttons
+                             if entry[0] != 'smart']
+        while self._smart_views_layout.count():
+            item = self._smart_views_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        try:
+            from unifile.saved_searches import load_saved_searches
+            searches = load_saved_searches()
+        except Exception:
+            searches = []
+        for search in searches[:8]:
+            suffix = "  •" if search.cache_changed else ""
+            button = QPushButton(f"  {search.name}{suffix}")
+            button.setCheckable(True)
+            button.setAccessibleName(f"Smart View: {search.name}")
+            button.setAccessibleDescription(
+                f"Apply the saved search {search.name}")
+            button.setStyleSheet(self._nav_btn_style)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(
+                lambda checked, saved=search:
+                self._run_saved_search_from_sidebar(saved))
+            self._smart_views_layout.addWidget(button)
+            self._nav_buttons.append(('smart', search.name, button))
+        if not searches:
+            empty = QLabel("  No saved views")
+            empty.setStyleSheet(self._nav_section_style)
+            self._smart_views_layout.addWidget(empty)
+        if hasattr(self, 'cmb_profile'):
+            nav_widgets = [entry[2] for entry in self._nav_buttons]
+            for previous, current in zip(nav_widgets, nav_widgets[1:], strict=False):
+                self.setTabOrder(previous, current)
+            if nav_widgets:
+                self.setTabOrder(nav_widgets[-1], self.cmb_profile)
+
+    def _run_saved_search_from_sidebar(self, search):
+        """Apply a Smart View and return to the organizer results page."""
+        for kind, name, button in self._nav_buttons:
+            if kind == 'smart':
+                button.setChecked(name == search.name)
+            elif kind in ('op', 'tool'):
+                button.setChecked(False)
+        self._content_stack.setCurrentIndex(0)
+        if hasattr(self, 'txt_search'):
+            self.txt_search.setText(search.query)
+        if hasattr(self, 'cmb_type_filter') and search.category:
+            idx = self.cmb_type_filter.findText(search.category)
+            if idx >= 0:
+                self.cmb_type_filter.setCurrentIndex(idx)
+        if hasattr(self, 'sld_conf') and search.conf_min:
+            self.sld_conf.setValue(search.conf_min)
+        if hasattr(self, '_apply_filter'):
+            self._apply_filter()
+
     # ═══ OPERATION SWITCH ════════════════════════════════════════════════════
     def _on_sidebar_nav(self, op_idx: int):
         """Handle sidebar ORGANIZE button click — switch to organizer mode."""
@@ -2176,6 +2286,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             if kind == 'op':
                 btn.setChecked(idx == op_idx)
             elif kind == 'tool':
+                btn.setChecked(False)
+            elif kind == 'smart':
                 btn.setChecked(False)
 
         # Tag Library, Media Lookup, and Virtual Library get their own content stack pages
@@ -2220,6 +2332,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                 btn.setChecked(False)
             elif kind == 'tool':
                 btn.setChecked(idx == (tool_type, tab_idx))
+            elif kind == 'smart':
+                btn.setChecked(False)
         # Switch stack to the right panel
         if tool_type == 'duplicates':
             self._content_stack.setCurrentIndex(2)
@@ -2237,6 +2351,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             for kind, nav_idx, btn in self._nav_buttons:
                 if kind == 'op':
                     btn.setChecked(nav_idx == idx)
+                elif kind == 'smart':
+                    btn.setChecked(False)
         # Source row: hidden in PC mode (PC panel has its own)
         self.row_src_w.setVisible(not is_files)
         self.row_dst_w.setVisible(is_cat_like)

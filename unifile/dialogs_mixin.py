@@ -155,6 +155,8 @@ class DialogsMixin:
         from unifile.dialogs.saved_searches_dialog import SavedSearchesDialog
         dlg = SavedSearchesDialog(self)
         dlg.exec()
+        if hasattr(self, '_refresh_smart_views_sidebar'):
+            self._refresh_smart_views_sidebar()
 
     # Inbox / Quick Capture ----------------------------------------------------
 
