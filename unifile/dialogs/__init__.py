@@ -9,6 +9,7 @@ from unifile.dialogs.advanced_settings import (
     WhisperSettingsDialog,
 )
 from unifile.dialogs.cleanup import CleanupPanel, CleanupToolsDialog, _CleanupScanWorker
+from unifile.dialogs.cloud_remotes import CloudRemotesDialog
 from unifile.dialogs.collections import CollectionBoardDialog
 from unifile.dialogs.duplicates import (
     DuplicateCompareDialog,
@@ -60,6 +61,7 @@ __all__ = [
     'SemanticSearchSettingsDialog', 'SemanticSearchDialog',
     'EmbeddingSettingsDialog', 'LearningStatsDialog',
     'SettingsHubDialog',
+    'CloudRemotesDialog',
     'BatchMetadataEditorDialog',
     'LibraryRootsDialog',
     'CollectionBoardDialog',

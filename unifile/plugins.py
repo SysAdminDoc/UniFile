@@ -5,6 +5,7 @@ import json
 import os
 import re
 
+from unifile.cloud_storage import iter_local_cloud_files, local_cloud_status
 from unifile.config import _APP_DATA_DIR, _PRESETS_DIR, _PROFILES_DIR, load_json_safe, save_json_safe
 
 
@@ -356,6 +357,8 @@ class CloudPathResolver:
         ic = os.path.join(os.environ.get('USERPROFILE', os.path.expanduser('~')), 'iCloudDrive')
         if os.path.isdir(ic):
             folders.append({'name': 'iCloud', 'path': ic, 'icon': 'cloud'})
+        for folder in folders:
+            folder['sync_status'] = local_cloud_status(folder['path'])
         return folders
 
     @staticmethod
@@ -369,17 +372,17 @@ class CloudPathResolver:
     @staticmethod
     def is_sync_safe(path: str) -> bool:
         """Check if a cloud folder is fully synced (heuristic)."""
-        if not os.path.isdir(path):
-            return False
-        # Check for common placeholder patterns (OneDrive on-demand)
-        try:
-            for entry in os.scandir(path):
-                if entry.name.endswith('.cloud') or entry.name.endswith('.placeholder'):
-                    return False
-                break  # Just check first few
-        except OSError:
-            pass
-        return True
+        return local_cloud_status(path)['state'] in {'online', 'read-only'}
+
+    @staticmethod
+    def sync_status(path: str) -> dict:
+        """Return non-hydrating local sync status and placeholder coverage."""
+        return local_cloud_status(path)
+
+    @staticmethod
+    def iter_files(path: str, *, include_placeholders: bool = False):
+        """Yield local cloud files, skipping on-demand placeholders by default."""
+        return iter_local_cloud_files(path, include_placeholders=include_placeholders)
 
 
 # Note: append_csv_log() used to live here as duplicate code. The canonical

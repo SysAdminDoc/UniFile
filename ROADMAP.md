@@ -34,11 +34,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 Larger features requiring non-trivial architecture or multi-week effort.
 
-### Cloud / Remote Storage Awareness
-- **Phase 1 (Rclone adapter)**: read-only scan of any rclone remote (S3, GCS, OneDrive, Dropbox, Backblaze B2, SFTP); downloads filtered subsets for local classification; optional sync-back of tag sidecars
-- **Phase 2 (native OneDrive/Dropbox)**: detect locally-synced cloud folders; handle placeholder/stub files gracefully (skip or trigger on-demand hydration via Windows cloud file API)
-- Settings panel: "Cloud Remotes" tab with rclone remote name, scan mode (list-only / download / sync-back), download filter (size cap, extension whitelist)
-
 ### GPU-Accelerated Embeddings via ONNX Runtime
 - Replace Ollama embedding endpoint dependency with `onnxruntime` + `sentence-transformers/all-MiniLM-L6-v2` (ONNX export ~23 MB)
 - 10–50× speedup for batch embedding on NVIDIA/AMD GPUs; automatic CPU fallback if no GPU detected

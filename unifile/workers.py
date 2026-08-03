@@ -43,6 +43,7 @@ from unifile.categories import (
     _score_aep,
 )
 from unifile.classifier import tiered_classify
+from unifile.cloud_storage import is_placeholder_file, local_cloud_status
 from unifile.config import is_protected
 from unifile.csv_rules import check_csv_rules, preload_csv_rules
 from unifile.duplicates import _PHASH_IMAGE_EXTS, ProgressiveDuplicateDetector
@@ -1486,6 +1487,7 @@ class ScanFilesWorker(QThread):
         self.include_files  = include_files
         self.ext_filter     = ext_filter   # set of allowed extensions (e.g. _FILTER_IMAGE_EXTS) or None
         self.force_rescan   = force_rescan
+        self._skip_cloud_placeholders = False
         self._cancelled     = False
 
     def cancel(self): self._cancelled = True
@@ -1500,6 +1502,13 @@ class ScanFilesWorker(QThread):
             self.log.emit(f"  Found local config — merged {len(dir_config)} category overrides")
         else:
             effective_cats = self.categories
+        cloud_status = local_cloud_status(src)
+        self._skip_cloud_placeholders = cloud_status['state'] == 'partial'
+        if self._skip_cloud_placeholders:
+            self.log.emit(
+                f"  Cloud placeholders detected; skipping {cloud_status['placeholder_count']} "
+                "non-hydrated file(s) without opening them"
+            )
         ext_map = _build_ext_map(effective_cats)
         # Per-folder rule delta — merged once so the per-item loop can use it.
         _rule_delta = load_directory_rules(str(src))
@@ -1739,6 +1748,8 @@ class ScanFilesWorker(QThread):
                 for entry in src.iterdir():
                     if entry.name.startswith('.') or entry.name.startswith('$'):
                         continue
+                    if self._skip_cloud_placeholders and is_placeholder_file(entry):
+                        continue
                     if _JUNK_PATTERNS.match(entry.name):
                         continue
                     ext_low = os.path.splitext(entry.name)[1].lower()
@@ -1761,6 +1772,8 @@ class ScanFilesWorker(QThread):
                     dirs[:] = [d for d in dirs
                                if not d.startswith('.') and not d.startswith('$')
                                and not _JUNK_PATTERNS.match(d)
+                               and not (self._skip_cloud_placeholders and is_placeholder_file(
+                                   Path(root) / d))
                                and not (_ignore.has_rules and _ignore.is_ignored(
                                    os.path.relpath(os.path.join(root, d), str(src)), True))]
                     if depth > self.scan_depth:
@@ -1768,6 +1781,8 @@ class ScanFilesWorker(QThread):
                     if self.include_files:
                         for f in files:
                             if f.startswith('.') or _JUNK_PATTERNS.match(f):
+                                continue
+                            if self._skip_cloud_placeholders and is_placeholder_file(Path(root) / f):
                                 continue
                             f_ext = os.path.splitext(f)[1].lower()
                             if f_ext in _JUNK_SUFFIXES:

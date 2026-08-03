@@ -110,6 +110,7 @@ class SettingsHubDialog(QDialog):
         lay.addWidget(self.tabs, 1)
 
         self.tabs.addTab(self._tab_ai(_t), "AI")
+        self.tabs.addTab(self._tab_cloud(_t), "Cloud Remotes")
         self.tabs.addTab(self._tab_photo(_t), "Photo & Media")
         self.tabs.addTab(self._tab_rules(_t), "Rules & Learning")
         self.tabs.addTab(self._tab_system(_t), "System")
@@ -164,6 +165,20 @@ class SettingsHubDialog(QDialog):
                 ("Metadata Embedding…",
                  "Write categories + tags back into files so other tools can read them.",
                  self._open_embedding),
+            ],
+            theme,
+        )
+
+    def _tab_cloud(self, theme: dict) -> QWidget:
+        return _section(
+            "Cloud Storage",
+            "Use a user-installed rclone configuration for read-only remote listings, "
+            "filtered local downloads, and explicit XMP sidecar sync-back. Local OneDrive, "
+            "Dropbox, Google Drive, and iCloud folders are also checked for placeholders.",
+            [
+                ("Configure Cloud Remotes…",
+                 "No credentials are stored by UniFile. Listing is read-only until you choose a download action.",
+                 self._open_cloud_remotes),
             ],
             theme,
         )
@@ -281,6 +296,10 @@ class SettingsHubDialog(QDialog):
     def _open_learning(self):         self._call('_open_learning_stats')
 
     # Photo tab
+    def _open_cloud_remotes(self):
+        from unifile.dialogs.cloud_remotes import CloudRemotesDialog
+        CloudRemotesDialog(self).exec()
+
     def _open_photo(self):            self._call('_open_photo_settings')
     def _open_embedding(self):        self._call('_open_embedding_settings')
 
