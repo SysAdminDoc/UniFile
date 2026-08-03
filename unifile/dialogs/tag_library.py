@@ -112,6 +112,7 @@ class TagLibraryPanel(QWidget):
 
     def close_library(self):
         self._lib.close()
+        self.btn_manage_roots.setEnabled(False)
 
     def _build_ui(self):
         self.setAccessibleName("Tag Library")
@@ -151,6 +152,14 @@ class TagLibraryPanel(QWidget):
         self.btn_open_library.setProperty("class", "primary")
         self.btn_open_library.clicked.connect(self._on_open_library)
         h_lay.addWidget(self.btn_open_library)
+        self.btn_manage_roots = QPushButton("Manage Roots")
+        self.btn_manage_roots.setProperty("class", "toolbar")
+        self.btn_manage_roots.setAccessibleName("Manage library roots")
+        self.btn_manage_roots.setAccessibleDescription(
+            "View root status and relink secondary library roots")
+        self.btn_manage_roots.setEnabled(False)
+        self.btn_manage_roots.clicked.connect(self._open_roots)
+        h_lay.addWidget(self.btn_manage_roots)
 
         lay.addWidget(self.header)
 
@@ -409,6 +418,7 @@ class TagLibraryPanel(QWidget):
         lay.addWidget(splitter, 1)
         tab_widgets = [
             self.btn_open_library,
+            self.btn_manage_roots,
             self.txt_tag_search,
             self.btn_add_tag,
             self.cmb_ns_filter,
@@ -733,10 +743,21 @@ class TagLibraryPanel(QWidget):
         if path:
             self.open_library(path)
 
+    def _open_roots(self):
+        if not self._lib.is_open:
+            return
+        from unifile.dialogs.library_roots import LibraryRootsDialog
+        dialog = LibraryRootsDialog(self._lib, self)
+        dialog.exec()
+        self._refresh_entries()
+        self._update_stats()
+
     def _update_stats(self):
         if not self._lib.is_open:
+            self.btn_manage_roots.setEnabled(False)
             self.lbl_stats.setText("Open a library folder to browse tags and entries")
             return
+        self.btn_manage_roots.setEnabled(True)
         stats = self._lib.get_stats()
         self.lbl_stats.setText(
             f"{stats['entries']} files  •  {stats['tags']} tags  •  "

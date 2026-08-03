@@ -24,6 +24,7 @@ from unifile.dialogs.editors import (
     TemplateBuilderWidget,
     _FileBrowserDialog,
 )
+from unifile.dialogs.library_roots import LibraryRootsDialog
 from unifile.dialogs.metadata_editor import BatchMetadataEditorDialog
 from unifile.dialogs.settings import (
     FaceManagerDialog,
@@ -60,5 +61,6 @@ __all__ = [
     'EmbeddingSettingsDialog', 'LearningStatsDialog',
     'SettingsHubDialog',
     'BatchMetadataEditorDialog',
+    'LibraryRootsDialog',
     'CollectionBoardDialog',
 ]

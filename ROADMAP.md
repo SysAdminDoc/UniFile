@@ -34,12 +34,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 Larger features requiring non-trivial architecture or multi-week effort.
 
-### Multi-Root Library
-- Single tag library that spans multiple drives, network shares, or external drives
-- Each root gets a status indicator (online / offline / read-only)
-- Broken-link detection and re-link wizard when a root goes offline and comes back at a different path
-- Builds on top of the existing `VirtualLibrary.relink_file()` foundation
-
 ### Cloud / Remote Storage Awareness
 - **Phase 1 (Rclone adapter)**: read-only scan of any rclone remote (S3, GCS, OneDrive, Dropbox, Backblaze B2, SFTP); downloads filtered subsets for local classification; optional sync-back of tag sidecars
 - **Phase 2 (native OneDrive/Dropbox)**: detect locally-synced cloud folders; handle placeholder/stub files gracefully (skip or trigger on-demand hydration via Windows cloud file API)

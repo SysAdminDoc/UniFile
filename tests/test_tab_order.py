@@ -36,6 +36,7 @@ AUDITED = [
             "self.tag_tree = KeyboardTreeWidget()",
             "self.tag_tree.activated.connect",
             "self._quick_tag_buttons = []",
+            "self.btn_manage_roots,",
             "self.btn_collections,",
             "self.tbl_entries,",
             "self.cmb_assign_tag,",

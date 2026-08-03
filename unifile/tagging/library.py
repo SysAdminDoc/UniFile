@@ -112,15 +112,39 @@ class TagLibrary:
         self._session.commit()
 
     def _get_or_create_folder(self, path: str) -> Folder:
-        p = Path(path)
-        folder = self._session.execute(
-            select(Folder).where(Folder.path == p)
-        ).scalar_one_or_none()
+        p = Path(os.path.abspath(path))
+        normalized = os.path.normcase(str(p))
+        folder = next(
+            (
+                candidate
+                for candidate in self._session.execute(select(Folder)).scalars().all()
+                if os.path.normcase(os.path.abspath(str(candidate.path))) == normalized
+            ),
+            None,
+        )
         if not folder:
             folder = Folder(path=p, uuid=str(uuid.uuid4()))
             self._session.add(folder)
             self._session.commit()
         return folder
+
+    def _folder_for_path(self, path: Path) -> Folder:
+        """Choose the most specific configured root containing *path*."""
+        absolute_path = os.path.abspath(str(path))
+        candidates = []
+        for folder in self._session.execute(select(Folder)).scalars().all():
+            root_path = os.path.abspath(str(folder.path))
+            try:
+                relative = os.path.relpath(absolute_path, root_path)
+            except (OSError, ValueError):
+                continue
+            if relative == os.curdir or (
+                relative != os.pardir and not relative.startswith(os.pardir + os.sep)
+            ):
+                candidates.append((len(os.path.normcase(root_path)), folder))
+        if candidates:
+            return max(candidates, key=lambda pair: pair[0])[1]
+        return self._folder
 
     # ── Tag CRUD ──────────────────────────────────────────────────────────────
 
@@ -415,7 +439,7 @@ class TagLibrary:
         stat = p.stat() if p.exists() else None
         entry = Entry(
             path=p,
-            folder=self._folder,
+            folder=self._folder_for_path(p),
             filename=p.name,
             suffix=p.suffix.lstrip(".").lower(),
             date_created=dt.fromtimestamp(stat.st_ctime) if stat else None,
@@ -444,7 +468,7 @@ class TagLibrary:
                 stat = p.stat() if p.exists() else None
                 entry = Entry(
                     path=p,
-                    folder=self._folder,
+                    folder=self._folder_for_path(p),
                     filename=p.name,
                     suffix=p.suffix.lstrip(".").lower(),
                     date_created=dt.fromtimestamp(stat.st_ctime) if stat else None,
@@ -708,6 +732,7 @@ class TagLibrary:
             return False
         p = Path(new_path)
         entry.path = p
+        entry.folder = self._folder_for_path(p)
         entry.filename = p.name
         entry.suffix = p.suffix.lstrip(".").lower()
         self._session.commit()
@@ -908,14 +933,25 @@ class TagLibrary:
 
     def add_root(self, path: str) -> bool:
         """Add an additional root folder to this library."""
-        p = Path(path)
-        existing = self._session.execute(
-            select(Folder).where(Folder.path == p)
-        ).scalar_one_or_none()
+        if not str(path).strip():
+            return False
+        p = Path(os.path.abspath(path))
+        normalized = os.path.normcase(str(p))
+        existing = next(
+            (
+                folder
+                for folder in self._session.execute(select(Folder)).scalars().all()
+                if os.path.normcase(os.path.abspath(str(folder.path))) == normalized
+            ),
+            None,
+        )
         if existing:
             return True
         folder = Folder(path=p, uuid=str(uuid.uuid4()))
         self._session.add(folder)
+        self._session.flush()
+        for entry in self._session.execute(select(Entry)).scalars().all():
+            entry.folder = self._folder_for_path(Path(entry.path))
         self._session.commit()
         return True
 
@@ -923,6 +959,111 @@ class TagLibrary:
         """Return list of all root folder paths in this library."""
         folders = self._session.execute(select(Folder)).scalars().all()
         return [str(f.path) for f in folders]
+
+    def get_root_statuses(self) -> list[dict]:
+        """Return root health, writability, and indexed-entry counts."""
+        statuses = []
+        for folder in self._session.execute(select(Folder).order_by(Folder.path)).scalars().all():
+            path = Path(folder.path)
+            online = path.is_dir()
+            if not online:
+                state = 'offline'
+            elif not os.access(path, os.W_OK):
+                state = 'read-only'
+            else:
+                state = 'online'
+            count = self._session.execute(
+                select(func.count(Entry.id)).where(Entry.folder_id == folder.id)
+            ).scalar() or 0
+            statuses.append({
+                'id': folder.id,
+                'path': str(path),
+                'state': state,
+                'online': online,
+                'read_only': state == 'read-only',
+                'is_database_root': bool(self._folder and self._folder.id == folder.id),
+                'entry_count': count,
+            })
+        return statuses
+
+    def remove_root(self, root_id: int) -> bool:
+        """Remove an empty configured root without deleting any file entries."""
+        folder = self._session.get(Folder, root_id)
+        if not folder:
+            return False
+        has_entries = self._session.execute(
+            select(Entry.id).where(Entry.folder_id == root_id).limit(1)
+        ).first()
+        if has_entries:
+            return False
+        if self._folder and self._folder.id == root_id:
+            return False
+        self._session.delete(folder)
+        self._session.commit()
+        return True
+
+    def relink_root(self, root_id: int, new_path: str) -> dict:
+        """Relink every entry under a moved root to a new root location."""
+        folder = self._session.get(Folder, root_id)
+        if not folder:
+            return {'updated': 0, 'failed': 1, 'error': 'root not found'}
+        if self._folder and self._folder.id == root_id:
+            return {
+                'updated': 0,
+                'failed': 1,
+                'error': 'the active database root cannot be relinked while open',
+            }
+        if not str(new_path).strip():
+            return {'updated': 0, 'failed': 1, 'error': 'new root path is empty'}
+        new_root = Path(os.path.abspath(new_path))
+        if not new_root.is_dir():
+            return {'updated': 0, 'failed': 1, 'error': 'new root is not an existing directory'}
+        normalized_new_root = os.path.normcase(str(new_root))
+        duplicate_roots = self._session.execute(
+            select(Folder).where(Folder.id != root_id)
+        ).scalars().all()
+        if any(
+            os.path.normcase(os.path.abspath(str(candidate.path))) == normalized_new_root
+            for candidate in duplicate_roots
+        ):
+            return {'updated': 0, 'failed': 1, 'error': 'new root is already configured'}
+
+        old_root = Path(os.path.abspath(str(folder.path)))
+        entries = list(self._session.execute(
+            select(Entry).where(Entry.folder_id == root_id)
+        ).scalars().all())
+        existing_paths = {
+            os.path.normcase(os.path.abspath(str(entry.path)))
+            for entry in self._session.execute(select(Entry)).scalars().all()
+            if entry.folder_id != root_id
+        }
+        updated = 0
+        failed = 0
+        for entry in entries:
+            try:
+                relative = Path(os.path.relpath(
+                    os.path.abspath(str(entry.path)), str(old_root)))
+                if str(relative) == os.pardir or str(relative).startswith(os.pardir + os.sep):
+                    failed += 1
+                    continue
+                new_entry_path = new_root / relative
+            except (OSError, ValueError):
+                failed += 1
+                continue
+            if os.path.normcase(str(new_entry_path)) in existing_paths:
+                failed += 1
+                continue
+            entry.path = new_entry_path
+            entry.filename = new_entry_path.name
+            entry.suffix = new_entry_path.suffix.lstrip('.').lower()
+            updated += 1
+        folder.path = new_root
+        self._session.commit()
+        return {
+            'updated': updated,
+            'failed': failed,
+            'error': 'one or more entries could not be relinked' if failed else '',
+        }
 
     # ── Search ────────────────────────────────────────────────────────────────
 
