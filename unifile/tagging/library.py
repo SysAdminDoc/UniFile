@@ -2,6 +2,7 @@
 import logging
 import os
 import uuid
+import zipfile
 from datetime import datetime as dt
 from pathlib import Path
 
@@ -762,6 +763,10 @@ class TagLibrary:
             select(EntryGroup).order_by(EntryGroup.name)
         ).scalars().all())
 
+    def get_entry_group(self, group_id: int) -> EntryGroup | None:
+        """Return one collection definition by ID."""
+        return self._session.get(EntryGroup, group_id)
+
     def add_entries_to_group(self, group_id: int, entry_ids: list[int]) -> bool:
         """Add entries to a group (bulk, avoids N+1)."""
         group = self._session.get(EntryGroup, group_id)
@@ -816,6 +821,88 @@ class TagLibrary:
         self._session.delete(group)
         self._session.commit()
         return True
+
+    def export_entry_group(self, group_id: int, destination: str,
+                           mode: str = 'zip') -> dict:
+        """Export group members without moving or copying source files.
+
+        ``mode='zip'`` creates a new archive with collision-safe basenames.
+        ``mode='symlink'`` creates a folder of Windows/ POSIX symlinks and
+        reports privilege failures per item instead of silently copying data.
+        """
+        group = self._session.get(EntryGroup, group_id)
+        if not group:
+            return {'exported': 0, 'skipped': 0, 'failed': 1,
+                    'path': destination, 'error': 'group not found'}
+        entries = self.get_group_entries(group_id)
+        mode = mode.lower().strip()
+        if mode not in {'zip', 'symlink'}:
+            return {'exported': 0, 'skipped': 0, 'failed': 1,
+                    'path': destination, 'error': 'unsupported export mode'}
+
+        destination_path = Path(destination)
+        if mode == 'zip':
+            if destination_path.exists() and destination_path.is_dir():
+                destination_path = destination_path / f'{group.name}.zip'
+            if destination_path.suffix.lower() != '.zip':
+                destination_path = destination_path.with_suffix('.zip')
+            try:
+                destination_path.parent.mkdir(parents=True, exist_ok=True)
+                archive = zipfile.ZipFile(
+                    destination_path, mode='x', compression=zipfile.ZIP_DEFLATED)
+            except (OSError, ValueError, zipfile.BadZipFile) as exc:
+                return {'exported': 0, 'skipped': 0, 'failed': 1,
+                        'path': str(destination_path), 'error': str(exc)}
+            names = set()
+            exported = skipped = 0
+            with archive:
+                for entry in entries:
+                    source = Path(entry.path)
+                    if not source.is_file():
+                        skipped += 1
+                        continue
+                    arcname = source.name
+                    stem, suffix = source.stem, source.suffix
+                    counter = 2
+                    while arcname in names:
+                        arcname = f'{stem} ({counter}){suffix}'
+                        counter += 1
+                    names.add(arcname)
+                    try:
+                        archive.write(source, arcname=arcname)
+                        exported += 1
+                    except OSError:
+                        skipped += 1
+            return {'exported': exported, 'skipped': skipped, 'failed': 0,
+                    'path': str(destination_path)}
+
+        try:
+            destination_path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return {'exported': 0, 'skipped': 0, 'failed': 1,
+                    'path': str(destination_path), 'error': str(exc)}
+        names = set()
+        exported = skipped = failed = 0
+        for entry in entries:
+            source = Path(entry.path)
+            if not source.is_file():
+                skipped += 1
+                continue
+            link_name = source.name
+            stem, suffix = source.stem, source.suffix
+            counter = 2
+            while link_name in names or (destination_path / link_name).exists():
+                link_name = f'{stem} ({counter}){suffix}'
+                counter += 1
+            names.add(link_name)
+            try:
+                os.symlink(str(source), str(destination_path / link_name),
+                           target_is_directory=False)
+                exported += 1
+            except OSError:
+                failed += 1
+        return {'exported': exported, 'skipped': skipped, 'failed': failed,
+                'path': str(destination_path)}
 
     # ── Multiple Library Roots ────────────────────────────────────────────────
 

@@ -34,13 +34,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 Larger features requiring non-trivial architecture or multi-week effort.
 
-### Collections / Visual Boards
-- Non-hierarchical "Collection" grouping — drag any files from any folder into a named collection
-- Board view: Kanban-style columns per collection; thumbnail cards with hover metadata
-- Collections stored in the tag library database as a special entry type; no files are moved
-- "Add to collection" from right-click context menu in any panel
-- Export collection as ZIP or as a folder of symlinks
-
 ### Multi-Root Library
 - Single tag library that spans multiple drives, network shares, or external drives
 - Each root gets a status indicator (online / offline / read-only)

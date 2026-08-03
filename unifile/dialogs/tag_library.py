@@ -242,6 +242,11 @@ class TagLibraryPanel(QWidget):
         self.btn_export_pack.setProperty("class", "toolbar")
         self.btn_export_pack.clicked.connect(self._export_tag_pack)
         pack_row.addWidget(self.btn_export_pack)
+        self.btn_collections = QPushButton("Collections / Boards")
+        self.btn_collections.setProperty("class", "toolbar")
+        self.btn_collections.setAccessibleName("Open collections and visual boards")
+        self.btn_collections.clicked.connect(self._open_collections)
+        pack_row.addWidget(self.btn_collections)
         self.btn_broken_links = QPushButton("Scan Broken Links")
         self.btn_broken_links.setProperty("class", "toolbar")
         self.btn_broken_links.clicked.connect(self._on_scan_broken_links)
@@ -412,6 +417,7 @@ class TagLibraryPanel(QWidget):
             *self._quick_tag_buttons,
             self.btn_import,
             self.btn_export_pack,
+            self.btn_collections,
             self.btn_broken_links,
             self.btn_ts_import,
             self.btn_ts_export,
@@ -1548,6 +1554,23 @@ class TagLibraryPanel(QWidget):
             group = self._lib.create_entry_group(name.strip())
             self._lib.add_entries_to_group(group.id, entry_ids)
             self.lbl_selection_info.setText(f"Created group '{name.strip()}' with {len(entry_ids)} file(s)")
+
+    def _open_collections(self):
+        if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before viewing collections")
+            return
+        rows = set(idx.row() for idx in self.tbl_entries.selectedIndexes())
+        entry_ids = []
+        for row in rows:
+            item = self.tbl_entries.item(row, 0)
+            entry_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if isinstance(entry_id, int):
+                entry_ids.append(entry_id)
+        from unifile.dialogs.collections import CollectionBoardDialog
+        dialog = CollectionBoardDialog(self._lib, entry_ids, self)
+        dialog.exec()
+        self._refresh_entries(tag_id=self._current_tag_id)
+        self._update_stats()
 
     def _on_scan_broken_links(self):
         if not self._lib.is_open:

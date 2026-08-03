@@ -9,6 +9,7 @@ from unifile.dialogs.advanced_settings import (
     WhisperSettingsDialog,
 )
 from unifile.dialogs.cleanup import CleanupPanel, CleanupToolsDialog, _CleanupScanWorker
+from unifile.dialogs.collections import CollectionBoardDialog
 from unifile.dialogs.duplicates import (
     DuplicateCompareDialog,
     DuplicateFinderDialog,
@@ -59,4 +60,5 @@ __all__ = [
     'EmbeddingSettingsDialog', 'LearningStatsDialog',
     'SettingsHubDialog',
     'BatchMetadataEditorDialog',
+    'CollectionBoardDialog',
 ]
