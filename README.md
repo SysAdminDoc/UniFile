@@ -306,6 +306,8 @@ approval queue / a CI job):
 
 Install optional dependencies with `pip install -e ".[full]"`. Missing optional packages disable their related feature instead of triggering runtime installs. `pyproject.toml` is the dependency source of truth; parser-heavy optional packages use audited lower bounds and `requirements.txt` delegates to the runtime/dev extras.
 
+For local semantic embeddings, install `pip install -e ".[onnx]"` (or `.[onnx-gpu]` instead for the CUDA runtime) and place an exported `all-MiniLM-L6-v2` ONNX graph (`model.onnx`) plus `tokenizer.json` under `%APPDATA%\UniFile\models\all-MiniLM-L6-v2` (or select another folder in Semantic Search Settings). Auto mode prefers CUDA when available, falls back to the ONNX CPU provider, and then uses Ollama when no local graph is present.
+
 Developer checks:
 
 ```bash

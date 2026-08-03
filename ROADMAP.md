@@ -34,12 +34,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 Larger features requiring non-trivial architecture or multi-week effort.
 
-### GPU-Accelerated Embeddings via ONNX Runtime
-- Replace Ollama embedding endpoint dependency with `onnxruntime` + `sentence-transformers/all-MiniLM-L6-v2` (ONNX export ~23 MB)
-- 10–50× speedup for batch embedding on NVIDIA/AMD GPUs; automatic CPU fallback if no GPU detected
-- Eliminates the Ollama dependency for semantic search — works offline with no model download
-- Settings: "Embedding Backend" → Auto / ONNX (local) / Ollama
-
 ### CLIP-Based Near-Duplicate Detection
 - OpenAI CLIP (or SigLIP) vision encoder to detect near-duplicate images that differ by crop, compression, slight color shift, or watermark removal — cases perceptual hashing misses
 - GPU-batch encode all images → cosine similarity matrix → cluster at configurable threshold (0.92 default)

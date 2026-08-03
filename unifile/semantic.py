@@ -8,9 +8,74 @@ import sqlite3
 
 _log = logging.getLogger(__name__)
 
-from unifile.config import _APP_DATA_DIR, register_sqlite_connection  # noqa: E402
+from unifile.config import (  # noqa: E402
+    _APP_DATA_DIR,
+    load_json_safe,
+    register_sqlite_connection,
+    save_json_safe,
+)
+from unifile.embedding_backends import (  # noqa: E402
+    OnnxBackendError,
+    OnnxEmbeddingBackend,
+    default_onnx_model_dir,
+)
 
 _EMBED_DB = os.path.join(_APP_DATA_DIR, 'semantic_embeddings.db')
+_SEMANTIC_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'semantic_settings.json')
+_EMBEDDING_BACKENDS = {'auto', 'onnx', 'ollama'}
+
+
+def load_semantic_settings(path: str = _SEMANTIC_SETTINGS_FILE) -> dict:
+    """Load embedding backend settings with safe defaults."""
+    raw = load_json_safe(path, {}, expected_type=dict)
+    backend = str(raw.get('backend', 'auto')).strip().lower()
+    if backend not in _EMBEDDING_BACKENDS:
+        backend = 'auto'
+    try:
+        threshold = float(raw.get('threshold', 0.3))
+    except (TypeError, ValueError):
+        threshold = 0.3
+    return {
+        'backend': backend,
+        'model': str(raw.get('model', 'nomic-embed-text')).strip() or 'nomic-embed-text',
+        'onnx_model_dir': str(raw.get(
+            'onnx_model_dir', default_onnx_model_dir(_APP_DATA_DIR))).strip()
+            or default_onnx_model_dir(_APP_DATA_DIR),
+        'onnx_provider': str(raw.get('onnx_provider', 'auto')).strip().lower() or 'auto',
+        'threshold': min(0.95, max(0.05, threshold)),
+    }
+
+
+def save_semantic_settings(settings: dict, path: str = _SEMANTIC_SETTINGS_FILE) -> bool:
+    """Persist only known embedding settings atomically."""
+    current = load_semantic_settings(path)
+    merged = dict(current)
+    merged.update({key: value for key, value in settings.items() if key in current})
+    normalized = load_semantic_settings_from_dict(merged)
+    return save_json_safe(path, normalized)
+
+
+def load_semantic_settings_from_dict(raw: dict) -> dict:
+    """Normalize a settings mapping without reading from disk."""
+    backend = str(raw.get('backend', 'auto')).strip().lower()
+    if backend not in _EMBEDDING_BACKENDS:
+        backend = 'auto'
+    try:
+        threshold = float(raw.get('threshold', 0.3))
+    except (TypeError, ValueError):
+        threshold = 0.3
+    provider = str(raw.get('onnx_provider', 'auto')).strip().lower()
+    if provider not in {'auto', 'cpu', 'cuda'}:
+        provider = 'auto'
+    return {
+        'backend': backend,
+        'model': str(raw.get('model', 'nomic-embed-text')).strip() or 'nomic-embed-text',
+        'onnx_model_dir': str(raw.get(
+            'onnx_model_dir', default_onnx_model_dir(_APP_DATA_DIR))).strip()
+            or default_onnx_model_dir(_APP_DATA_DIR),
+        'onnx_provider': provider,
+        'threshold': min(0.95, max(0.05, threshold)),
+    }
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -28,16 +93,56 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 class SemanticIndex:
     """Vector similarity search for file descriptions and tags.
 
-    Uses Ollama's embedding endpoint to generate vectors for file descriptions,
-    then stores them in SQLite for fast cosine-similarity search.
+    Uses a local ONNX model when configured and available, with Ollama as the
+    automatic fallback, then stores vectors in SQLite for fast cosine search.
     """
 
     def __init__(self, ollama_url: str = "http://localhost:11434",
-                 model: str = "nomic-embed-text"):
+                 model: str | None = None, backend: str | None = None,
+                 onnx_model_dir: str | None = None,
+                 onnx_provider: str | None = None):
+        settings = load_semantic_settings()
         self._url = ollama_url.rstrip('/')
-        self._model = model
+        self._model = model or settings['model']
+        self._backend_name = (backend or settings['backend']).strip().lower()
+        if self._backend_name not in _EMBEDDING_BACKENDS:
+            self._backend_name = 'auto'
+        self._onnx_model_dir = onnx_model_dir or settings['onnx_model_dir']
+        self._onnx_provider = onnx_provider or settings['onnx_provider']
         self._conn = None
         self._available = None
+        self._onnx_backend = None
+        self._onnx_checked = False
+        self._backend_error = ''
+
+    @property
+    def backend_name(self) -> str:
+        """Return the configured backend preference."""
+        return self._backend_name
+
+    def backend_status(self) -> dict:
+        """Return local backend capability without probing Ollama."""
+        if self._backend_name in {'auto', 'onnx'}:
+            onnx = self._get_onnx_backend()
+            if onnx is not None:
+                return {
+                    'configured': self._backend_name,
+                    'active': 'onnx',
+                    **onnx.status(),
+                }
+            if self._backend_name == 'onnx':
+                return {
+                    'configured': 'onnx', 'active': 'onnx', 'available': False,
+                    'model_dir': self._onnx_model_dir,
+                    'provider': self._onnx_provider, 'error': self._backend_error,
+                }
+        return {
+            'configured': self._backend_name,
+            'active': 'ollama',
+            'available': None,
+            'model': self._model,
+            'error': self._backend_error,
+        }
 
     def _ensure_db(self):
         """Create/open the embedding database. Uses check_same_thread=False
@@ -74,8 +179,25 @@ class SemanticIndex:
                     f'ALTER TABLE embeddings ADD COLUMN {name} {definition}')
         self._conn.commit()
 
-    def _get_embedding(self, text: str) -> list[float] | None:
-        """Get an embedding vector from Ollama."""
+    def _get_onnx_backend(self) -> OnnxEmbeddingBackend | None:
+        if self._onnx_checked:
+            return self._onnx_backend
+        self._onnx_checked = True
+        try:
+            backend = OnnxEmbeddingBackend(
+                self._onnx_model_dir,
+                provider=self._onnx_provider,
+            )
+            if backend.is_available():
+                self._onnx_backend = backend
+            else:
+                self._backend_error = backend.error
+        except (OnnxBackendError, ValueError) as exc:
+            self._backend_error = str(exc)
+        return self._onnx_backend
+
+    def _get_ollama_embedding(self, text: str) -> list[float] | None:
+        """Get one embedding vector from Ollama's local HTTP endpoint."""
         from unifile.ai_providers import AIRequestError, ai_request
         try:
             body = json.dumps({
@@ -90,6 +212,26 @@ class SemanticIndex:
         except (AIRequestError, Exception) as e:
             _log.debug("Embedding request failed for model %s: %s", self._model, e)
         return None
+
+    def _get_embeddings(self, texts: list[str]) -> list[list[float] | None]:
+        """Embed a batch through ONNX or fall back to one Ollama call per text."""
+        if self._backend_name in {'auto', 'onnx'}:
+            onnx = self._get_onnx_backend()
+            if onnx is not None:
+                try:
+                    return list(onnx.embed(texts))
+                except Exception as exc:
+                    self._backend_error = str(exc)
+                    if self._backend_name == 'onnx':
+                        return [None] * len(texts)
+            elif self._backend_name == 'onnx':
+                return [None] * len(texts)
+        return [self._get_ollama_embedding(text) for text in texts]
+
+    def _get_embedding(self, text: str) -> list[float] | None:
+        """Get one vector through the configured backend chain."""
+        vectors = self._get_embeddings([text])
+        return vectors[0] if vectors else None
 
     def is_available(self) -> bool:
         """Check if the embedding model is available."""
@@ -113,6 +255,15 @@ class SemanticIndex:
         import struct
         return list(struct.unpack(f'{dim}f', data))
 
+    @staticmethod
+    def _build_search_text(filepath: str, description: str,
+                           tags: list[str] | None = None) -> str:
+        parts = [description]
+        if tags:
+            parts.append(' '.join(tags))
+        parts.append(os.path.basename(filepath))
+        return ' '.join(parts).strip()
+
     def index_file(self, filepath: str, description: str,
                    tags: list[str] | None = None) -> bool:
         """Generate and store an embedding for a file's description.
@@ -125,11 +276,7 @@ class SemanticIndex:
         self._ensure_db()
 
         # Build searchable text from all metadata
-        parts = [description]
-        if tags:
-            parts.append(' '.join(tags))
-        parts.append(os.path.basename(filepath))
-        text = ' '.join(parts).strip()
+        text = self._build_search_text(filepath, description, tags)
         if not text:
             return False
 
@@ -220,16 +367,26 @@ class SemanticIndex:
 
         Returns: number of files indexed.
         """
+        self._ensure_db()
         count = 0
         total = len(items)
-        for i, item in enumerate(items):
-            ok = self.index_file(
-                item['filepath'],
-                item.get('description', ''),
-                item.get('tags'),
-            )
-            if ok:
+        texts = [self._build_search_text(
+            item['filepath'], item.get('description', ''), item.get('tags'))
+            for item in items]
+        vectors = self._get_embeddings(texts)
+        for i, (item, text) in enumerate(zip(items, texts, strict=True)):
+            vec = vectors[i] if i < len(vectors) else None
+            if text and vec:
+                file_id = hashlib.md5(item['filepath'].encode()).hexdigest()
+                self._conn.execute(
+                    'INSERT OR REPLACE INTO embeddings '
+                    '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    (file_id, item['filepath'], text, self._pack_vector(vec), len(vec),
+                     'file', None, None)
+                )
                 count += 1
+                self._conn.commit()
             if callback:
                 callback(i + 1, total)
         return count

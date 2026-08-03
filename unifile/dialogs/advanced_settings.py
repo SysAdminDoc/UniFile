@@ -10,12 +10,14 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QTableWidget,
@@ -241,7 +243,7 @@ class SemanticSearchSettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Semantic Search Settings")
-        self.setMinimumSize(420, 300)
+        self.setMinimumSize(620, 430)
         self.setStyleSheet(get_active_stylesheet())
         self._build_ui()
 
@@ -258,17 +260,31 @@ class SemanticSearchSettingsDialog(QDialog):
             "Semantic search finds files by meaning rather than exact keywords. Keep the embedding model available and the similarity threshold practical for your library."
         ))
 
-        from unifile.semantic import SemanticIndex
+        from unifile.semantic import (
+            SemanticIndex,
+            load_semantic_settings,
+        )
+        settings = load_semantic_settings()
         idx = SemanticIndex()
 
         # Status
-        avail = idx.is_available()
-        status = QLabel(
-            "Embedding model is available."
-            if avail else
-            "Embedding model is not available. Semantic search needs Ollama plus nomic-embed-text."
-        )
-        status.setStyleSheet(f"color: {_t['green'] if avail else '#ef4444'}; font-size: 11px;")
+        backend_status = idx.backend_status()
+        if backend_status['active'] == 'onnx' and backend_status.get('available'):
+            status_text = (
+                f"ONNX backend ready ({backend_status.get('provider', 'CPUExecutionProvider')})."
+            )
+            status_color = _t['green']
+        elif settings['backend'] == 'onnx':
+            status_text = f"ONNX backend unavailable: {backend_status.get('error', 'model not found')}"
+            status_color = '#ef4444'
+        else:
+            status_text = (
+                "Auto mode will use the local ONNX model when present, then fall back to Ollama."
+            )
+            status_color = _t['muted']
+        status = QLabel(status_text)
+        status.setWordWrap(True)
+        status.setStyleSheet(f"color: {status_color}; font-size: 11px;")
         layout.addWidget(status)
 
         count = idx.get_indexed_count()
@@ -276,20 +292,55 @@ class SemanticSearchSettingsDialog(QDialog):
         lbl_count.setStyleSheet(f"color: {_t['fg']}; font-size: 12px;")
         layout.addWidget(lbl_count)
 
+        # Backend
+        # The search dialog reads these same persisted values, so changing
+        # the backend here applies consistently to both index and query paths.
+        h_backend = QHBoxLayout()
+        h_backend.addWidget(QLabel("Embedding Backend"))
+        self.cmb_backend = QComboBox()
+        self.cmb_backend.addItem("Auto (ONNX → Ollama)", "auto")
+        self.cmb_backend.addItem("ONNX (local)", "onnx")
+        self.cmb_backend.addItem("Ollama", "ollama")
+        backend_index = self.cmb_backend.findData(settings['backend'])
+        self.cmb_backend.setCurrentIndex(max(0, backend_index))
+        h_backend.addWidget(self.cmb_backend)
+        layout.addLayout(h_backend)
+
         # Model
         h = QHBoxLayout()
-        h.addWidget(QLabel("Embedding Model"))
-        self.txt_model = QLineEdit(idx._model)
+        h.addWidget(QLabel("Ollama Model"))
+        self.txt_model = QLineEdit(settings['model'])
         self.txt_model.setPlaceholderText("nomic-embed-text")
         h.addWidget(self.txt_model)
         layout.addLayout(h)
+
+        # Local ONNX model directory
+        h_onnx = QHBoxLayout()
+        h_onnx.addWidget(QLabel("ONNX Model Folder"))
+        self.txt_onnx_dir = QLineEdit(settings['onnx_model_dir'])
+        self.txt_onnx_dir.setPlaceholderText("model.onnx + tokenizer.json")
+        h_onnx.addWidget(self.txt_onnx_dir, 1)
+        btn_browse_onnx = QPushButton("Browse")
+        btn_browse_onnx.setProperty("class", "toolbar")
+        btn_browse_onnx.clicked.connect(self._browse_onnx_dir)
+        h_onnx.addWidget(btn_browse_onnx)
+        layout.addLayout(h_onnx)
+
+        h_provider = QHBoxLayout()
+        h_provider.addWidget(QLabel("ONNX Execution Provider"))
+        self.cmb_onnx_provider = QComboBox()
+        self.cmb_onnx_provider.addItems(["Auto (CUDA → CPU)", "CPU", "CUDA"])
+        provider_index = {"auto": 0, "cpu": 1, "cuda": 2}.get(settings['onnx_provider'], 0)
+        self.cmb_onnx_provider.setCurrentIndex(provider_index)
+        h_provider.addWidget(self.cmb_onnx_provider)
+        layout.addLayout(h_provider)
 
         # Threshold
         h2 = QHBoxLayout()
         h2.addWidget(QLabel("Similarity Threshold"))
         self.spn_thresh = QSpinBox()
         self.spn_thresh.setRange(10, 90)
-        self.spn_thresh.setValue(30)
+        self.spn_thresh.setValue(round(settings['threshold'] * 100))
         self.spn_thresh.setSuffix("%")
         h2.addWidget(self.spn_thresh)
         layout.addLayout(h2)
@@ -308,11 +359,31 @@ class SemanticSearchSettingsDialog(QDialog):
 
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btns.button(QDialogButtonBox.StandardButton.Ok).setText("Save Search Settings")
-        btns.accepted.connect(self.accept)
+        btns.accepted.connect(self._save_settings)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
 
         idx.close()
+
+    def _browse_onnx_dir(self):
+        path = QFileDialog.getExistingDirectory(self, "Select ONNX Model Folder")
+        if path:
+            self.txt_onnx_dir.setText(path)
+
+    def _save_settings(self):
+        from unifile.semantic import save_semantic_settings
+        provider = ["auto", "cpu", "cuda"][self.cmb_onnx_provider.currentIndex()]
+        ok = save_semantic_settings({
+            'backend': self.cmb_backend.currentData(),
+            'model': self.txt_model.text().strip() or 'nomic-embed-text',
+            'onnx_model_dir': self.txt_onnx_dir.text().strip(),
+            'onnx_provider': provider,
+            'threshold': self.spn_thresh.value() / 100.0,
+        })
+        if not ok:
+            QMessageBox.warning(self, "Semantic Search Settings", "Could not save embedding settings.")
+            return
+        self.accept()
 
     def _clear_index(self):
         from unifile.semantic import SemanticIndex
@@ -374,6 +445,8 @@ class SemanticSearchDialog(QDialog):
 
     def _build_ui(self):
         _t = get_active_theme()
+        from unifile.semantic import load_semantic_settings
+        settings = load_semantic_settings()
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
         layout.setContentsMargins(18, 18, 18, 18)
@@ -412,7 +485,7 @@ class SemanticSearchDialog(QDialog):
         # ── Parameters row ─────────────────────────────────────────────────
         params = QHBoxLayout()
         params.addWidget(QLabel("Model"))
-        self.txt_model = QLineEdit("nomic-embed-text")
+        self.txt_model = QLineEdit(settings['model'])
         self.txt_model.setMaximumWidth(220)
         params.addWidget(self.txt_model)
 
@@ -421,7 +494,7 @@ class SemanticSearchDialog(QDialog):
         self.spn_thresh = QSpinBox()
         self.spn_thresh.setRange(5, 95)
         self.spn_thresh.setSuffix("%")
-        self.spn_thresh.setValue(30)
+        self.spn_thresh.setValue(round(settings['threshold'] * 100))
         self.spn_thresh.setMaximumWidth(90)
         params.addWidget(self.spn_thresh)
 

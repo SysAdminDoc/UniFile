@@ -1132,12 +1132,16 @@ class TagLibraryPanel(QWidget):
             self.lbl_selection_info.setText("Enter a natural-language prompt to search semantically")
             return
         try:
-            from unifile.semantic import SemanticIndex
+            from unifile.semantic import SemanticIndex, load_semantic_settings
             idx = SemanticIndex()
-            if not idx.is_available():
-                self.lbl_selection_info.setText("Semantic search unavailable (no embedding model)")
-                return
-            results = idx.search(query, top_k=50)
+            try:
+                if not idx.is_available():
+                    self.lbl_selection_info.setText("Semantic search unavailable (no embedding model)")
+                    return
+                threshold = load_semantic_settings()['threshold']
+                results = idx.search(query, top_k=50, threshold=threshold)
+            finally:
+                idx.close()
             if not results:
                 self.lbl_selection_info.setText("No semantic matches found")
                 self.tbl_entries.setRowCount(0)
