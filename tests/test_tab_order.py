@@ -17,6 +17,16 @@ UNIFILE_ROOT = Path(__file__).resolve().parent.parent / "unifile"
 # (file, class-name, required-substrings)
 AUDITED = [
     (
+        "main_window.py",
+        "UniFile",
+        [
+            "self.setTabOrder(nav_widgets[-1], self.cmb_profile)",
+            "self.setTabOrder(self.cmb_profile, self.txt_src)",
+            "self.setTabOrder(self.txt_src, self.btn_scan)",
+            "self.setTabOrder(self.sld_conf, self.tbl)",
+        ],
+    ),
+    (
         "dialogs/theme.py",
         "ProtectedPathsDialog",
         [

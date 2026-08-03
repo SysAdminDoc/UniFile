@@ -399,6 +399,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         for label, op_idx in _nav_items_organize:
             btn = QPushButton(f"  {label}")
             btn.setCheckable(True)
+            btn.setAccessibleName(label)
+            btn.setAccessibleDescription(f"Open the {label} workspace")
             btn.setStyleSheet(_NAV_BTN)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=op_idx: self._on_sidebar_nav(idx))
@@ -423,6 +425,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         for label, tool_type, tab_idx in _nav_items_tools:
             btn = QPushButton(f"  {label}")
             btn.setCheckable(True)
+            btn.setAccessibleName(label)
+            btn.setAccessibleDescription(f"Open the {label} tool")
             btn.setStyleSheet(_NAV_BTN)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(
@@ -444,6 +448,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         for label, op_idx in _nav_items_library:
             btn = QPushButton(f"  {label}")
             btn.setCheckable(True)
+            btn.setAccessibleName(label)
+            btn.setAccessibleDescription(f"Open the {label} library view")
             btn.setStyleSheet(_NAV_BTN)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=op_idx: self._on_sidebar_nav(idx))
@@ -466,6 +472,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         prof_lay.addWidget(lbl_prof)
         self.cmb_profile = QComboBox()
         self.cmb_profile.addItems(get_profile_names())
+        self.cmb_profile.setAccessibleName("Scan profile")
+        self.cmb_profile.setAccessibleDescription(
+            "Choose the classification profile used for the next scan"
+        )
         self.cmb_profile.setToolTip(
             "Scan profile — changes categories, LLM persona, and scan behavior.\n"
             "Design Assets = original behavior for creative marketplace files."
@@ -630,12 +640,16 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self.btn_preview = QPushButton("Preview Plan")
         self.btn_preview.setFixedHeight(38)
+        self.btn_preview.setAccessibleName("Preview Plan")
+        self.btn_preview.setAccessibleDescription("Review planned file changes before applying them")
         self.btn_preview.clicked.connect(self._show_preview)
         self.btn_preview.setEnabled(False)
         ab_lay.addWidget(self.btn_preview)
 
         self.btn_undo = QPushButton("Undo History")
         self.btn_undo.setFixedHeight(38)
+        self.btn_undo.setAccessibleName("Undo History")
+        self.btn_undo.setAccessibleDescription("Review and reverse previous file operations")
         self.btn_undo.clicked.connect(self._show_undo_timeline)
         self.btn_undo.setEnabled(bool(load_undo_log()))
         ab_lay.addWidget(self.btn_undo)
@@ -646,6 +660,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self.btn_replay = QPushButton("Repeat Last Scan")
         self.btn_replay.setFixedHeight(32)
+        self.btn_replay.setAccessibleName("Repeat Last Scan")
+        self.btn_replay.setAccessibleDescription("Run the most recently saved scan configuration")
         self.btn_replay.setToolTip("Replay the last scan configuration")
         self.btn_replay.setStyleSheet(_SEC_BTN)
         self.btn_replay.setEnabled(os.path.isfile(_LAST_CONFIG_FILE))
@@ -654,6 +670,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self.btn_export = QPushButton("Export CSV")
         self.btn_export.setFixedHeight(32); self.btn_export.setEnabled(False)
+        self.btn_export.setAccessibleName("Export CSV")
+        self.btn_export.setAccessibleDescription("Save the current classification plan as a CSV file")
         self.btn_export.setToolTip("Export the classification plan as CSV")
         self.btn_export.setStyleSheet(_SEC_BTN)
         self.btn_export.clicked.connect(self._export_plan)
@@ -661,6 +679,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self.btn_export_html = QPushButton("Export HTML")
         self.btn_export_html.setFixedHeight(32); self.btn_export_html.setEnabled(False)
+        self.btn_export_html.setAccessibleName("Export HTML")
+        self.btn_export_html.setAccessibleDescription("Save the current classification plan as an HTML report")
         self.btn_export_html.setToolTip("Export scan results as a styled HTML report")
         self.btn_export_html.setStyleSheet(_SEC_BTN)
         self.btn_export_html.clicked.connect(self._export_html)
@@ -668,6 +688,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self.btn_open_dest = QPushButton("Open Folder")
         self.btn_open_dest.setFixedHeight(32)
+        self.btn_open_dest.setAccessibleName("Open Destination Folder")
+        self.btn_open_dest.setAccessibleDescription("Open the current destination folder in Explorer")
         self.btn_open_dest.setToolTip("Open the current destination folder in Explorer")
         self.btn_open_dest.setStyleSheet(_SEC_BTN)
         self.btn_open_dest.clicked.connect(self._open_destination)
@@ -679,6 +701,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_watch = QPushButton("Watch Mode")
         self.btn_watch.setFixedHeight(32)
         self.btn_watch.setCheckable(True)
+        self.btn_watch.setAccessibleName("Watch Mode")
+        self.btn_watch.setAccessibleDescription("Toggle automatic organization for watched folders")
         self.btn_watch.setToolTip("Auto-organize watched folders")
         self.btn_watch.setStyleSheet(_TOGGLE_BTN)
         self.btn_watch.clicked.connect(self._toggle_watch_mode)
@@ -791,8 +815,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.txt_src = QLineEdit()
         self.txt_src.setClearButtonEnabled(True)
         self.txt_src.setPlaceholderText("Drag a source folder here or browse…")
+        self.txt_src.setAccessibleName("Source folder")
+        self.txt_src.setAccessibleDescription("Folder to scan and organize")
         row_src.addWidget(self.txt_src, 1)
         btn_src = QPushButton("Browse"); btn_src.setFixedWidth(84); btn_src.setFixedHeight(32)
+        btn_src.setAccessibleName("Browse source folder")
+        btn_src.setAccessibleDescription("Choose the folder to scan")
         btn_src.clicked.connect(self._browse_src)
         row_src.addWidget(btn_src)
         self.row_src_w = QWidget()
@@ -814,8 +842,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.txt_dst = QLineEdit()
         self.txt_dst.setClearButtonEnabled(True)
         self.txt_dst.setPlaceholderText("Choose the output root for organized folders…")
+        self.txt_dst.setAccessibleName("Output folder")
+        self.txt_dst.setAccessibleDescription("Destination root for organized folders")
         row_dst.addWidget(self.txt_dst, 1)
         btn_dst = QPushButton("Browse"); btn_dst.setFixedWidth(84); btn_dst.setFixedHeight(32)
+        btn_dst.setAccessibleName("Browse output folder")
+        btn_dst.setAccessibleDescription("Choose the destination folder")
         btn_dst.clicked.connect(self._browse_dst)
         row_dst.addWidget(btn_dst)
         self.row_dst_w.hide()
@@ -837,6 +869,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         row_pc_src.addWidget(lbl_pc_src)
         self.cmb_pc_src = QComboBox()
         self.cmb_pc_src.setFixedWidth(150)
+        self.cmb_pc_src.setAccessibleName("PC organizer source preset")
+        self.cmb_pc_src.setAccessibleDescription("Choose a standard source location or custom path")
         self._pc_src_presets = self._build_pc_src_presets()
         for label, _ in self._pc_src_presets:
             self.cmb_pc_src.addItem(label)
@@ -845,8 +879,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.txt_pc_src = QLineEdit()
         self.txt_pc_src.setClearButtonEnabled(True)
         self.txt_pc_src.setPlaceholderText("Use a custom source path…")
+        self.txt_pc_src.setAccessibleName("PC organizer source folder")
+        self.txt_pc_src.setAccessibleDescription("Custom source folder for the PC file organizer")
         row_pc_src.addWidget(self.txt_pc_src, 1)
         btn_pc_src = QPushButton("Browse"); btn_pc_src.setFixedWidth(84); btn_pc_src.setFixedHeight(32)
+        btn_pc_src.setAccessibleName("Browse PC organizer source")
+        btn_pc_src.setAccessibleDescription("Choose the PC organizer source folder")
         btn_pc_src.clicked.connect(self._browse_pc_src)
         row_pc_src.addWidget(btn_pc_src)
         pc_io.addLayout(row_pc_src)
@@ -876,6 +914,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         opts_row = QHBoxLayout(); opts_row.setSpacing(12)
 
         self.chk_llm = QCheckBox("Use AI guidance")
+        self.chk_llm.setAccessibleName("Use AI guidance")
+        self.chk_llm.setAccessibleDescription("Use the configured local AI provider during classification")
         self.chk_llm.setToolTip("Use Ollama LLM for AI-powered classification")
         self.chk_llm.setStyleSheet(
             f"QCheckBox {{ color: {_t['sidebar_profile_fg']}; font-weight: bold; font-size: 12px;"
@@ -883,6 +923,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         opts_row.addWidget(self.chk_llm)
 
         self.chk_hash = QCheckBox("Check duplicates")
+        self.chk_hash.setAccessibleName("Check duplicates")
+        self.chk_hash.setAccessibleDescription("Detect duplicate files while scanning")
         self.chk_hash.setToolTip("Progressive duplicate detection:\nSize > Prefix hash > Suffix hash > Full SHA-256 + image perceptual hash")
         self.chk_hash.setStyleSheet("QCheckBox { background: transparent; }")
         opts_row.addWidget(self.chk_hash)
@@ -916,6 +958,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         opts_row.addWidget(lbl_depth)
         self.spn_depth = QSpinBox()
         self.spn_depth.setRange(0, 99); self.spn_depth.setValue(0)
+        self.spn_depth.setAccessibleName("Scan depth")
+        self.spn_depth.setAccessibleDescription("Number of folder levels to scan; zero means direct children")
         self.spn_depth.setFixedWidth(48)
         self.spn_depth.setToolTip("Scan depth: 0=top-level only, 1+=subfolders, 99=full recursive")
         self.spn_depth.setSpecialValueText("0")
@@ -1440,6 +1484,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._apply_sidebar_theme(get_active_theme())
 
         # Tab order: source → scan → apply → search → confidence slider → table
+        nav_widgets = [entry[2] for entry in self._nav_buttons]
+        for previous, current in zip(nav_widgets, nav_widgets[1:]):
+            self.setTabOrder(previous, current)
+        if nav_widgets:
+            self.setTabOrder(nav_widgets[-1], self.cmb_profile)
+            self.setTabOrder(self.cmb_profile, self.txt_src)
         self.setTabOrder(self.txt_src, self.btn_scan)
         self.setTabOrder(self.btn_scan, self.btn_apply)
         self.setTabOrder(self.btn_apply, self.txt_search)

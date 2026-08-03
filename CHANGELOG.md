@@ -45,6 +45,7 @@ All notable changes to UniFile will be documented in this file.
 - Frozen-build Qt-binding isolation preflight (fails before PyInstaller on conflicting bindings).
 
 ### Changed
+- Main navigation and organizer controls now expose stable screen-reader names/descriptions and an explicit sidebar-to-workspace tab chain.
 - `[full]` extra no longer pulls `cmake`, `dlib`, `face_recognition`, `nexaai`. Use `[face]` or `[nexa]` explicitly.
 - Bootstrap no longer tries `--break-system-packages`; reports virtualenv/pipx guidance on failure.
 - All SQLite connections (archive_indexer, ratings, semantic) consistently use WAL mode + busy_timeout.
