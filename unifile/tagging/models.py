@@ -34,6 +34,22 @@ class TagParent(Base):
     child_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
 
 
+class TagImplication(Base):
+    """Directed rule stating that one tag also applies another tag."""
+
+    __tablename__ = "tag_implications"
+    antecedent_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
+    consequent_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
+
+
+class TagSibling(Base):
+    """One direction of a symmetric tag-sibling suggestion."""
+
+    __tablename__ = "tag_siblings"
+    bad_tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
+    good_tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)
+
+
 class TagEntry(Base):
     __tablename__ = "tag_entries"
     tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"), primary_key=True)

@@ -875,6 +875,10 @@ class TagLibraryPanel(QWidget):
 
         menu.addSeparator()
         menu.addAction("Set Parent Tag...", lambda: self._set_parent_tag(tag_id))
+        menu.addAction("Add Implication...", lambda: self._add_tag_implication(tag_id))
+        menu.addAction("Remove Implication...", lambda: self._remove_tag_implication(tag_id))
+        menu.addAction("Add Sibling...", lambda: self._add_tag_sibling(tag_id))
+        menu.addAction("Remove Sibling...", lambda: self._remove_tag_sibling(tag_id))
         menu.addAction("Toggle Category", lambda: self._toggle_category(tag_id))
         menu.addSeparator()
         menu.addAction("Set Description...", lambda: self._set_tag_description(tag_id))
@@ -934,6 +938,70 @@ class TagLibraryPanel(QWidget):
             if parent:
                 self._lib.add_parent_tag(tag_id, parent.id)
                 self._refresh_tags()
+
+    def _choose_related_tag(self, title: str, prompt: str, candidates):
+        if not candidates:
+            return None
+        names = [t.name for t in candidates]
+        name, ok = QInputDialog.getItem(self, title, prompt, names, 0, False)
+        if not ok or not name:
+            return None
+        return next((tag for tag in candidates if tag.name == name), None)
+
+    def _add_tag_implication(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if not tag:
+            return
+        candidates = [t for t in self._lib.get_all_tags() if t.id != tag_id]
+        consequent = self._choose_related_tag(
+            "Add Tag Implication",
+            f"'{tag.name}' implies:", candidates)
+        if consequent:
+            if self._lib.add_tag_implication(tag_id, consequent.id):
+                self.lbl_selection_info.setText(
+                    f"Added implication: {tag.name} → {consequent.name}")
+            else:
+                self.lbl_selection_info.setText("Implication would create a cycle")
+
+    def _remove_tag_implication(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if not tag:
+            return
+        candidate_ids = self._lib.get_direct_tag_implication_ids(tag_id)
+        candidates = [t for t in self._lib.get_all_tags() if t.id in candidate_ids]
+        consequent = self._choose_related_tag(
+            "Remove Tag Implication",
+            f"Remove implication from '{tag.name}':", candidates)
+        if consequent and self._lib.remove_tag_implication(tag_id, consequent.id):
+            self.lbl_selection_info.setText(
+                f"Removed implication: {tag.name} → {consequent.name}")
+
+    def _add_tag_sibling(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if not tag:
+            return
+        candidates = [
+            t for t in self._lib.get_all_tags()
+            if t.id != tag_id and t.id not in self._lib.get_tag_sibling_ids(tag_id)
+        ]
+        sibling = self._choose_related_tag(
+            "Add Tag Sibling",
+            f"Suggest alongside '{tag.name}':", candidates)
+        if sibling and self._lib.add_tag_sibling(tag_id, sibling.id):
+            self.lbl_selection_info.setText(
+                f"Added sibling suggestion: {tag.name} ↔ {sibling.name}")
+
+    def _remove_tag_sibling(self, tag_id: int):
+        tag = self._lib.get_tag(tag_id)
+        if not tag:
+            return
+        candidates = self._lib.get_tag_siblings(tag_id)
+        sibling = self._choose_related_tag(
+            "Remove Tag Sibling",
+            f"Remove sibling suggestion for '{tag.name}':", candidates)
+        if sibling and self._lib.remove_tag_sibling(tag_id, sibling.id):
+            self.lbl_selection_info.setText(
+                f"Removed sibling suggestion: {tag.name} ↔ {sibling.name}")
 
     def _import_tag_pack(self):
         if not self._lib.is_open:

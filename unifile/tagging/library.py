@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.orm import Session, joinedload
 
 # Sentinel for "not passed" (distinct from None, which means "clear the field")
@@ -21,7 +21,9 @@ from unifile.tagging.models import (  # noqa: E402
     Tag,
     TagAlias,
     TagEntry,
+    TagImplication,
     TagParent,
+    TagSibling,
     TextField,
     ValueType,
 )
@@ -214,6 +216,22 @@ class TagLibrary:
         tag = self._session.get(Tag, tag_id)
         if not tag:
             return False
+        # Remove graph and junction rows explicitly so deletion remains safe
+        # when SQLite foreign-key enforcement is enabled by the host process.
+        self._session.execute(delete(TagImplication).where(or_(
+            TagImplication.antecedent_id == tag_id,
+            TagImplication.consequent_id == tag_id,
+        )))
+        self._session.execute(delete(TagSibling).where(or_(
+            TagSibling.bad_tag_id == tag_id,
+            TagSibling.good_tag_id == tag_id,
+        )))
+        self._session.execute(delete(TagParent).where(or_(
+            TagParent.child_id == tag_id,
+            TagParent.parent_id == tag_id,
+        )))
+        self._session.execute(delete(TagEntry).where(TagEntry.tag_id == tag_id))
+        self._session.execute(delete(TagAlias).where(TagAlias.tag_id == tag_id))
         self._session.delete(tag)
         self._session.commit()
         return True
@@ -244,6 +262,144 @@ class TagLibrary:
         child.parent_tags.discard(parent)
         self._session.commit()
         return True
+
+    # ── Tag implication and sibling rules ─────────────────────────────────
+
+    def get_implied_tag_ids(self, tag_id: int) -> set[int]:
+        """Return *tag_id* and every consequent reachable from it."""
+        implied = {tag_id}
+        queue = [tag_id]
+        while queue:
+            current = queue.pop()
+            next_ids = self._session.execute(
+                select(TagImplication.consequent_id).where(
+                    TagImplication.antecedent_id == current
+                )
+            ).scalars().all()
+            for next_id in next_ids:
+                if next_id not in implied:
+                    implied.add(next_id)
+                    queue.append(next_id)
+        return implied
+
+    def get_tag_implication_ids(self, tag_id: int) -> set[int]:
+        """Return every transitive consequent of a tag."""
+        return self.get_implied_tag_ids(tag_id) - {tag_id}
+
+    def get_direct_tag_implication_ids(self, tag_id: int) -> set[int]:
+        """Return only the consequents directly configured for a tag."""
+        return set(self._session.execute(
+            select(TagImplication.consequent_id).where(
+                TagImplication.antecedent_id == tag_id
+            )
+        ).scalars().all())
+
+    def get_tags_implying(self, tag_id: int) -> set[int]:
+        """Return tags whose implication chain reaches *tag_id*."""
+        antecedents = {tag_id}
+        queue = [tag_id]
+        while queue:
+            current = queue.pop()
+            previous_ids = self._session.execute(
+                select(TagImplication.antecedent_id).where(
+                    TagImplication.consequent_id == current
+                )
+            ).scalars().all()
+            for previous_id in previous_ids:
+                if previous_id not in antecedents:
+                    antecedents.add(previous_id)
+                    queue.append(previous_id)
+        antecedents.discard(tag_id)
+        return antecedents
+
+    def add_tag_implication(self, antecedent_id: int, consequent_id: int) -> bool:
+        """Add a directed implication, rejecting self-links and graph cycles."""
+        if antecedent_id == consequent_id:
+            return False
+        antecedent = self._session.get(Tag, antecedent_id)
+        consequent = self._session.get(Tag, consequent_id)
+        if not antecedent or not consequent:
+            return False
+        existing = self._session.execute(
+            select(TagImplication).where(
+                TagImplication.antecedent_id == antecedent_id,
+                TagImplication.consequent_id == consequent_id,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return True
+        if antecedent_id in self.get_implied_tag_ids(consequent_id):
+            return False
+        self._session.add(TagImplication(
+            antecedent_id=antecedent_id,
+            consequent_id=consequent_id,
+        ))
+        self._session.commit()
+        return True
+
+    def remove_tag_implication(self, antecedent_id: int, consequent_id: int) -> bool:
+        result = self._session.execute(
+            delete(TagImplication).where(
+                TagImplication.antecedent_id == antecedent_id,
+                TagImplication.consequent_id == consequent_id,
+            )
+        )
+        self._session.commit()
+        return bool(result.rowcount)
+
+    def get_tag_sibling_ids(self, tag_id: int) -> set[int]:
+        """Return all tags linked as symmetric siblings of *tag_id*."""
+        rows = self._session.execute(
+            select(TagSibling.bad_tag_id, TagSibling.good_tag_id).where(
+                or_(
+                    TagSibling.bad_tag_id == tag_id,
+                    TagSibling.good_tag_id == tag_id,
+                )
+            )
+        ).all()
+        sibling_ids = set()
+        for bad_id, good_id in rows:
+            sibling_ids.add(good_id if bad_id == tag_id else bad_id)
+        return sibling_ids
+
+    def get_tag_siblings(self, tag_id: int) -> list[Tag]:
+        sibling_ids = self.get_tag_sibling_ids(tag_id)
+        if not sibling_ids:
+            return []
+        return list(self._session.execute(
+            select(Tag).where(Tag.id.in_(sibling_ids)).order_by(Tag.name)
+        ).scalars().all())
+
+    def add_tag_sibling(self, first_id: int, second_id: int) -> bool:
+        """Link two tags as symmetric sibling suggestions."""
+        if first_id == second_id:
+            return False
+        first = self._session.get(Tag, first_id)
+        second = self._session.get(Tag, second_id)
+        if not first or not second:
+            return False
+        if second_id in self.get_tag_sibling_ids(first_id):
+            return True
+        self._session.add_all([
+            TagSibling(bad_tag_id=first_id, good_tag_id=second_id),
+            TagSibling(bad_tag_id=second_id, good_tag_id=first_id),
+        ])
+        self._session.commit()
+        return True
+
+    def remove_tag_sibling(self, first_id: int, second_id: int) -> bool:
+        result = self._session.execute(
+            delete(TagSibling).where(
+                or_(
+                    (TagSibling.bad_tag_id == first_id) &
+                    (TagSibling.good_tag_id == second_id),
+                    (TagSibling.bad_tag_id == second_id) &
+                    (TagSibling.good_tag_id == first_id),
+                )
+            )
+        )
+        self._session.commit()
+        return bool(result.rowcount)
 
     # ── Entry CRUD ────────────────────────────────────────────────────────────
 
@@ -336,7 +492,14 @@ class TagLibrary:
         ).unique().scalar_one_or_none()
         if not entry:
             return False
+        expanded_ids = set()
         for tid in tag_ids:
+            if not self._session.get(Tag, tid):
+                continue
+            sibling_ids = self.get_tag_sibling_ids(tid)
+            for candidate_id in {tid, *sibling_ids}:
+                expanded_ids.update(self.get_implied_tag_ids(candidate_id))
+        for tid in expanded_ids:
             tag = self._session.get(Tag, tid)
             if tag:
                 entry.tags.add(tag)
@@ -732,7 +895,8 @@ class TagLibrary:
             tag = self.get_tag_by_name(tag_name)
             if not tag:
                 return self.get_all_entries(limit=limit)
-            tagged_subq = select(TagEntry.entry_id).where(TagEntry.tag_id == tag.id)
+            related_ids = self.get_tag_search_ids(tag.id)
+            tagged_subq = select(TagEntry.entry_id).where(TagEntry.tag_id.in_(related_ids))
             return list(self._session.execute(
                 select(Entry).where(~Entry.id.in_(tagged_subq))
                 .order_by(Entry.filename).limit(limit)
@@ -881,9 +1045,34 @@ class TagLibrary:
                     queue.append(pid)
         return ancestors
 
+    def get_tag_search_ids(self, tag_id: int) -> set[int]:
+        """Expand a tag through child hierarchy and reverse implications.
+
+        A search for a consequent such as ``cat`` should include entries that
+        carry ``kitten`` through an implication, even if they were added
+        before that rule existed.
+        """
+        related = {tag_id}
+        queue = [tag_id]
+        while queue:
+            current = queue.pop()
+            children = self._session.execute(
+                select(TagParent.child_id).where(TagParent.parent_id == current)
+            ).scalars().all()
+            antecedents = self._session.execute(
+                select(TagImplication.antecedent_id).where(
+                    TagImplication.consequent_id == current
+                )
+            ).scalars().all()
+            for related_id in (*children, *antecedents):
+                if related_id not in related:
+                    related.add(related_id)
+                    queue.append(related_id)
+        return related
+
     def get_entries_by_tag_recursive(self, tag_id: int) -> list[Entry]:
-        """Get entries matching a tag OR any of its descendant tags."""
-        all_ids = {tag_id} | self.get_descendant_tag_ids(tag_id)
+        """Get entries matching a tag, descendants, or implying tags."""
+        all_ids = self.get_tag_search_ids(tag_id)
         return list(self._session.execute(
             select(Entry).join(Entry.tags).where(Tag.id.in_(all_ids))
             .order_by(Entry.filename)
@@ -961,7 +1150,11 @@ class TagLibrary:
             'name': os.path.splitext(os.path.basename(filepath))[0],
             'created': dt.now().isoformat(),
             'tags': [],
+            'implications': [],
+            'siblings': [],
         }
+        exported_ids = {tag.id for tag in tags}
+        exported_tag_names = {tag.id: tag.name for tag in tags}
         for tag in tags:
             entry = {
                 'name': tag.name,
@@ -974,6 +1167,22 @@ class TagLibrary:
                 'parents': [p.name for p in tag.parent_tags],
             }
             pack['tags'].append(entry)
+
+        for relation in self._session.execute(select(TagImplication)).scalars().all():
+            if {relation.antecedent_id, relation.consequent_id} <= exported_ids:
+                pack['implications'].append({
+                    'antecedent': exported_tag_names[relation.antecedent_id],
+                    'consequent': exported_tag_names[relation.consequent_id],
+                })
+        sibling_pairs = set()
+        for relation in self._session.execute(select(TagSibling)).scalars().all():
+            pair = tuple(sorted((relation.bad_tag_id, relation.good_tag_id)))
+            if len(pair) == 2 and set(pair) <= exported_ids and pair not in sibling_pairs:
+                sibling_pairs.add(pair)
+                pack['siblings'].append({
+                    'first': exported_tag_names[pair[0]],
+                    'second': exported_tag_names[pair[1]],
+                })
 
         ext = os.path.splitext(filepath)[1].lower()
         if ext == '.toml':
@@ -1060,6 +1269,18 @@ class TagLibrary:
                 parent = name_to_tag.get(parent_name) or self.get_tag_by_name(parent_name)
                 if parent:
                     self.add_parent_tag(tag.id, parent.id)
+
+        # Third pass: restore graph rules after all tag names are available.
+        for relation in pack.get('implications', []):
+            antecedent = name_to_tag.get(relation.get('antecedent', ''))
+            consequent = name_to_tag.get(relation.get('consequent', ''))
+            if antecedent and consequent:
+                self.add_tag_implication(antecedent.id, consequent.id)
+        for relation in pack.get('siblings', []):
+            first = name_to_tag.get(relation.get('first', ''))
+            second = name_to_tag.get(relation.get('second', ''))
+            if first and second:
+                self.add_tag_sibling(first.id, second.id)
 
         return stats
 

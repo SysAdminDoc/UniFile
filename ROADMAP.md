@@ -1,4 +1,4 @@
-﻿# Roadmap
+# Roadmap
 
 Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
 Current version: **v9.3.32**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
@@ -156,8 +156,6 @@ Strategic / aspirational features. Some require significant architecture changes
 ## Library & Tags
 
 - **Multi-library support** — switch libraries from the sidebar; each library has its own Ollama model selection, rules, and theme preference
-- **Tag implication rules** — "kitten" → "cat" → "animal" (Hydrus Network-style graph); implications stored in a `tag_implications` table; propagated automatically on tag application
-- **Tag siblings** — mark two tags as synonyms; applying one auto-suggests the other; Hydrus's sibling DB layout as the reference
 - **Color extraction** — extract dominant palette from images; index by color; "show me files with predominant blue tones" search; analogous to Eagle's color search
 - **Custom field schemas per library** — define additional field types per library (Budget/currency, Deadline/date, Status/enum); validation rules enforced in the editor
 
