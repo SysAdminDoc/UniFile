@@ -48,6 +48,8 @@ class ScanMixin:
             'inc_files': self.chk_inc_files.isChecked(),
             'inc_folders': self.chk_inc_folders.isChecked(),
             'type_filter': self.cmb_type_filter.currentText(),
+            'archive_mode': self.cmb_archive_mode.currentData()
+                if hasattr(self, 'cmb_archive_mode') else 'index',
         }
         try:
             with open(_LAST_CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -85,6 +87,8 @@ class ScanMixin:
         self.chk_llm.setChecked(cfg.get('llm', False))
         self.chk_hash.setChecked(cfg.get('dedup', False))
         self.spn_depth.setValue(cfg.get('depth', 0))
+        if hasattr(self, '_set_archive_mode_combo'):
+            self._set_archive_mode_combo(cfg.get('archive_mode', 'index'))
         self._log("Replaying last scan config...")
         QTimer.singleShot(100, self._on_scan)
 

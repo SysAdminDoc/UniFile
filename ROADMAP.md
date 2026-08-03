@@ -40,8 +40,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 ### Archive Content Indexing
 - Scan inside `.zip`, `.rar`, `.7z`, `.tar.*` archives without extracting — index the file listing and inner filenames into the tag library and semantic search index
 - Extraction mode (per-profile toggle): "Extract to temp → classify → repackage" for full AI classification of archive contents; temp path `%LOCALAPPDATA%\UniFile\temp`, always cleaned up
-- Surface results in tag search UI: "invoice.pdf (inside 2024-Invoices.zip)" with path breadcrumb
-- Dependencies: `zipfile` (stdlib), `py7zr`, `rarfile`
 
 ### Spotlight-Style Search Bar
 - Ctrl+K command palette: instant file/tag/category search with thumbnail preview pane on hover; results show top 5 matching files before pressing Enter

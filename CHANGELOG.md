@@ -29,6 +29,9 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Safe archive extraction/repackaging helpers with traversal, link, archive-size, and file-count guards; the Extract + classify profile mode always removes its temporary workspace.
+- Tag Library filename search now includes indexed archive members with an `inner file (inside archive)` breadcrumb and read-only preview.
+- Scan profiles now persist an archive-content mode: read-only listing index or temporary extraction/classification.
 - TagSpaces folder metadata (`.ts/tsm.json`) import/export with unsupported-field reporting.
 - TagSpaces saved search import/export with round-trip support and unsupported-field warnings.
 - Tag Library import/export now includes folder-level tags alongside file sidecars.

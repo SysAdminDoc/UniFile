@@ -6,6 +6,13 @@ from unifile.config import _APP_DATA_DIR
 
 _PROFILES_FILE = os.path.join(_APP_DATA_DIR, 'active_profile.json')
 
+ARCHIVE_MODE_INDEX = "index"
+ARCHIVE_MODE_EXTRACT = "extract"
+ARCHIVE_MODE_LABELS = {
+    ARCHIVE_MODE_INDEX: "Index listings",
+    ARCHIVE_MODE_EXTRACT: "Extract + classify",
+}
+
 
 # ── Built-in profile definitions ─────────────────────────────────────────────
 
@@ -14,6 +21,7 @@ BUILTIN_PROFILES = {
     # ── Design Assets (original behavior, default) ───────────────────────────
     "Design Assets": {
         "id": "design_assets",
+        "archive_mode": ARCHIVE_MODE_INDEX,
         "icon": "🎨",
         "description": "Organize creative marketplace content — After Effects, Photoshop, Premiere, fonts, mockups, stock media.",
         "category_filter": None,  # None = use all CATEGORIES (design-centric keyword list)
@@ -35,6 +43,7 @@ BUILTIN_PROFILES = {
     # ── General Files ────────────────────────────────────────────────────────
     "General Files": {
         "id": "general_files",
+        "archive_mode": ARCHIVE_MODE_INDEX,
         "icon": "📂",
         "description": "Organize any folder — downloads, desktop, documents. Sort by type, date, or project.",
         "category_filter": "general",
@@ -61,6 +70,7 @@ BUILTIN_PROFILES = {
     # ── Photo Library ────────────────────────────────────────────────────────
     "Photo Library": {
         "id": "photo_library",
+        "archive_mode": ARCHIVE_MODE_INDEX,
         "icon": "📷",
         "description": "Organize photos by date, location, faces, and scene type. HEIC/RAW conversion, blur detection, deduplication.",
         "category_filter": "photos",
@@ -88,6 +98,7 @@ BUILTIN_PROFILES = {
     # ── Music Library ────────────────────────────────────────────────────────
     "Music Library": {
         "id": "music_library",
+        "archive_mode": ARCHIVE_MODE_INDEX,
         "icon": "🎵",
         "description": "Organize music by artist, album, genre. Uses ID3/FLAC tags for smart renaming and folder structure.",
         "category_filter": "music",
@@ -111,6 +122,7 @@ BUILTIN_PROFILES = {
     # ── Developer / Code ─────────────────────────────────────────────────────
     "Developer": {
         "id": "developer",
+        "archive_mode": ARCHIVE_MODE_INDEX,
         "icon": "💻",
         "description": "Organize code projects, repos, configs, logs, and build artifacts. Respects .gitignore patterns.",
         "category_filter": "developer",
@@ -133,6 +145,7 @@ BUILTIN_PROFILES = {
     # ── Office & Business ────────────────────────────────────────────────────
     "Office & Business": {
         "id": "office_business",
+        "archive_mode": ARCHIVE_MODE_INDEX,
         "icon": "💼",
         "description": "Organize business documents — contracts, invoices, reports, presentations, spreadsheets.",
         "category_filter": "office",
@@ -156,6 +169,7 @@ BUILTIN_PROFILES = {
     # ── Downloads Cleanup ────────────────────────────────────────────────────
     "Downloads Cleanup": {
         "id": "downloads_cleanup",
+        "archive_mode": ARCHIVE_MODE_INDEX,
         "icon": "📥",
         "description": "Quick cleanup for Downloads folder — sort by file type, remove duplicates, archive old files.",
         "category_filter": "general",
@@ -377,6 +391,50 @@ def get_active_profile() -> dict:
     return BUILTIN_PROFILES.get(_active_profile_name, BUILTIN_PROFILES["Design Assets"])
 
 
+def get_archive_mode(profile_name: str | None = None) -> str:
+    """Return the persisted archive workflow for a scan profile."""
+    name = profile_name or _active_profile_name
+    profile = BUILTIN_PROFILES.get(name, BUILTIN_PROFILES["Design Assets"])
+    default = profile.get("archive_mode", ARCHIVE_MODE_INDEX)
+    try:
+        with open(_PROFILES_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        modes = data.get("archive_modes", {})
+        mode = modes.get(name)
+        if mode in ARCHIVE_MODE_LABELS:
+            return mode
+    except (FileNotFoundError, OSError, json.JSONDecodeError, AttributeError):
+        pass
+    return default if default in ARCHIVE_MODE_LABELS else ARCHIVE_MODE_INDEX
+
+
+def set_archive_mode(mode: str, profile_name: str | None = None) -> bool:
+    """Persist the archive workflow choice for one scan profile."""
+    if mode not in ARCHIVE_MODE_LABELS:
+        return False
+    name = profile_name or _active_profile_name
+    try:
+        data = {}
+        try:
+            with open(_PROFILES_FILE, encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            pass
+        modes = data.setdefault("archive_modes", {})
+        if not isinstance(modes, dict):
+            modes = {}
+            data["archive_modes"] = modes
+        modes[name] = mode
+        os.makedirs(os.path.dirname(_PROFILES_FILE), exist_ok=True)
+        with open(_PROFILES_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return True
+    except OSError:
+        return False
+
+
 def set_active_profile(name: str):
     """Switch the active profile."""
     global _active_profile_name
@@ -459,9 +517,18 @@ def _load_active_profile():
 def _save_active_profile(name: str):
     """Persist the active profile choice."""
     try:
+        data = {}
+        try:
+            with open(_PROFILES_FILE, encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            pass
+        data['active_profile'] = name
         os.makedirs(os.path.dirname(_PROFILES_FILE), exist_ok=True)
-        with open(_PROFILES_FILE, 'w') as f:
-            json.dump({'active_profile': name}, f)
+        with open(_PROFILES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f)
     except OSError:
         pass
 

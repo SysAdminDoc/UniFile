@@ -94,10 +94,14 @@ from unifile.models import FileItem
 from unifile.ollama import load_ollama_settings
 from unifile.plugins import CategoryPresetManager, CloudPathResolver, ProfileManager
 from unifile.profiles import (
+    ARCHIVE_MODE_INDEX,
+    ARCHIVE_MODE_LABELS,
     get_active_profile,
     get_active_profile_name,
+    get_archive_mode,
     get_profile_names,
     set_active_profile,
+    set_archive_mode,
 )
 from unifile.query_history import add_to_history, load_history
 from unifile.ratings import bulk_load as ratings_bulk_load
@@ -493,6 +497,31 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             self.cmb_profile.setCurrentIndex(idx_prof)
         self.cmb_profile.currentTextChanged.connect(self._on_profile_changed)
         prof_lay.addWidget(self.cmb_profile)
+
+        lbl_archive_mode = QLabel("ARCHIVE CONTENT")
+        lbl_archive_mode.setStyleSheet(
+            f"color: {_t['sidebar_section']}; font-size: 10px; font-weight: 700; "
+            "letter-spacing: 1.5px; background: transparent;")
+        self._nav_section_labels.append(lbl_archive_mode)
+        prof_lay.addWidget(lbl_archive_mode)
+        self.cmb_archive_mode = QComboBox()
+        for mode, label in ARCHIVE_MODE_LABELS.items():
+            self.cmb_archive_mode.addItem(label, mode)
+        self.cmb_archive_mode.setAccessibleName("Archive content mode")
+        self.cmb_archive_mode.setAccessibleDescription(
+            "Choose whether archive files are indexed by listing or extracted "
+            "into a temporary directory for classification")
+        self.cmb_archive_mode.setToolTip(
+            "Index listings is read-only. Extract + classify uses a cleaned temporary "
+            "directory and never overwrites the source archive.")
+        self.cmb_archive_mode.setStyleSheet(
+            f"QComboBox {{ background: {_t['sidebar_profile_bg']}; color: {_t['sidebar_profile_fg']}; "
+            f"border: 1px solid {_t['sidebar_profile_border']}; border-radius: 4px; "
+            "padding: 5px 8px; font-size: 10px; }}"
+        )
+        self.cmb_archive_mode.currentIndexChanged.connect(self._on_archive_mode_changed)
+        self._set_archive_mode_combo(get_archive_mode())
+        prof_lay.addWidget(self.cmb_archive_mode)
         sb_lay.addWidget(prof_w)
 
         # ── LLM status indicator (bottom of sidebar) ─────────────────────
@@ -1485,11 +1514,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         # Tab order: source → scan → apply → search → confidence slider → table
         nav_widgets = [entry[2] for entry in self._nav_buttons]
-        for previous, current in zip(nav_widgets, nav_widgets[1:]):
+        for previous, current in zip(nav_widgets, nav_widgets[1:], strict=False):
             self.setTabOrder(previous, current)
         if nav_widgets:
             self.setTabOrder(nav_widgets[-1], self.cmb_profile)
-            self.setTabOrder(self.cmb_profile, self.txt_src)
+            self.setTabOrder(self.cmb_profile, self.cmb_archive_mode)
+            self.setTabOrder(self.cmb_archive_mode, self.txt_src)
         self.setTabOrder(self.txt_src, self.btn_scan)
         self.setTabOrder(self.btn_scan, self.btn_apply)
         self.setTabOrder(self.btn_apply, self.txt_search)
@@ -2252,6 +2282,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
     def _on_profile_changed(self, name):
         """Handle profile selector change."""
         set_active_profile(name)
+        self._set_archive_mode_combo(get_archive_mode(name))
         profile = get_active_profile()
         # Update mode selector to match profile's default mode
         default_mode = profile.get("default_mode")
@@ -2287,6 +2318,26 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             kicker="PROFILE UPDATED"
         )
         self._log(f"Switched to profile: {name}")
+
+    def _set_archive_mode_combo(self, mode: str) -> None:
+        """Select an archive mode without persisting a transient UI update."""
+        if not hasattr(self, "cmb_archive_mode"):
+            return
+        idx = self.cmb_archive_mode.findData(mode)
+        if idx < 0:
+            idx = self.cmb_archive_mode.findData(ARCHIVE_MODE_INDEX)
+        self.cmb_archive_mode.blockSignals(True)
+        self.cmb_archive_mode.setCurrentIndex(max(0, idx))
+        self.cmb_archive_mode.blockSignals(False)
+
+    def _on_archive_mode_changed(self):
+        """Persist the archive workflow for the currently selected profile."""
+        if not hasattr(self, "cmb_archive_mode"):
+            return
+        mode = self.cmb_archive_mode.currentData()
+        if mode in ARCHIVE_MODE_LABELS:
+            set_archive_mode(mode, get_active_profile_name())
+            self._log(f"Archive content mode: {ARCHIVE_MODE_LABELS[mode]}")
 
     def _setup_aep_tbl(self):
         self.tbl.setColumnCount(7)
@@ -2484,6 +2535,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             'inc_files': self.chk_inc_files.isChecked(),
             'inc_folders': self.chk_inc_folders.isChecked(),
             'type_filter': self.cmb_type_filter.currentText(),
+            'archive_mode': self.cmb_archive_mode.currentData(),
         }
 
     def _apply_profile_config(self, cfg: dict):
@@ -2510,6 +2562,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.chk_llm.setChecked(cfg.get('llm', False))
         self.chk_hash.setChecked(cfg.get('dedup', False))
         self.spn_depth.setValue(cfg.get('depth', 0))
+        self._set_archive_mode_combo(cfg.get('archive_mode', get_archive_mode()))
 
     def _save_profile(self):
         """Save current config as a named profile."""

@@ -33,7 +33,7 @@ from unifile.tagging.models import TAG_COLORS
 
 class _EntrySearchWorker(QThread):
     """Run tag library search off the GUI thread using its own Session."""
-    results_ready = pyqtSignal(str, list)  # (query, entries)
+    results_ready = pyqtSignal(str, list, list)  # (query, entries, archive_entries)
 
     def __init__(self, engine, library_dir, query, parent=None):
         super().__init__(parent)
@@ -62,8 +62,21 @@ class _EntrySearchWorker(QThread):
                 lib._session.close()
         except Exception:
             entries = []
+        archive_entries = []
+        # Archive listings are a read-only companion source.  Query-language
+        # expressions remain owned by TagLibrary; plain filename searches are
+        # also checked against the archive index so the two result types appear
+        # together in one search surface.
+        if self._query and not self._query.lower().startswith((
+                "tag:", "-tag:", "ext:", "field:", "special:", "rating:",
+                "inbox:", "ns:", "group:")):
+            try:
+                from unifile.archive_indexer import search as search_archives
+                archive_entries = search_archives(self._query, limit=100)
+            except Exception:
+                archive_entries = []
         if not self._cancelled:
-            self.results_ready.emit(self._query, entries)
+            self.results_ready.emit(self._query, entries, archive_entries)
 
 
 class TagLibraryPanel(QWidget):
@@ -476,6 +489,20 @@ class TagLibraryPanel(QWidget):
             return
 
         entry_id = item.data(Qt.ItemDataRole.UserRole)
+        archive_info = item.data(Qt.ItemDataRole.UserRole + 1)
+        if isinstance(archive_info, dict):
+            self._clear_preview()
+            self._preview_filename.setText(archive_info.get("breadcrumb", item.text()))
+            self._preview_meta.setText(
+                "Archive content  |  "
+                f"{archive_info.get('archive_path', '')}  ›  "
+                f"{archive_info.get('inner_path', '')}"
+            )
+            self._preview_fields.setPlainText(
+                "This is a read-only archive index result. Extract the archive "
+                "from the Archive Content Indexer to classify its contents."
+            )
+            return
         entry = self._lib.get_entry(entry_id)
         if not entry:
             self._clear_preview()
@@ -1078,10 +1105,11 @@ class TagLibraryPanel(QWidget):
         self._search_worker.results_ready.connect(self._on_search_results)
         self._search_worker.start()
 
-    def _on_search_results(self, query, entries):
+    def _on_search_results(self, query, entries, archive_entries=None):
         if query != self._pending_search:
             return
-        self.tbl_entries.setRowCount(len(entries))
+        archive_entries = archive_entries or []
+        self.tbl_entries.setRowCount(len(entries) + len(archive_entries))
         for row, entry in enumerate(entries):
             item_name = QTableWidgetItem(entry.filename)
             item_name.setData(Qt.ItemDataRole.UserRole, entry.id)
@@ -1091,9 +1119,40 @@ class TagLibraryPanel(QWidget):
             mod = entry.date_modified.strftime("%Y-%m-%d") if entry.date_modified else ""
             self.tbl_entries.setItem(row, 3, QTableWidgetItem(mod))
             self.tbl_entries.setItem(row, 4, QTableWidgetItem(str(entry.path)))
+        for offset, archive_entry in enumerate(archive_entries, start=len(entries)):
+            from unifile.archive_indexer import archive_breadcrumb
+            breadcrumb = archive_breadcrumb(archive_entry)
+            item_name = QTableWidgetItem(breadcrumb)
+            item_name.setData(Qt.ItemDataRole.UserRole, None)
+            item_name.setData(Qt.ItemDataRole.UserRole + 1, {
+                "breadcrumb": breadcrumb,
+                "archive_path": archive_entry.archive_path,
+                "inner_path": archive_entry.inner_path,
+            })
+            item_name.setForeground(QColor("#38bdf8"))
+            item_name.setToolTip(
+                f"{archive_entry.archive_path}  ›  {archive_entry.inner_path}")
+            self.tbl_entries.setItem(offset, 0, item_name)
+            self.tbl_entries.setItem(offset, 1, QTableWidgetItem("Archive content"))
+            suffix = archive_entry.name.rsplit(".", 1)[-1].upper() \
+                if "." in archive_entry.name else ""
+            self.tbl_entries.setItem(offset, 2, QTableWidgetItem(suffix))
+            try:
+                from datetime import datetime as _dt
+                modified = _dt.fromtimestamp(
+                    os.path.getmtime(archive_entry.archive_path)).strftime("%Y-%m-%d")
+            except OSError:
+                modified = ""
+            self.tbl_entries.setItem(offset, 3, QTableWidgetItem(modified))
+            self.tbl_entries.setItem(
+                offset, 4,
+                QTableWidgetItem(
+                    f"{archive_entry.archive_path}  ›  {archive_entry.inner_path}"))
         self.lbl_selection_info.setText(
-            f"{len(entries)} result{'s' if len(entries) != 1 else ''}"
-            if entries else
+            f"{len(entries) + len(archive_entries)} result"
+            f"{'s' if len(entries) + len(archive_entries) != 1 else ''}"
+            + (f" ({len(archive_entries)} inside archives)" if archive_entries else "")
+            if entries or archive_entries else
             "No matching files found"
         )
 
@@ -1138,7 +1197,11 @@ class TagLibraryPanel(QWidget):
         for r in rows:
             item = self.tbl_entries.item(r, 0)
             if item:
-                entry_ids.append(item.data(Qt.ItemDataRole.UserRole))
+                entry_id = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(entry_id, int):
+                    entry_ids.append(entry_id)
+        if not entry_ids:
+            return
 
         menu = QMenu(self)
         # Tag submenu
@@ -1188,7 +1251,8 @@ class TagLibraryPanel(QWidget):
             item = self.tbl_entries.item(r, 0)
             if item:
                 entry_id = item.data(Qt.ItemDataRole.UserRole)
-                self._lib.add_tags_to_entry(entry_id, [tag.id])
+                if isinstance(entry_id, int):
+                    self._lib.add_tags_to_entry(entry_id, [tag.id])
 
         self._refresh_entries(tag_id=self._current_tag_id)
         self._refresh_tags()
@@ -1219,7 +1283,8 @@ class TagLibraryPanel(QWidget):
             item = self.tbl_entries.item(r, 0)
             if item:
                 entry_id = item.data(Qt.ItemDataRole.UserRole)
-                self._lib.remove_tags_from_entry(entry_id, [tag.id])
+                if isinstance(entry_id, int):
+                    self._lib.remove_tags_from_entry(entry_id, [tag.id])
 
         self._refresh_entries(tag_id=self._current_tag_id)
         self._refresh_tags()
@@ -1339,7 +1404,9 @@ class TagLibraryPanel(QWidget):
         for r in rows:
             item = self.tbl_entries.item(r, 0)
             if item:
-                self._lib.set_entry_rating(item.data(Qt.ItemDataRole.UserRole), rating)
+                entry_id = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(entry_id, int):
+                    self._lib.set_entry_rating(entry_id, rating)
         self._update_rating_display(rating)
 
     def _update_rating_display(self, rating: int):
@@ -1353,7 +1420,9 @@ class TagLibraryPanel(QWidget):
         for r in rows:
             item = self.tbl_entries.item(r, 0)
             if item:
-                self._lib.set_entry_inbox(item.data(Qt.ItemDataRole.UserRole), checked)
+                entry_id = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(entry_id, int):
+                    self._lib.set_entry_inbox(entry_id, checked)
 
     def _set_source_url(self, entry_ids: list[int]):
         url, ok = QInputDialog.getText(self, "Set Source URL", "URL (where this file was downloaded from):")

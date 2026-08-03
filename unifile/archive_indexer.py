@@ -19,10 +19,15 @@ The index database lives at:
 """
 from __future__ import annotations
 
+import contextlib
 import os
+import shutil
 import sqlite3
+import stat
+import tempfile
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from unifile.config import _APP_DATA_DIR, register_sqlite_connection
 
@@ -30,6 +35,334 @@ _DB_PATH = os.path.join(_APP_DATA_DIR, "archive_index.sqlite")
 _SUPPORTED_EXTENSIONS = {".zip", ".7z", ".rar", ".tar",
                           ".tar.gz", ".tgz", ".tar.bz2", ".tbz2",
                           ".tar.xz", ".txz"}
+_DEFAULT_MAX_FILES = 10_000
+_DEFAULT_MAX_TOTAL_SIZE = 2 * 1024 * 1024 * 1024
+
+
+class ArchiveExtractionError(RuntimeError):
+    """Raised when an archive cannot be extracted safely."""
+
+
+def archive_temp_root() -> str:
+    """Return the private temporary root used for archive workflows.
+
+    ``LOCALAPPDATA`` is preferred on Windows so the temporary files stay out
+    of the user's library and are easy to identify and clean.  The system
+    temporary directory is the portable fallback for tests and non-Windows
+    environments.
+    """
+    base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
+    return os.path.join(base, "UniFile", "temp")
+
+
+def _safe_member_name(root: str, member_name: str) -> str | None:
+    """Validate an archive member and return its safe destination path."""
+    name = str(member_name or "").replace("\\", "/")
+    if not name or name == ".":
+        return None
+    if name.startswith("/") or name.startswith("\\"):
+        raise ArchiveExtractionError(f"Unsafe absolute archive path: {member_name}")
+    if len(name) >= 2 and name[1] == ":":
+        raise ArchiveExtractionError(f"Unsafe drive-qualified archive path: {member_name}")
+    parts = [part for part in name.split("/") if part not in ("", ".")]
+    if any(part == ".." for part in parts):
+        raise ArchiveExtractionError(f"Unsafe parent traversal in archive path: {member_name}")
+    if not parts:
+        return None
+    destination_root = Path(root).resolve()
+    destination = (destination_root / Path(*parts)).resolve()
+    try:
+        destination.relative_to(destination_root)
+    except ValueError as exc:
+        raise ArchiveExtractionError(
+            f"Archive path escapes temporary directory: {member_name}"
+        ) from exc
+    return str(destination)
+
+
+def _validate_limits(file_count: int, total_size: int, *, max_files: int,
+                     max_total_size: int) -> None:
+    if file_count > max_files:
+        raise ArchiveExtractionError(
+            f"Archive contains more than the {max_files:,}-file safety limit"
+        )
+    if total_size > max_total_size:
+        raise ArchiveExtractionError(
+            f"Archive expands beyond the {max_total_size:,}-byte safety limit"
+        )
+
+
+def _zip_member_is_link(info) -> bool:
+    mode = (getattr(info, "external_attr", 0) >> 16) & 0xFFFF
+    return stat.S_ISLNK(mode)
+
+
+def _extract_zip(path: str, root: str, *, max_files: int,
+                 max_total_size: int) -> None:
+    import zipfile
+
+    with zipfile.ZipFile(path, "r") as archive:
+        infos = archive.infolist()
+        file_infos = [info for info in infos if not info.is_dir()]
+        total_size = sum(max(0, int(info.file_size)) for info in file_infos)
+        _validate_limits(len(file_infos), total_size,
+                         max_files=max_files, max_total_size=max_total_size)
+        destinations = []
+        for info in infos:
+            if _zip_member_is_link(info):
+                raise ArchiveExtractionError(
+                    f"Symbolic links are not allowed in archives: {info.filename}"
+                )
+            destination = _safe_member_name(root, info.filename)
+            destinations.append((info, destination))
+        for info, destination in destinations:
+            if destination is None:
+                continue
+            if info.is_dir():
+                os.makedirs(destination, exist_ok=True)
+                continue
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with archive.open(info, "r") as source, open(destination, "wb") as target:
+                shutil.copyfileobj(source, target)
+
+
+def _extract_tar(path: str, root: str, *, max_files: int,
+                 max_total_size: int) -> None:
+    import tarfile
+
+    with tarfile.open(path, "r:*") as archive:
+        members = archive.getmembers()
+        file_members = [member for member in members if member.isfile()]
+        total_size = sum(max(0, int(member.size)) for member in file_members)
+        _validate_limits(len(file_members), total_size,
+                         max_files=max_files, max_total_size=max_total_size)
+        destinations = []
+        for member in members:
+            if member.issym() or member.islnk() or member.isdev() or member.isfifo():
+                raise ArchiveExtractionError(
+                    f"Links and device entries are not allowed: {member.name}"
+                )
+            destination = _safe_member_name(root, member.name)
+            destinations.append((member, destination))
+        for member, destination in destinations:
+            if destination is None:
+                continue
+            if member.isdir():
+                os.makedirs(destination, exist_ok=True)
+                continue
+            source = archive.extractfile(member)
+            if source is None:
+                raise ArchiveExtractionError(f"Could not read archive member: {member.name}")
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with source, open(destination, "wb") as target:
+                shutil.copyfileobj(source, target)
+
+
+def _validate_optional_archive_members(path: str, root: str, *, max_files: int,
+                                       max_total_size: int) -> None:
+    """Validate 7z/RAR listings before delegating extraction to their reader."""
+    lower = path.lower()
+    if lower.endswith(".7z"):
+        try:
+            import py7zr
+        except ImportError as exc:
+            raise ArchiveExtractionError(
+                "7z extraction requires the optional py7zr dependency"
+            ) from exc
+        with py7zr.SevenZipFile(path, mode="r") as archive:
+            infos = archive.list()
+            files = [info for info in infos if not getattr(info, "is_directory", False)]
+            total_size = sum(max(0, int(getattr(info, "uncompressed", 0) or 0))
+                             for info in files)
+            _validate_limits(len(files), total_size,
+                             max_files=max_files, max_total_size=max_total_size)
+            for info in infos:
+                _safe_member_name(root, getattr(info, "filename", ""))
+        return
+    try:
+        import rarfile
+    except ImportError as exc:
+        raise ArchiveExtractionError(
+            "RAR extraction requires the optional rarfile dependency"
+        ) from exc
+    with rarfile.RarFile(path, "r") as archive:
+        infos = archive.infolist()
+        files = [info for info in infos if not info.is_dir()]
+        total_size = sum(max(0, int(getattr(info, "file_size", 0) or 0))
+                         for info in files)
+        _validate_limits(len(files), total_size,
+                         max_files=max_files, max_total_size=max_total_size)
+        for info in infos:
+            _safe_member_name(root, getattr(info, "filename", ""))
+
+
+def _extract_optional_archive(path: str, root: str, *, max_files: int,
+                              max_total_size: int) -> None:
+    lower = path.lower()
+    _validate_optional_archive_members(
+        path, root, max_files=max_files, max_total_size=max_total_size)
+    if lower.endswith(".7z"):
+        import py7zr
+        with py7zr.SevenZipFile(path, mode="r") as archive:
+            archive.extractall(path=root)
+    else:
+        import rarfile
+        with rarfile.RarFile(path, "r") as archive:
+            archive.extractall(path=root)
+
+
+def _extract_archive_to(path: str, root: str, *, max_files: int,
+                        max_total_size: int) -> None:
+    lower = path.lower()
+    if lower.endswith(".zip"):
+        _extract_zip(path, root, max_files=max_files, max_total_size=max_total_size)
+    elif lower.endswith(".rar") or lower.endswith(".7z"):
+        _extract_optional_archive(
+            path, root, max_files=max_files, max_total_size=max_total_size)
+    elif any(lower.endswith(ext) for ext in
+             (".tar", ".tgz", ".tar.gz", ".tbz2", ".tar.bz2", ".txz", ".tar.xz")):
+        _extract_tar(path, root, max_files=max_files, max_total_size=max_total_size)
+    else:
+        raise ArchiveExtractionError(f"Unsupported archive format: {path}")
+
+
+@contextlib.contextmanager
+def extracted_archive(path: str, *, temp_root: str | None = None,
+                      max_files: int = _DEFAULT_MAX_FILES,
+                      max_total_size: int = _DEFAULT_MAX_TOTAL_SIZE):
+    """Extract *path* into a private temporary directory and always clean it.
+
+    Archive member names are validated before any bytes are written.  Symlinks,
+    device entries, parent traversal, absolute paths, and oversized archives
+    are rejected.  The yielded directory is removed on both success and error.
+    """
+    archive_path = os.path.abspath(path)
+    if not os.path.isfile(archive_path):
+        raise ArchiveExtractionError(f"Archive not found: {path}")
+    if max_files < 1 or max_total_size < 1:
+        raise ValueError("Extraction safety limits must be positive")
+    base = os.path.abspath(temp_root or archive_temp_root())
+    os.makedirs(base, exist_ok=True)
+    root = tempfile.mkdtemp(prefix="archive-", dir=base)
+    try:
+        _extract_archive_to(
+            archive_path, root, max_files=max_files, max_total_size=max_total_size)
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def classify_extracted_archive(path: str, classifier, *,
+                               temp_root: str | None = None,
+                               max_files: int = _DEFAULT_MAX_FILES,
+                               max_total_size: int = _DEFAULT_MAX_TOTAL_SIZE) -> list[dict]:
+    """Classify every extracted file with ``classifier(path, inner_path)``.
+
+    The callback is deliberately injected so GUI and headless callers can use
+    their existing rule or AI classifier without making archive indexing depend
+    on a provider.  Results contain the archive path, breadcrumb path, and the
+    callback's classification payload.
+    """
+    if not callable(classifier):
+        raise TypeError("classifier must be callable")
+    archive_path = os.path.abspath(path)
+    results = []
+    with extracted_archive(archive_path, temp_root=temp_root,
+                           max_files=max_files, max_total_size=max_total_size) as root:
+        for child in sorted(Path(root).rglob("*")):
+            if not child.is_file():
+                continue
+            inner_path = child.relative_to(root).as_posix()
+            results.append({
+                "archive_path": archive_path,
+                "inner_path": inner_path,
+                "name": child.name,
+                "classification": classifier(str(child), inner_path),
+            })
+    return results
+
+
+def repack_archive(extracted_root: str, destination: str, *,
+                   format: str | None = None) -> str:
+    """Safely repackage an extracted tree using an atomic destination write.
+
+    ZIP and TAR variants are supported by the standard library.  7z is
+    supported when py7zr is installed; RAR is intentionally read-only because
+    rarfile does not provide a portable writer.  Existing destinations are
+    never overwritten.
+    """
+    root = os.path.abspath(extracted_root)
+    if not os.path.isdir(root):
+        raise ArchiveExtractionError(f"Extraction directory not found: {extracted_root}")
+    destination = os.path.abspath(destination)
+    if os.path.exists(destination):
+        raise FileExistsError(destination)
+    os.makedirs(os.path.dirname(destination) or ".", exist_ok=True)
+    lower = (format or destination).lower().lstrip(".")
+    if lower in {"rar"}:
+        raise ArchiveExtractionError("RAR archives are read-only and cannot be repacked")
+    if lower.endswith(".tar.gz") or lower.endswith(".tgz") or lower == "tar.gz":
+        tar_mode = "w:gz"
+    elif lower.endswith(".tar.bz2") or lower.endswith(".tbz2") or lower == "tar.bz2":
+        tar_mode = "w:bz2"
+    elif lower.endswith(".tar.xz") or lower.endswith(".txz") or lower == "tar.xz":
+        tar_mode = "w:xz"
+    elif lower.endswith(".tar") or lower == "tar":
+        tar_mode = "w"
+    elif lower.endswith(".7z") or lower == "7z":
+        tar_mode = None
+    else:
+        lower = "zip"
+        tar_mode = None
+
+    fd, temp_path = tempfile.mkstemp(
+        prefix=".unifile-repack-", suffix=".tmp", dir=os.path.dirname(destination) or ".")
+    os.close(fd)
+    try:
+        if lower == "7z" or lower.endswith(".7z"):
+            try:
+                import py7zr
+            except ImportError as exc:
+                raise ArchiveExtractionError(
+                    "7z repacking requires the optional py7zr dependency"
+                ) from exc
+            with py7zr.SevenZipFile(temp_path, "w") as archive:
+                archive.writeall(root, arcname="")
+        elif tar_mode:
+            import tarfile
+            with tarfile.open(temp_path, tar_mode) as archive:
+                archive.add(root, arcname="", recursive=True)
+        else:
+            import zipfile
+            with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                for child in sorted(Path(root).rglob("*")):
+                    archive.write(child, child.relative_to(root).as_posix())
+        os.replace(temp_path, destination)
+    finally:
+        try:
+            os.remove(temp_path)
+        except FileNotFoundError:
+            pass
+    return destination
+
+
+def archive_breadcrumb(entry: ArchiveEntry) -> str:
+    """Return the user-facing ``inner (inside archive)`` breadcrumb."""
+    archive_name = os.path.basename(entry.archive_path)
+    return f"{entry.name} (inside {archive_name})"
+
+
+def _default_archive_classifier(_file_path: str, inner_path: str) -> dict:
+    """Classify an archive member with the local filename classifier."""
+    from unifile.classifier import tiered_classify
+
+    result = tiered_classify(Path(inner_path).stem)
+    return {
+        "category": result.get("category"),
+        "confidence": result.get("confidence", 0),
+        "method": result.get("method", ""),
+        "detail": result.get("detail", ""),
+    }
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -49,6 +382,7 @@ class ArchiveScanResult:
     """Result of scanning one archive file."""
     archive_path: str
     entries: list[ArchiveEntry] = field(default_factory=list)
+    classifications: list[dict] = field(default_factory=list)
     error: str = ""
     elapsed: float = 0.0
 
@@ -402,11 +736,14 @@ try:
         error    = Signal(str)
 
         def __init__(self, directory: str, *, recursive: bool = True,
-                     force: bool = False, parent=None):
+                     force: bool = False, mode: str = "index",
+                     classifier=None, parent=None):
             super().__init__(parent)
             self._directory = directory
             self._recursive = recursive
             self._force = force
+            self._mode = mode
+            self._classifier = classifier
 
         def run(self) -> None:
             try:
@@ -417,6 +754,16 @@ try:
                     progress_callback=lambda scanned, total, path:
                         self.progress.emit(scanned, total, path),
                 )
+                if self._mode == "extract":
+                    classifier = self._classifier or _default_archive_classifier
+                    for result in results:
+                        if result.error:
+                            continue
+                        try:
+                            result.classifications = classify_extracted_archive(
+                                result.archive_path, classifier)
+                        except Exception as exc:
+                            result.error = str(exc)
                 self.finished.emit(results)
             except Exception as exc:
                 self.error.emit(str(exc))

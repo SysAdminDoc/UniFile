@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
+from unifile.profiles import ARCHIVE_MODE_EXTRACT, ARCHIVE_MODE_LABELS
 
 
 class ArchiveIndexerDialog(QDialog):
@@ -35,6 +36,9 @@ class ArchiveIndexerDialog(QDialog):
         self.setStyleSheet(get_active_stylesheet())
         self._t = get_active_theme()
         self._worker = None
+        parent_mode = getattr(getattr(parent, "cmb_archive_mode", None),
+                              "currentData", lambda: "index")()
+        self._archive_mode = parent_mode if parent_mode in ARCHIVE_MODE_LABELS else "index"
         self._build_ui()
         self._refresh_stats()
 
@@ -65,6 +69,16 @@ class ArchiveIndexerDialog(QDialog):
         lbl_idx = QLabel("Index a Directory")
         lbl_idx.setStyleSheet(f"color: {t['fg_bright']}; font-size: 14px; font-weight: 700;")
         idx_lay.addWidget(lbl_idx)
+
+        self.lbl_mode = QLabel(
+            f"Active profile mode: {ARCHIVE_MODE_LABELS[self._archive_mode]}. "
+            + ("Each archive is extracted to a private temporary directory, "
+               "classified, and cleaned automatically."
+               if self._archive_mode == ARCHIVE_MODE_EXTRACT else
+               "Only archive listings are read; source archives are not modified."))
+        self.lbl_mode.setWordWrap(True)
+        self.lbl_mode.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
+        idx_lay.addWidget(self.lbl_mode)
 
         dir_row = QHBoxLayout()
         self.txt_dir = QLineEdit()
@@ -151,12 +165,16 @@ class ArchiveIndexerDialog(QDialog):
         d = self.txt_dir.text().strip()
         if not d:
             return
+        parent_mode = getattr(getattr(self.parent(), "cmb_archive_mode", None),
+                              "currentData", lambda: self._archive_mode)()
+        if parent_mode in ARCHIVE_MODE_LABELS:
+            self._archive_mode = parent_mode
         self.btn_scan.setEnabled(False)
         self.progress.setVisible(True)
         self.progress.setValue(0)
         self.lbl_scan_status.setText("Scanning…")
 
-        self._worker = ArchiveIndexWorker(d, parent=self)
+        self._worker = ArchiveIndexWorker(d, mode=self._archive_mode, parent=self)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
@@ -174,8 +192,11 @@ class ArchiveIndexerDialog(QDialog):
         ok = sum(1 for r in results if not r.error)
         errors = sum(1 for r in results if r.error)
         total_entries = sum(len(r.entries) for r in results)
+        total_classified = sum(len(getattr(r, "classifications", [])) for r in results)
+        classified_copy = f", {total_classified} classified" if total_classified else ""
         self.lbl_scan_status.setText(
-            f"Done: {ok} archives indexed, {total_entries} files, {errors} errors."
+            f"Done: {ok} archives indexed, {total_entries} files{classified_copy}, "
+            f"{errors} errors."
         )
         self._refresh_stats()
 
