@@ -139,6 +139,29 @@ def test_scan_empty_folders_does_not_flag_root(tmp_path):
     assert not any(r.path == str(tmp_path) for r in found)
 
 
+def test_cleanup_delete_fails_closed_without_send2trash(tmp_path, monkeypatch):
+    """Safe cleanup must not permanently delete when trash support is absent."""
+    import sys
+
+    from unifile.cleanup import CleanupItem, delete_items
+
+    target = tmp_path / "remove-me.txt"
+    target.write_text("keep me recoverable", encoding="utf-8")
+    monkeypatch.setitem(sys.modules, "send2trash", None)
+    monkeypatch.setattr("unifile.cleanup.is_protected", lambda _path: False)
+
+    progress = []
+    result = delete_items(
+        [CleanupItem(path=str(target), size=target.stat().st_size)],
+        use_trash=True,
+        progress_cb=progress.append,
+    )
+
+    assert result == (0, 1, 0)
+    assert target.exists()
+    assert any("no files were deleted" in message.lower() for message in progress)
+
+
 # ── IgnoreFilter: is_dir flag now honoured for directory patterns ─────────────
 
 def test_ignore_filter_dir_only_pattern_matches_dir():

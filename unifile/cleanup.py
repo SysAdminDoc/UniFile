@@ -682,7 +682,15 @@ def _fmt_size(size_bytes: int) -> str:
 
 def delete_items(items: list[CleanupItem], *, use_trash: bool = True,
                  progress_cb: Callable = None) -> tuple:
-    """Delete selected cleanup items. Returns (success_count, fail_count, freed_bytes)."""
+    """Delete selected cleanup items.
+
+    Safe deletion is fail-closed: when ``use_trash`` is true, an unavailable
+    ``send2trash`` dependency must never turn a recoverable cleanup into a
+    permanent delete.  Callers that explicitly choose ``use_trash=False``
+    retain the existing irreversible behavior.
+
+    Returns ``(success_count, fail_count, freed_bytes)``.
+    """
     success = 0
     failed = 0
     freed = 0
@@ -694,6 +702,21 @@ def delete_items(items: list[CleanupItem], *, use_trash: bool = True,
             from send2trash import send2trash as _send2trash
         except ImportError:
             _send2trash = None
+
+    selected_items = [
+        item for item in items
+        if item.selected and not is_protected(item.path)
+    ]
+    if use_trash and _send2trash is None:
+        message = (
+            "Skipped: send2trash is not installed; no files were deleted. "
+            "Install it with: pip install send2trash."
+        )
+        for item in selected_items:
+            failed += 1
+            if progress_cb:
+                progress_cb(f"{message} ({item.path})")
+        return success, failed, freed
 
     for item in items:
         if not item.selected:

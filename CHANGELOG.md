@@ -10,6 +10,7 @@ All notable changes to UniFile will be documented in this file.
 - Filesystem mount points (drive roots) are now always protected from scan-apply operations.
 
 ### Fixed
+- Cleanup safe-delete operations now fail closed when `send2trash` is unavailable instead of permanently removing files or folders.
 - Tag Library async search worker now creates its own SQLAlchemy Session per thread instead of sharing the GUI thread's Session, preventing crashes and corrupted results.
 - ApplyFilesWorker undo log now records the actual destination path after collision renames, not the original (pre-suffix) path — fixes silent undo failures for renamed files.
 - ApplyFilesWorker adds rollback on move failure and wraps `run()` in `try/finally` to guarantee the `finished` signal fires (prevents stuck progress dialogs).
