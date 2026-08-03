@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QMenu,
     QProgressBar,
     QPushButton,
-    QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -22,6 +21,7 @@ from PyQt6.QtWidgets import (
 
 from unifile.config import get_active_theme
 from unifile.virtual_library import VirtualLibrary
+from unifile.widgets import KeyboardTreeWidget
 
 
 class _VLibScanWorker(QThread):
@@ -178,11 +178,12 @@ class VirtualLibraryPanel(QWidget):
         search_card_lay.addLayout(search_row)
 
         # Tree view (virtual folder structure)
-        self.tree = QTreeWidget()
+        self.tree = KeyboardTreeWidget()
         self.tree.setHeaderLabels(["Name", "Size", "Confidence", "Method"])
         self.tree.setAlternatingRowColors(True)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
+        self.tree.activated.connect(self._on_tree_keyboard_activate)
         h = self.tree.header()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for i in range(1, 4):
@@ -190,6 +191,20 @@ class VirtualLibraryPanel(QWidget):
         search_card_lay.addWidget(self.tree, 1)
         content_lay.addWidget(self.search_card, 1)
         layout.addWidget(content, 1)
+        tab_widgets = [
+            self.txt_dir,
+            self.btn_browse,
+            self.btn_open,
+            self.btn_scan,
+            self.btn_classify,
+            self.btn_export,
+            self.btn_check,
+            self.txt_search,
+            self.btn_search,
+            self.tree,
+        ]
+        for previous, current in zip(tab_widgets, tab_widgets[1:], strict=False):
+            self.setTabOrder(previous, current)
         self._show_placeholder("Open a library to start browsing virtual categories")
         self.apply_theme()
 
@@ -413,6 +428,16 @@ class VirtualLibraryPanel(QWidget):
             if os.path.exists(full_path):
                 import subprocess
                 subprocess.Popen(['explorer', '/select,', full_path])
+
+    def _on_tree_keyboard_activate(self, item):
+        """Open a selected virtual-library file when Enter activates a leaf."""
+        rel_path = item.data(0, Qt.ItemDataRole.UserRole)
+        if not rel_path or not self._lib.is_open:
+            return
+        full_path = os.path.join(self._lib.root_dir, rel_path)
+        if os.path.exists(full_path):
+            import subprocess
+            subprocess.Popen(['explorer', '/select,', full_path])
 
     def _set_library_actions(self, enabled: bool):
         self.btn_scan.setEnabled(enabled)

@@ -1258,6 +1258,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         # ── Results Table ────────────────────────────────────────────────
         self.tbl = QTableWidget()
+        self.tbl.installEventFilter(self)
         self.tbl.setObjectName("main_table")
         self.tbl.setAccessibleName("Results table")
         self.tbl.setAccessibleDescription("Scan results — review and check items before applying changes")
@@ -3502,6 +3503,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
     def eventFilter(self, obj, event):
         """Intercept Up/Down arrow keys on the search bar to cycle query history."""
         from PyQt6.QtCore import QEvent
+        if obj is getattr(self, 'tbl', None) and event.type() == QEvent.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._toggle_selected_result_rows()
+                return True
+            if event.key() == Qt.Key.Key_Space:
+                self._open_selected_result_location()
+                return True
         if obj is self.txt_search and event.type() == QEvent.Type.KeyPress:
             key = event.key()
             # Don't steal arrow keys while the autocomplete popup is open
@@ -3534,6 +3542,42 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                 return True
         return super().eventFilter(obj, event)
 
+    def _selected_result_rows(self) -> list[int]:
+        if not self.tbl.selectionModel():
+            return []
+        return sorted({idx.row() for idx in self.tbl.selectionModel().selectedRows()})
+
+    def _toggle_selected_result_rows(self):
+        """Toggle the review checkbox for every selected result row."""
+        for row in self._selected_result_rows():
+            checkbox = self.tbl.cellWidget(row, 0)
+            if isinstance(checkbox, QCheckBox):
+                checkbox.setChecked(not checkbox.isChecked())
+
+    def _open_selected_result_location(self):
+        """Open the selected result's containing folder from the keyboard."""
+        rows = self._selected_result_rows()
+        if not rows:
+            return
+        row = rows[0]
+        op = self.cmb_op.currentIndex()
+        path = None
+        if op == self.OP_FILES and row < len(self.file_items):
+            path = self.file_items[row].full_src
+        elif op in (self.OP_CAT, self.OP_SMART) and row < len(self.cat_items):
+            path = self.cat_items[row].full_source_path
+        elif row < len(self.aep_items):
+            path = self.aep_items[row].full_current_path
+        if not path:
+            return
+        target = path if os.path.isdir(path) else os.path.dirname(path)
+        if sys.platform == 'win32':
+            os.startfile(target)
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', target])
+        else:
+            subprocess.Popen(['xdg-open', target])
+
     def _search_save_history(self):
         """Save the current search query to history on Enter."""
         query = self.txt_search.text().strip()
@@ -3553,30 +3597,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         if key == Qt.Key.Key_Escape:
             self.tbl.clearSelection()
         elif key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-            # Toggle checkbox on selected rows
-            sel_rows = sorted(set(idx.row() for idx in self.tbl.selectionModel().selectedRows()))
-            for r in sel_rows:
-                w = self.tbl.cellWidget(r, 0)
-                if isinstance(w, QCheckBox):
-                    w.setChecked(not w.isChecked())
+            self._toggle_selected_result_rows()
         elif key == Qt.Key.Key_Space:
-            # Open in explorer for the first selected row
-            sel_rows = sorted(set(idx.row() for idx in self.tbl.selectionModel().selectedRows()))
-            if sel_rows:
-                row = sel_rows[0]
-                op = self.cmb_op.currentIndex()
-                path = None
-                if op == self.OP_FILES and row < len(self.file_items):
-                    path = self.file_items[row].full_src
-                elif op in (self.OP_CAT, self.OP_SMART) and row < len(self.cat_items):
-                    path = self.cat_items[row].full_source_path
-                elif row < len(self.aep_items):
-                    path = self.aep_items[row].full_current_path
-                if path:
-                    target = path if os.path.isdir(path) else os.path.dirname(path)
-                    if sys.platform == 'win32': os.startfile(target)
-                    elif sys.platform == 'darwin': subprocess.Popen(['open', target])
-                    else: subprocess.Popen(['xdg-open', target])
+            self._open_selected_result_location()
         elif key == Qt.Key.Key_Delete:
             # Uncheck selected rows
             sel_rows = sorted(set(idx.row() for idx in self.tbl.selectionModel().selectedRows()))

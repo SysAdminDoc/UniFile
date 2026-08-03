@@ -25,6 +25,30 @@ AUDITED = [
             "self.setTabOrder(self.cmb_archive_mode, self.txt_src)",
             "self.setTabOrder(self.txt_src, self.btn_scan)",
             "self.setTabOrder(self.sld_conf, self.tbl)",
+            "self.tbl.installEventFilter(self)",
+            "self._toggle_selected_result_rows()",
+        ],
+    ),
+    (
+        "dialogs/tag_library.py",
+        "TagLibraryPanel",
+        [
+            "self.tag_tree = KeyboardTreeWidget()",
+            "self.tag_tree.activated.connect",
+            "self._quick_tag_buttons = []",
+            "self.tbl_entries,",
+            "self.cmb_assign_tag,",
+        ],
+    ),
+    (
+        "dialogs/virtual_library_panel.py",
+        "VirtualLibraryPanel",
+        [
+            "self.tree = KeyboardTreeWidget()",
+            "self.tree.activated.connect(self._on_tree_keyboard_activate)",
+            "self.txt_dir,",
+            "self.btn_search,",
+            "self.tree,",
         ],
     ),
     (

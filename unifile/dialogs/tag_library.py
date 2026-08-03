@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
-    QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -29,6 +28,7 @@ from PyQt6.QtWidgets import (
 from unifile.config import get_active_theme
 from unifile.tagging.library import TagLibrary
 from unifile.tagging.models import TAG_COLORS
+from unifile.widgets import KeyboardTreeWidget
 
 
 class _EntrySearchWorker(QThread):
@@ -204,7 +204,7 @@ class TagLibraryPanel(QWidget):
         tag_lay.addLayout(ns_row)
 
         # Tag tree (hierarchical)
-        self.tag_tree = QTreeWidget()
+        self.tag_tree = KeyboardTreeWidget()
         self.tag_tree.setHeaderLabels(["Tag", "Count"])
         self.tag_tree.setColumnWidth(0, 180)
         self.tag_tree.setColumnWidth(1, 50)
@@ -213,6 +213,7 @@ class TagLibraryPanel(QWidget):
         self.tag_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tag_tree.customContextMenuRequested.connect(self._on_tag_context_menu)
         self.tag_tree.itemClicked.connect(self._on_tag_clicked)
+        self.tag_tree.activated.connect(lambda item: self._on_tag_clicked(item, 0))
         tag_lay.addWidget(self.tag_tree, 1)
 
         # Quick tag buttons
@@ -220,11 +221,13 @@ class TagLibraryPanel(QWidget):
         quick_row.setSpacing(4)
         self.lbl_quick = QLabel("Quick tags")
         quick_row.addWidget(self.lbl_quick)
+        self._quick_tag_buttons = []
         for preset_name in ["Favorite", "Important", "Review", "Archive"]:
             btn = QPushButton(preset_name)
             btn.setProperty("class", "toolbar")
             btn.clicked.connect(lambda checked, n=preset_name: self._quick_create_tag(n))
             quick_row.addWidget(btn)
+            self._quick_tag_buttons.append(btn)
         quick_row.addStretch()
         tag_lay.addLayout(quick_row)
 
@@ -399,6 +402,32 @@ class TagLibraryPanel(QWidget):
         splitter.setStretchFactor(1, 3)
 
         lay.addWidget(splitter, 1)
+        tab_widgets = [
+            self.btn_open_library,
+            self.txt_tag_search,
+            self.btn_add_tag,
+            self.cmb_ns_filter,
+            self.chk_show_hidden,
+            self.tag_tree,
+            *self._quick_tag_buttons,
+            self.btn_import,
+            self.btn_export_pack,
+            self.btn_broken_links,
+            self.btn_ts_import,
+            self.btn_ts_export,
+            self.txt_entry_search,
+            self.txt_semantic,
+            self.btn_add_files,
+            self.btn_scan_dir,
+            self.tbl_entries,
+            self.cmb_assign_tag,
+            self.btn_assign,
+            self.btn_remove_tag,
+            *self._rating_btns,
+            self.btn_inbox,
+        ]
+        for previous, current in zip(tab_widgets, tab_widgets[1:], strict=False):
+            self.setTabOrder(previous, current)
         self.apply_theme()
 
     # ── Preview Panel ────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QSystemTrayIcon,
     QTextEdit,
+    QTreeWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -42,6 +43,24 @@ from unifile.config import (
 from unifile.metadata import ArchivePeeker
 
 # PIL availability handled via HAS_PILLOW in bootstrap.py; no standalone probe needed here.
+
+
+class KeyboardTreeWidget(QTreeWidget):
+    """Tree view with predictable Space/Enter activation semantics."""
+
+    activated = pyqtSignal(object)
+
+    def keyPressEvent(self, event):
+        if event.key() in (
+                Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            item = self.currentItem()
+            if item is not None and item.flags() & Qt.ItemFlag.ItemIsSelectable:
+                if item.childCount():
+                    item.setExpanded(not item.isExpanded())
+                else:
+                    self.activated.emit(item)
+                return
+        super().keyPressEvent(event)
 
 class CategoryBarChart(QWidget):
     """Horizontal stacked bar chart showing file count per category."""
