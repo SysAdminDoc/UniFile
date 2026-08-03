@@ -158,11 +158,7 @@ Strategic / aspirational features. Some require significant architecture changes
 - **Multi-library support** — switch libraries from the sidebar; each library has its own Ollama model selection, rules, and theme preference
 - **Tag implication rules** — "kitten" → "cat" → "animal" (Hydrus Network-style graph); implications stored in a `tag_implications` table; propagated automatically on tag application
 - **Tag siblings** — mark two tags as synonyms; applying one auto-suggests the other; Hydrus's sibling DB layout as the reference
-- **Saved searches + Smart Views** — any query saved as a persistent Smart View; materialized in sidebar with file count badge
-- **XMP sidecar writer** — write tags to `.xmp` sidecar files alongside originals so tags survive outside UniFile; supports TagStudio sidecar format for round-trip compatibility
-- **Rule-based auto-tagging** — classifier extension + regex rules merged with LLM output; fire after every scan apply
 - **Color extraction** — extract dominant palette from images; index by color; "show me files with predominant blue tones" search; analogous to Eagle's color search
-- **Star ratings & review flags** — 1–5 star rating field + "Needs Review" / "Approved" / "Rejected" status enum; shown as icon overlays on thumbnails
 - **Custom field schemas per library** — define additional field types per library (Budget/currency, Deadline/date, Status/enum); validation rules enforced in the editor
 
 ---

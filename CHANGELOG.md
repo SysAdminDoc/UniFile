@@ -29,6 +29,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Existing Tag Library capabilities are now reflected as complete roadmap work: cached Smart Views, XMP sidecars, post-scan category auto-tagging, and persistent 1–5 star/review flags are all available in the live UI and APIs.
 - Archive scans now best-effort populate the semantic embedding index with stable archive/member metadata, while semantic results remain read-only breadcrumbs; Extract + classify uses the configured AI provider chain before the local fallback and reports semantic-vector coverage.
 - Keyboard navigation now spans the main results, Tag Library, and Virtual Library surfaces; tree containers toggle with Space/Enter, leaf activation is routed to the owning panel, and arrow-key navigation remains native.
 - Quick Capture inbox sync: a configured folder now receives the system `tag:inbox` in an open Tag Library without moving files; dashboard/sidebar counts and a filtered view expose pending files, and the Inbox panel can move selected files into a chosen library destination while clearing the inbox tag.
