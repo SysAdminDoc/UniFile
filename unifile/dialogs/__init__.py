@@ -23,6 +23,7 @@ from unifile.dialogs.editors import (
     TemplateBuilderWidget,
     _FileBrowserDialog,
 )
+from unifile.dialogs.metadata_editor import BatchMetadataEditorDialog
 from unifile.dialogs.settings import (
     FaceManagerDialog,
     ModelManagerDialog,
@@ -57,4 +58,5 @@ __all__ = [
     'SemanticSearchSettingsDialog', 'SemanticSearchDialog',
     'EmbeddingSettingsDialog', 'LearningStatsDialog',
     'SettingsHubDialog',
+    'BatchMetadataEditorDialog',
 ]

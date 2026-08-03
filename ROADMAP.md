@@ -34,12 +34,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 Larger features requiring non-trivial architecture or multi-week effort.
 
-### Batch Metadata Spreadsheet Editor
-- Spreadsheet-like grid: filename | current XMP/EXIF | proposed new value | accept/reject checkbox
-- Conflict detection: highlight rows where a field is already populated with a different value
-- Batch write with per-field undo; all writes logged to the existing embed log
-- Especially useful for photographers ingesting 1000+ RAW files and needing to bulk-apply EXIF location, copyright, or caption fields
-
 ### Collections / Visual Boards
 - Non-hierarchical "Collection" grouping — drag any files from any folder into a named collection
 - Board view: Kanban-style columns per collection; thumbnail cards with hover metadata

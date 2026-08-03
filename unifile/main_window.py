@@ -648,6 +648,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         menu_cleanup.addSeparator()
         menu_cleanup.addAction("Watch History...", self._open_watch_history)
         menu_cleanup.addSeparator()
+        menu_cleanup.addAction("Batch Metadata Editor...", self._open_batch_metadata_editor)
         menu_cleanup.addAction("Sort Rules...", self._open_sort_rules)
 
         # ── Top Action Bar ───────────────────────────────────────────────

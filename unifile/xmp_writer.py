@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -106,6 +107,52 @@ def _set_bag(desc: ET.Element, ns_prefix: str, local: str, values: list) -> None
         li.text = str(v)
 
 
+def _remove_value(desc: ET.Element, ns_prefix: str, local: str) -> None:
+    element = desc.find(f'{ns_prefix}{local}')
+    if element is not None:
+        desc.remove(element)
+
+
+def _load_sidecar_root(sidecar: str) -> tuple[ET.Element, ET.Element]:
+    """Load an XMP root and description, falling back to a fresh document."""
+    if os.path.isfile(sidecar):
+        try:
+            raw = _strip_xpacket(open(sidecar, 'rb').read())
+            root = ET.fromstring(raw)
+            desc = _find_desc(root)
+            if desc is not None:
+                return root, desc
+        except Exception:
+            pass
+    root = _build_fresh_root()
+    return root, _find_desc(root)
+
+
+def _write_sidecar_root(sidecar: str, root: ET.Element) -> bool:
+    """Atomically write an XMP root, retaining the original on failure."""
+    try:
+        _indent(root)
+        payload = ET.tostring(root, encoding='unicode', xml_declaration=False)
+        directory = os.path.dirname(sidecar) or '.'
+        os.makedirs(directory, exist_ok=True)
+        fd, temp_path = tempfile.mkstemp(
+            prefix='.unifile-', suffix='.xmp.tmp', dir=directory)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write("<?xpacket begin='\xef\xbb\xbf' id='W5M0MpCehiHzreSzNTczkc9d'?>\n")
+                f.write(payload)
+                f.write("\n<?xpacket end='w'?>")
+            os.replace(temp_path, sidecar)
+        finally:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        return True
+    except Exception:
+        return False
+
+
 def write_sidecar(file_path: str,
                   category: str,
                   tags: list | None = None,
@@ -120,22 +167,7 @@ def write_sidecar(file_path: str,
     """
     sidecar = _sidecar_path(file_path)
 
-    # Load existing or start fresh
-    root: ET.Element
-    if os.path.isfile(sidecar):
-        try:
-            raw = _strip_xpacket(open(sidecar, 'rb').read())
-            root = ET.fromstring(raw)
-            desc = _find_desc(root)
-            if desc is None:
-                root = _build_fresh_root()
-                desc = _find_desc(root)
-        except Exception:
-            root = _build_fresh_root()
-            desc = _find_desc(root)
-    else:
-        root = _build_fresh_root()
-        desc = _find_desc(root)
+    root, desc = _load_sidecar_root(sidecar)
 
     now = _iso_now()
 
@@ -166,16 +198,7 @@ def write_sidecar(file_path: str,
     if flag:
         _set_text(desc, _UF, 'Flag', flag)
 
-    try:
-        _indent(root)
-        payload = ET.tostring(root, encoding='unicode', xml_declaration=False)
-        with open(sidecar, 'w', encoding='utf-8') as f:
-            f.write("<?xpacket begin='\xef\xbb\xbf' id='W5M0MpCehiHzreSzNTczkc9d'?>\n")
-            f.write(payload)
-            f.write("\n<?xpacket end='w'?>")
-        return True
-    except Exception:
-        return False
+    return _write_sidecar_root(sidecar, root)
 
 
 def read_sidecar(file_path: str) -> dict:
@@ -218,4 +241,70 @@ def read_sidecar(file_path: str) -> dict:
         if el is not None and el.text:
             result[key] = el.text
 
+    custom_fields = {}
+    for element in desc:
+        if not element.tag.startswith(_UF):
+            continue
+        local = element.tag[len(_UF):]
+        if local.startswith('Field_'):
+            # An empty element is an intentional clear marker. It prevents a
+            # stale embedded EXIF value from reappearing after a sidecar edit.
+            custom_fields[local[6:].lower()] = element.text or ''
+    if custom_fields:
+        result['fields'] = custom_fields
+
     return result
+
+
+def write_editable_fields(file_path: str, fields: dict[str, object]) -> bool:
+    """Update UniFile-managed batch-editor fields in the XMP sidecar.
+
+    The original file is never modified. Empty values remove the managed
+    field, which makes an undo operation able to restore a previously absent
+    value. Unknown fields are stored under the UniFile namespace so they can
+    safely accompany RAW and other formats without damaging embedded metadata.
+    """
+    sidecar = _sidecar_path(file_path)
+    root, desc = _load_sidecar_root(sidecar)
+
+    for field, raw_value in fields.items():
+        key = str(field).strip().lower()
+        if isinstance(raw_value, list | tuple | set):
+            value = '; '.join(str(item).strip() for item in raw_value if str(item).strip())
+        else:
+            value = '' if raw_value is None else str(raw_value).strip()
+
+        custom_local = 'Field_' + re.sub(
+            r'[^A-Za-z0-9_]+', '_', key).strip('_')
+        _set_text(desc, _UF, custom_local, value)
+
+        if key == 'keywords':
+            values = [part.strip() for part in re.split(r'[;,]', value) if part.strip()]
+            if values:
+                _set_bag(desc, _DC, 'subject', values)
+            else:
+                _remove_value(desc, _DC, 'subject')
+            continue
+        if key == 'category':
+            if value:
+                _set_text(desc, _UF, 'Category', value)
+                _set_text(desc, _XMP, 'Label', value)
+            else:
+                _remove_value(desc, _UF, 'Category')
+                _remove_value(desc, _XMP, 'Label')
+            continue
+        if key == 'rating':
+            if value:
+                _set_text(desc, _XMP, 'Rating', value)
+            else:
+                _remove_value(desc, _XMP, 'Rating')
+            continue
+        if key == 'flag':
+            if value:
+                _set_text(desc, _UF, 'Flag', value)
+            else:
+                _remove_value(desc, _UF, 'Flag')
+            continue
+
+    _set_text(desc, _XMP, 'ModifyDate', _iso_now())
+    return _write_sidecar_root(sidecar, root)

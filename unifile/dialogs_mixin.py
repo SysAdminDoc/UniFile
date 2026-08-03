@@ -10,7 +10,10 @@ heavyweight construct (the CSV sort rules dialog loads pandas, the
 semantic search dialog loads embeddings, etc.) — keeping them
 inside the methods preserves the fast-start behavior.
 """
+import os
+
 from unifile.dialogs import (
+    BatchMetadataEditorDialog,
     CsvRulesDialog,
     CustomCategoriesDialog,
     OllamaSettingsDialog,
@@ -87,6 +90,24 @@ class DialogsMixin:
             self.settings.setValue("auto_embed", dlg.chk_auto.isChecked())
             self.settings.setValue("embed_tags", dlg.chk_tags.isChecked())
             self._log(f"Metadata embedding: auto={dlg.chk_auto.isChecked()}")
+
+    def _open_batch_metadata_editor(self):
+        """Open the review-first editor for checked scan result files."""
+        paths = [
+            item.full_src for item in getattr(self, 'file_items', [])
+            if getattr(item, 'selected', False)
+            and os.path.isfile(getattr(item, 'full_src', ''))
+        ]
+        if not paths:
+            self._log("Batch metadata editor: check one or more files first")
+            return
+        dlg = BatchMetadataEditorDialog(paths, self)
+        dlg.exec()
+        if getattr(dlg, '_last_batch_id', ''):
+            self._log(
+                f"Batch metadata editor: {len(getattr(dlg, '_last_changes', []))} "
+                "field change(s) remain available to undo"
+            )
 
     def _open_learning_stats(self):
         from unifile.dialogs.advanced_settings import LearningStatsDialog
