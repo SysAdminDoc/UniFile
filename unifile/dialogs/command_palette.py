@@ -13,11 +13,12 @@ Arrow keys navigate, Enter executes, Escape closes.
 """
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import NamedTuple
 
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QKeyEvent
+from PyQt6.QtGui import QColor, QKeyEvent, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -39,6 +40,7 @@ class _Command(NamedTuple):
     label: str
     hint: str
     callback: Callable
+    preview_path: str = ""
 
 
 class CommandPalette(QDialog):
@@ -131,7 +133,19 @@ class CommandPalette(QDialog):
             f"QListWidget::item:hover {{ background: {t['bg_alt']}; }}"
         )
         self.lst.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.lst.setMouseTracking(True)
+        self.lst.itemEntered.connect(self._on_item_hover)
         card_lay.addWidget(self.lst)
+
+        self.preview = QLabel("Hover a file result to preview it")
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview.setMinimumHeight(88)
+        self.preview.setMaximumHeight(150)
+        self.preview.setStyleSheet(
+            f"color: {t['muted']}; background: {t['bg']}; "
+            f"border-top: 1px solid {t['border']}; padding: 8px;"
+        )
+        card_lay.addWidget(self.preview)
 
         # ── Footer hint ───────────────────────────────────────────────────────
         footer = QLabel("↑↓ navigate   ↵ run   esc close")
@@ -170,9 +184,17 @@ class CommandPalette(QDialog):
     def _filter(self, query: str) -> None:
         q = query.strip().lower()
         self.lst.clear()
-        matches = [c for c in self._all_commands
-                   if not q or q in c.label.lower() or q in c.hint.lower()
-                   or q in c.section.lower()]
+        matches = []
+        file_matches = 0
+        for command in self._all_commands:
+            if q and not (q in command.label.lower() or q in command.hint.lower()
+                          or q in command.section.lower()):
+                continue
+            if command.section == "File":
+                if file_matches >= 5:
+                    continue
+                file_matches += 1
+            matches.append(command)
         if not matches:
             item = QListWidgetItem("  No results")
             item.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -181,7 +203,7 @@ class CommandPalette(QDialog):
             return
 
         # Group by section
-        section_order = ["Command", "Profile", "Category"]
+        section_order = ["Command", "History", "Profile", "Category", "File"]
         section_order += sorted({c.section for c in matches
                                   if c.section not in section_order})
         sections_seen: set[str] = set()
@@ -233,6 +255,23 @@ class CommandPalette(QDialog):
         self.lst.addItem(item)
         self.lst.setItemWidget(item, widget)
         return item
+
+    def _on_item_hover(self, item: QListWidgetItem) -> None:
+        """Show a lightweight image preview for the hovered file command."""
+        cmd: _Command | None = item.data(Qt.ItemDataRole.UserRole)
+        if not cmd or not cmd.preview_path:
+            self.preview.setPixmap(QPixmap())
+            self.preview.setText("Hover a file result to preview it")
+            return
+        pixmap = QPixmap(cmd.preview_path)
+        if pixmap.isNull():
+            self.preview.setPixmap(QPixmap())
+            self.preview.setText(cmd.hint or cmd.preview_path)
+            return
+        self.preview.setText(cmd.label)
+        self.preview.setPixmap(
+            pixmap.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio,
+                          Qt.TransformationMode.SmoothTransformation))
 
     # ── Execution ─────────────────────────────────────────────────────────────
 
@@ -403,6 +442,24 @@ def build_commands(main_window) -> list[_Command]:
     except Exception:
         pass
 
+    # ── Query history ────────────────────────────────────────────────────────
+    try:
+        from unifile.query_history import load_history
+        for previous_query in load_history():
+            def _run_history(q=previous_query):
+                try:
+                    if hasattr(mw, "txt_search"):
+                        mw.txt_search.setText(q)
+                    if hasattr(mw, "_apply_filter"):
+                        mw._apply_filter()
+                except Exception:
+                    pass
+
+            commands.append(_Command("History", previous_query,
+                                     "Run previous search", _run_history))
+    except Exception:
+        pass
+
     # ── Smart Views (saved searches) ──────────────────────────────────────────
     try:
         from unifile.saved_searches import load_saved_searches
@@ -426,6 +483,34 @@ def build_commands(main_window) -> list[_Command]:
 
             hint = s.query or s.category or ""
             commands.append(_Command("Smart View", s.name, hint, _run_saved))
+    except Exception:
+        pass
+
+    # ── Current scan results ──────────────────────────────────────────────────
+    try:
+        seen_paths = set()
+        for attr in ("file_items", "cat_items", "aep_items"):
+            for item in getattr(mw, attr, []) or []:
+                path = (getattr(item, "full_src", None)
+                        or getattr(item, "full_source_path", None)
+                        or getattr(item, "full_current_path", None)
+                        or "")
+                if not path or path in seen_paths:
+                    continue
+                seen_paths.add(path)
+                label = (getattr(item, "name", None)
+                         or getattr(item, "folder_name", None)
+                         or os.path.basename(path))
+                category = getattr(item, "category", "") or ""
+                hint = f"{category}  •  {path}" if category else path
+
+                def _focus_result(p=path):
+                    try:
+                        mw._focus_result_path(p)
+                    except Exception:
+                        pass
+
+                commands.append(_Command("File", label, hint, _focus_result, path))
     except Exception:
         pass
 

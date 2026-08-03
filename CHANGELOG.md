@@ -32,6 +32,7 @@ All notable changes to UniFile will be documented in this file.
 - Safe archive extraction/repackaging helpers with traversal, link, archive-size, and file-count guards; the Extract + classify profile mode always removes its temporary workspace.
 - Tag Library filename search now includes indexed archive members with an `inner file (inside archive)` breadcrumb and read-only preview.
 - Scan profiles now persist an archive-content mode: read-only listing index or temporary extraction/classification.
+- Ctrl+K now searches current scan files, saved query history, profiles, categories, and commands; file results are capped at five and expose a hover thumbnail preview.
 - TagSpaces folder metadata (`.ts/tsm.json`) import/export with unsupported-field reporting.
 - TagSpaces saved search import/export with round-trip support and unsupported-field warnings.
 - Tag Library import/export now includes folder-level tags alongside file sidecars.
@@ -48,6 +49,7 @@ All notable changes to UniFile will be documented in this file.
 - Frozen-build Qt-binding isolation preflight (fails before PyInstaller on conflicting bindings).
 
 ### Changed
+- The Accessibility font-size control now enforces the documented 8–20 px range, including clamping older saved values.
 - Main navigation and organizer controls now expose stable screen-reader names/descriptions and an explicit sidebar-to-workspace tab chain.
 - `[full]` extra no longer pulls `cmake`, `dlib`, `face_recognition`, `nexaai`. Use `[face]` or `[nexa]` explicitly.
 - Bootstrap no longer tries `--break-system-packages`; reports virtualenv/pipx guidance on failure.

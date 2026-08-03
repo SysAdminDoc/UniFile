@@ -31,21 +31,12 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 ### Keyboard Navigation & Accessibility
 - Full Tab-order through all panels (main tree → tag library → results → toolbar)
 - Space/Enter to expand folders and trigger actions; arrow keys to navigate trees
-- Ctrl+K — Spotlight-style command palette: type `scan`, `tag`, a profile name, or a file query; results update instantly with inline thumbnail preview
-- Ctrl+T to focus tag search; Ctrl+S to start scan; Alt+1–9 to switch profiles
-- `setAccessibleName()` + `setAccessibleDescription()` on all major widgets for NVDA/JAWS screen reader compatibility
-- High-contrast theme (WCAG AA: pure black bg, pure white text, bright accents) as a seventh theme option
-- Configurable base font size in Settings → Accessibility (8–20 pt, scales all UI elements proportionally)
 
 ### Archive Content Indexing
 - Scan inside `.zip`, `.rar`, `.7z`, `.tar.*` archives without extracting — index the file listing and inner filenames into the tag library and semantic search index
 - Extraction mode (per-profile toggle): "Extract to temp → classify → repackage" for full AI classification of archive contents; temp path `%LOCALAPPDATA%\UniFile\temp`, always cleaned up
 
 ### Spotlight-Style Search Bar
-- Ctrl+K command palette: instant file/tag/category search with thumbnail preview pane on hover; results show top 5 matching files before pressing Enter
-- Chainable filters without closing (`tag:photo date:2024 ext:raw`)
-- History of last 20 queries; arrow-up to cycle
-- Analogous to Notion's database search / Bear's tag search
 
 ### Saved Searches with Cached Results
 - Save any tag/filter query as a named Smart View; materialized as a sidebar item under "Smart Views"

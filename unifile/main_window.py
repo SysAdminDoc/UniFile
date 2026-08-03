@@ -3485,6 +3485,26 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._command_palette.set_commands(build_commands(self))
         self._command_palette.open()
 
+    def _focus_result_path(self, path: str) -> None:
+        """Select a current scan result chosen from the command palette."""
+        wanted = os.path.normcase(os.path.abspath(str(path)))
+        items = self._items()
+        for row in range(self.tbl.rowCount()):
+            idx = self._item_idx_from_row(row)
+            if idx is None or not 0 <= idx < len(items):
+                continue
+            item = items[idx]
+            candidate = (getattr(item, "full_src", None)
+                         or getattr(item, "full_source_path", None)
+                         or getattr(item, "full_current_path", None)
+                         or "")
+            if os.path.normcase(os.path.abspath(str(candidate))) != wanted:
+                continue
+            self.tbl.selectRow(row)
+            self.tbl.scrollToItem(self.tbl.item(row, 0))
+            self.tbl.setFocus()
+            return
+
     # ═══ EXPORT/IMPORT RULES ═════════════════════════════════════════════════
     def _export_rules(self):
         """Export custom categories + corrections as JSON."""

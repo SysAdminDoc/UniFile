@@ -58,7 +58,7 @@ class AccessibilityDialog(QDialog):
         row.addWidget(lbl_caption)
 
         self.sld = QSlider(Qt.Orientation.Horizontal)
-        self.sld.setRange(8, 24)
+        self.sld.setRange(8, 20)
         self.sld.setValue(self._original_fs)
         self.sld.setTickInterval(2)
         self.sld.setTickPosition(QSlider.TickPosition.TicksBelow)

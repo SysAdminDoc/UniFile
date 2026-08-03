@@ -611,7 +611,7 @@ def load_font_size() -> int:
     try:
         with open(_FONT_SIZE_FILE) as f:
             val = json.load(f).get('font_size', _DEFAULT_FONT_SIZE)
-            _cached_font_size = int(val)
+        _cached_font_size = max(8, min(20, int(val)))
     except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
         _cached_font_size = _DEFAULT_FONT_SIZE
     return _cached_font_size
@@ -619,7 +619,7 @@ def load_font_size() -> int:
 def save_font_size(size: int) -> None:
     """Persist font size and invalidate the cache."""
     global _cached_font_size
-    size = max(8, min(24, int(size)))
+    size = max(8, min(20, int(size)))
     _cached_font_size = size
     save_json_safe(_FONT_SIZE_FILE, {'font_size': size})
 

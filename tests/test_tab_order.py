@@ -21,7 +21,8 @@ AUDITED = [
         "UniFile",
         [
             "self.setTabOrder(nav_widgets[-1], self.cmb_profile)",
-            "self.setTabOrder(self.cmb_profile, self.txt_src)",
+            "self.setTabOrder(self.cmb_profile, self.cmb_archive_mode)",
+            "self.setTabOrder(self.cmb_archive_mode, self.txt_src)",
             "self.setTabOrder(self.txt_src, self.btn_scan)",
             "self.setTabOrder(self.sld_conf, self.tbl)",
         ],
