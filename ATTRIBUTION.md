@@ -20,9 +20,9 @@ license; each is re-used in the spirit of its original license.
   against the public TagStudio data model documentation. If you plan to
   redistribute UniFile's tagging code separately, double-check that your own
   usage stays on the right side of this boundary.
-- The TMDb API key embedded in `unifile/media/providers.py` is a shared
-  demo key inherited from mnamer. For heavy use, set the `API_KEY_TMDB`
-  environment variable to your own key.
+- TMDb and OMDb lookups require user-owned credentials through Media Lookup
+  settings or the `API_KEY_TMDB` / `API_KEY_OMDB` environment variables.
+  UniFile does not ship shared fallback keys.
 - If you believe attribution is missing or incorrect, please open an issue.
 
 ## Third-party runtime dependencies
