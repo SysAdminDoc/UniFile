@@ -1047,24 +1047,29 @@ class TagLibraryPanel(QWidget):
                 self.lbl_selection_info.setText("No semantic matches found")
                 self.tbl_entries.setRowCount(0)
                 return
-            paths = [r['path'] for r in results]
             entries = []
-            for p in paths:
-                entry = self._lib.get_entry_by_path(p)
+            archive_entries = []
+            from unifile.archive_indexer import ArchiveEntry
+            for result in results:
+                if result.get('source_type') == 'archive':
+                    archive_path = result.get('archive_path', '')
+                    inner_path = result.get('inner_path', '')
+                    if archive_path and inner_path:
+                        archive_entries.append(ArchiveEntry(
+                            archive_path=archive_path,
+                            inner_path=inner_path,
+                            name=result.get('name') or os.path.basename(inner_path),
+                            size=0,
+                        ))
+                    continue
+                path = result.get('filepath') or result.get('path')
+                entry = self._lib.get_entry_by_path(path) if path else None
                 if entry:
                     entries.append(entry)
-            self.tbl_entries.setRowCount(len(entries))
-            for row, entry in enumerate(entries):
-                item_name = QTableWidgetItem(entry.filename)
-                item_name.setData(Qt.ItemDataRole.UserRole, entry.id)
-                self.tbl_entries.setItem(row, 0, item_name)
-                tag_str = ", ".join(entry.tag_names) if hasattr(entry, 'tag_names') else ""
-                self.tbl_entries.setItem(row, 1, QTableWidgetItem(tag_str))
-                self.tbl_entries.setItem(row, 2, QTableWidgetItem(entry.suffix.upper()))
-                mod = entry.date_modified.strftime("%Y-%m-%d") if entry.date_modified else ""
-                self.tbl_entries.setItem(row, 3, QTableWidgetItem(mod))
-                self.tbl_entries.setItem(row, 4, QTableWidgetItem(str(entry.path)))
-            self.lbl_selection_info.setText(f"{len(entries)} semantic matches")
+            self._pending_search = query
+            self._on_search_results(query, entries, archive_entries)
+            self.lbl_selection_info.setText(
+                self.lbl_selection_info.text().replace(" result", " semantic result"))
         except Exception as e:
             self.lbl_selection_info.setText(f"Semantic search error: {e}")
 

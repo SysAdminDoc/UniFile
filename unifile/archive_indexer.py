@@ -20,7 +20,9 @@ The index database lives at:
 from __future__ import annotations
 
 import contextlib
+import json
 import os
+import re
 import shutil
 import sqlite3
 import stat
@@ -353,15 +355,47 @@ def archive_breadcrumb(entry: ArchiveEntry) -> str:
 
 
 def _default_archive_classifier(_file_path: str, inner_path: str) -> dict:
-    """Classify an archive member with the local filename classifier."""
+    """Classify an archive member with AI when available, then fall back locally."""
     from unifile.classifier import tiered_classify
 
-    result = tiered_classify(Path(inner_path).stem)
+    local_result = tiered_classify(Path(inner_path).stem)
+    try:
+        from unifile.ai_providers import ProviderChain
+        from unifile.categories import get_all_category_names
+        from unifile.ollama import _build_llm_system_prompt
+
+        prompt = (
+            "Classify this extracted archive member into exactly one category.\n"
+            f"Archive member path: {inner_path}\n"
+            f"Filename: {Path(inner_path).name}\n"
+            f"Extension: {Path(inner_path).suffix or '(none)'}\n"
+            "Respond only with JSON containing category, confidence, and detail."
+        )
+        raw, provider = ProviderChain().classify(
+            prompt, system=_build_llm_system_prompt())
+        match = re.search(r"\{.*\}", raw or "", re.DOTALL)
+        data = json.loads(match.group(0) if match else raw)
+        category = str(data.get("category", "")).strip()
+        if category not in get_all_category_names():
+            return {
+                "category": local_result.get("category"),
+                "confidence": local_result.get("confidence", 0),
+                "method": local_result.get("method", ""),
+                "detail": local_result.get("detail", ""),
+            }
+        return {
+            "category": category,
+            "confidence": max(0, min(100, int(data.get("confidence", 0)))),
+            "method": f"llm:{provider or 'provider'}",
+            "detail": str(data.get("detail", "")),
+        }
+    except Exception:
+        pass
     return {
-        "category": result.get("category"),
-        "confidence": result.get("confidence", 0),
-        "method": result.get("method", ""),
-        "detail": result.get("detail", ""),
+        "category": local_result.get("category"),
+        "confidence": local_result.get("confidence", 0),
+        "method": local_result.get("method", ""),
+        "detail": local_result.get("detail", ""),
     }
 
 
@@ -382,9 +416,10 @@ class ArchiveScanResult:
     """Result of scanning one archive file."""
     archive_path: str
     entries: list[ArchiveEntry] = field(default_factory=list)
-    classifications: list[dict] = field(default_factory=list)
     error: str = ""
     elapsed: float = 0.0
+    classifications: list[dict] = field(default_factory=list)
+    semantic_indexed: int = 0
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -694,6 +729,57 @@ def get_archive_entries(archive_path: str) -> list[ArchiveEntry]:
     return scan_file(archive_path).entries
 
 
+def index_semantic_entries(entries, classifications=None, *, semantic_index=None) -> int:
+    """Best-effort index of archive members in the shared semantic index.
+
+    The archive listing remains authoritative and usable without Ollama.  If
+    embeddings are unavailable this returns zero without turning a successful
+    lexical archive scan into an error.
+    """
+    entries = list(entries or [])
+    if not entries:
+        return 0
+    owns_index = semantic_index is None
+    if semantic_index is None:
+        try:
+            from unifile.semantic import SemanticIndex
+            semantic_index = SemanticIndex()
+            if not semantic_index.is_available():
+                semantic_index.close()
+                return 0
+        except Exception:
+            return 0
+    classification_by_path = {
+        item.get("inner_path"): item.get("classification")
+        for item in (classifications or [])
+        if isinstance(item, dict)
+    }
+    payloads = []
+    for entry in entries:
+        inner_path = getattr(entry, "inner_path", "")
+        classification = classification_by_path.get(inner_path)
+        description = ""
+        if isinstance(classification, dict):
+            description = " ".join(
+                str(value) for key, value in classification.items()
+                if key not in {"detail", "raw"} and value not in (None, "")
+            )
+        payloads.append({
+            "archive_path": getattr(entry, "archive_path", ""),
+            "inner_path": inner_path,
+            "name": getattr(entry, "name", ""),
+            "size": getattr(entry, "size", 0),
+            "description": description,
+        })
+    try:
+        return semantic_index.index_archive_entries(payloads)
+    except Exception:
+        return 0
+    finally:
+        if owns_index:
+            semantic_index.close()
+
+
 def index_stats() -> dict:
     """Return statistics about the current index."""
     conn = _db()
@@ -764,6 +850,26 @@ try:
                                 result.archive_path, classifier)
                         except Exception as exc:
                             result.error = str(exc)
+                semantic_index = None
+                try:
+                    from unifile.semantic import SemanticIndex
+                    semantic_index = SemanticIndex()
+                    if not semantic_index.is_available():
+                        semantic_index.close()
+                        semantic_index = None
+                except Exception:
+                    semantic_index = None
+                if semantic_index is not None:
+                    try:
+                        for result in results:
+                            if not result.error:
+                                result.semantic_indexed = index_semantic_entries(
+                                    result.entries,
+                                    result.classifications,
+                                    semantic_index=semantic_index,
+                                )
+                    finally:
+                        semantic_index.close()
                 self.finished.emit(results)
             except Exception as exc:
                 self.error.emit(str(exc))

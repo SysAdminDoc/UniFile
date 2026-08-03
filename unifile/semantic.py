@@ -56,8 +56,22 @@ class SemanticIndex:
             description TEXT,
             embedding BLOB,
             dim INTEGER,
+            source_type TEXT NOT NULL DEFAULT 'file',
+            archive_path TEXT,
+            inner_path TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )''')
+        # Older installations predate archive-member embeddings.  Keep their
+        # rows intact and add the nullable metadata in place.
+        columns = {row[1] for row in self._conn.execute(
+            'PRAGMA table_info(embeddings)').fetchall()}
+        for name, definition in (
+                ('source_type', "TEXT NOT NULL DEFAULT 'file'"),
+                ('archive_path', 'TEXT'),
+                ('inner_path', 'TEXT')):
+            if name not in columns:
+                self._conn.execute(
+                    f'ALTER TABLE embeddings ADD COLUMN {name} {definition}')
         self._conn.commit()
 
     def _get_embedding(self, text: str) -> list[float] | None:
@@ -127,12 +141,76 @@ class SemanticIndex:
 
         blob = self._pack_vector(vec)
         self._conn.execute(
-            'INSERT OR REPLACE INTO embeddings (id, filepath, description, embedding, dim) '
-            'VALUES (?, ?, ?, ?, ?)',
-            (file_id, filepath, text, blob, len(vec))
+            'INSERT OR REPLACE INTO embeddings '
+            '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (file_id, filepath, text, blob, len(vec), 'file', None, None)
         )
         self._conn.commit()
         return True
+
+    def index_archive_entry(self, archive_path: str, inner_path: str,
+                            description: str = "", *, name: str | None = None,
+                            size: int = 0, force: bool = False) -> bool:
+        """Index one read-only member of an archive.
+
+        Archive members share the container's real path but receive a stable
+        compound key, so they cannot overwrite the container's normal file
+        embedding or appear as mutable Tag Library entries.
+        """
+        self._ensure_db()
+        archive_path = os.path.abspath(str(archive_path))
+        inner_path = str(inner_path).replace('\\', '/').strip('/')
+        if not archive_path or not inner_path:
+            return False
+        member_name = name or os.path.basename(inner_path)
+        archive_name = os.path.basename(archive_path)
+        parts = [member_name, inner_path, f"inside {archive_name}"]
+        if description:
+            parts.insert(0, description)
+        text = ' '.join(str(part) for part in parts if part).strip()
+        if not text:
+            return False
+        member_id = hashlib.md5(
+            f"archive\\0{archive_path}\\0{inner_path}".encode()).hexdigest()
+        if not force and self._conn.execute(
+                'SELECT 1 FROM embeddings WHERE id = ?', (member_id,)).fetchone():
+            return True
+        vec = self._get_embedding(text)
+        if not vec:
+            return False
+        self._conn.execute(
+            'INSERT OR REPLACE INTO embeddings '
+            '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (member_id, archive_path, text, self._pack_vector(vec), len(vec),
+             'archive', archive_path, inner_path)
+        )
+        self._conn.commit()
+        return True
+
+    def index_archive_entries(self, entries, callback=None, *, force: bool = False) -> int:
+        """Index archive-entry objects or dictionaries with stable metadata."""
+        entries = list(entries or [])
+        count = 0
+        for index, entry in enumerate(entries):
+            if isinstance(entry, dict):
+                archive_path = entry.get('archive_path', '')
+                inner_path = entry.get('inner_path', '')
+                name = entry.get('name')
+                description = entry.get('description', '')
+            else:
+                archive_path = getattr(entry, 'archive_path', '')
+                inner_path = getattr(entry, 'inner_path', '')
+                name = getattr(entry, 'name', None)
+                description = getattr(entry, 'description', '')
+            if self.index_archive_entry(
+                    archive_path, inner_path, description,
+                    name=name, size=getattr(entry, 'size', 0), force=force):
+                count += 1
+            if callback:
+                callback(index + 1, len(entries))
+        return count
 
     def index_batch(self, items: list[dict], callback=None) -> int:
         """Index multiple files.
@@ -157,7 +235,7 @@ class SemanticIndex:
         return count
 
     def search(self, query: str, limit: int = 20,
-               threshold: float = 0.3) -> list[dict]:
+               threshold: float = 0.3, *, top_k: int | None = None) -> list[dict]:
         """Natural language search across indexed files.
 
         Args:
@@ -168,27 +246,39 @@ class SemanticIndex:
         Returns:
             List of dicts: {'filepath', 'description', 'score'}
         """
+        if top_k is not None:
+            limit = top_k
         self._ensure_db()
         query_vec = self._get_embedding(query)
         if not query_vec:
             return []
 
         rows = self._conn.execute(
-            'SELECT filepath, description, embedding, dim FROM embeddings'
+            'SELECT filepath, description, embedding, dim, source_type, '
+            'archive_path, inner_path FROM embeddings'
         ).fetchall()
 
         results = []
-        for filepath, desc, blob, dim in rows:
+        for filepath, desc, blob, dim, source_type, archive_path, inner_path in rows:
             stored_vec = self._unpack_vector(blob, dim)
             if len(stored_vec) != len(query_vec):
                 continue
             score = _cosine_similarity(query_vec, stored_vec)
             if score >= threshold:
-                results.append({
+                result = {
                     'filepath': filepath,
+                    'path': filepath,
                     'description': desc,
                     'score': score,
-                })
+                    'source_type': source_type or 'file',
+                }
+                if result['source_type'] == 'archive':
+                    result.update({
+                        'archive_path': archive_path or filepath,
+                        'inner_path': inner_path or '',
+                        'name': os.path.basename(inner_path or ''),
+                    })
+                results.append(result)
 
         results.sort(key=lambda x: x['score'], reverse=True)
         return results[:limit]

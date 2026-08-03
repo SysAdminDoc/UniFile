@@ -90,6 +90,29 @@ def test_extract_classify_and_repack_round_trip(isolated_archive_db):
     assert list(temp_root.iterdir()) == []
 
 
+def test_archive_entries_can_feed_semantic_index(isolated_archive_db):
+    archive_path = isolated_archive_db / "source.zip"
+    _write_zip(archive_path, {"docs/invoice.pdf": b"pdf"})
+    entry = archive_indexer.scan_file(str(archive_path), force=True).entries[0]
+    captured = []
+
+    class StubSemanticIndex:
+        def index_archive_entries(self, payloads):
+            captured.extend(payloads)
+            return len(payloads)
+
+    count = archive_indexer.index_semantic_entries(
+        [entry],
+        [{"inner_path": entry.inner_path,
+          "classification": {"category": "Documents", "confidence": 92}}],
+        semantic_index=StubSemanticIndex(),
+    )
+    assert count == 1
+    assert captured[0]["archive_path"] == str(archive_path)
+    assert captured[0]["inner_path"] == "docs/invoice.pdf"
+    assert "Documents" in captured[0]["description"]
+
+
 def test_archive_mode_is_persisted_per_profile(tmp_path, monkeypatch):
     profile_file = tmp_path / "active-profile.json"
     monkeypatch.setattr(profiles, "_PROFILES_FILE", str(profile_file))

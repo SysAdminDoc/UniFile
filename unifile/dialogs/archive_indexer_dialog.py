@@ -48,12 +48,19 @@ class ArchiveIndexerDialog(QDialog):
         lay.setSpacing(12)
         lay.setContentsMargins(18, 18, 18, 18)
 
+        archive_description = (
+            "Build a searchable index of files inside .zip, .7z, .rar, and "
+            ".tar archives. Each archive is extracted only into a private "
+            "temporary workspace, classified, and cleaned automatically."
+            if self._archive_mode == ARCHIVE_MODE_EXTRACT else
+            "Build a searchable index of files inside .zip, .7z, .rar, and "
+            ".tar archives. No files are extracted — only the internal file "
+            "listing is read and stored."
+        )
         lay.addWidget(build_dialog_header(
             t, "Tools",
             "Archive Content Indexer",
-            "Build a searchable index of files inside .zip, .7z, .rar, and "
-            ".tar archives. No files are extracted — only the internal file "
-            "listing is read and stored.",
+            archive_description,
         ))
 
         # ── Index section ─────────────────────────────────────────────────────
@@ -194,8 +201,11 @@ class ArchiveIndexerDialog(QDialog):
         total_entries = sum(len(r.entries) for r in results)
         total_classified = sum(len(getattr(r, "classifications", [])) for r in results)
         classified_copy = f", {total_classified} classified" if total_classified else ""
+        total_semantic = sum(getattr(r, "semantic_indexed", 0) for r in results)
+        semantic_copy = f", {total_semantic} semantic vectors" if total_semantic else ""
         self.lbl_scan_status.setText(
-            f"Done: {ok} archives indexed, {total_entries} files{classified_copy}, "
+            f"Done: {ok} archives indexed, {total_entries} files{classified_copy}"
+            f"{semantic_copy}, "
             f"{errors} errors."
         )
         self._refresh_stats()
