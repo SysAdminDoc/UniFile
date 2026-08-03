@@ -18,7 +18,8 @@ from unifile.metadata import MetadataExtractor
 from unifile.models import CategorizeItem, FileItem, RenameItem
 from unifile.naming import _beautify_name, _extract_name_hints, _smart_name
 from unifile.photos import _PHOTO_FOLDER_PRESETS, load_photo_settings
-from unifile.plugins import PluginManager
+from unifile.plugins import PluginManager, apply_workflow_commands
+from unifile.script import WorkflowBatchWorker
 from unifile.workers import (
     ScanAepWorker,
     ScanCategoryWorker,
@@ -743,6 +744,8 @@ class ScanMixin:
                 pass
             # Auto-tag entries in tag library if open
             self._auto_tag_scan_results()
+            # Restricted workflow hooks run asynchronously after classification.
+            self._start_workflow_scan_hooks()
             # Category balancing — suggest merges/splits for imbalanced categories
             self._run_category_balancer('files')
         if total == 0:
@@ -789,6 +792,78 @@ class ScanMixin:
                     tagged += 1
         if tagged:
             self._log(f"  Tag Library: auto-tagged {tagged} entries")
+            self._tag_panel._refresh_tags()
+            self._tag_panel._refresh_entries()
+            self._tag_panel._update_stats()
+
+    def _start_workflow_scan_hooks(self):
+        """Run trusted on_scan_item scripts off the GUI thread."""
+        jobs = PluginManager.workflow_jobs('on_scan_item')
+        if not jobs or not self.file_items:
+            return
+        existing = getattr(self, '_workflow_worker', None)
+        if existing and existing.isRunning():
+            return
+        classifier_values = {
+            item.full_src: {
+                'category': item.category,
+                'confidence': item.confidence,
+                'method': item.method,
+            }
+            for item in self.file_items if item.full_src
+        }
+        tag_values = {}
+        if hasattr(self, '_tag_panel') and self._tag_panel.library.is_open:
+            library = self._tag_panel.library
+            for item in self.file_items:
+                try:
+                    entry = library.get_entry_by_path(item.full_src)
+                    if entry:
+                        tag_values[item.full_src] = [tag.name for tag in entry.tags]
+                except Exception:
+                    tag_values[item.full_src] = []
+        self._workflow_worker = WorkflowBatchWorker(
+            jobs,
+            'on_scan_item',
+            self.file_items,
+            classifier_values=classifier_values,
+            tag_values=tag_values,
+        )
+        self._workflow_worker.log.connect(self._log)
+        self._workflow_worker.result_ready.connect(self._on_workflow_scan_results)
+        self._workflow_worker.finished.connect(self._workflow_worker.deleteLater)
+        self._workflow_worker.start()
+
+    def _on_workflow_scan_results(self, results):
+        """Apply serializable workflow commands after the worker completes."""
+        tag_library = None
+        if hasattr(self, '_tag_panel') and self._tag_panel.library.is_open:
+            tag_library = self._tag_panel.library
+        refresh_tags = False
+        for outcome in results:
+            job = outcome.get('job', {})
+            result = outcome.get('result')
+            if result is None:
+                continue
+            applied, skipped = apply_workflow_commands(
+                result.commands,
+                tag_library=tag_library,
+                allow_file_ops=False,
+            ) if result.success else ([], [])
+            if result.error:
+                self._log(f"  [SCRIPT:{job.get('name', 'workflow')}] {result.error}")
+            if applied:
+                refresh_tags = refresh_tags or any(
+                    command.get('op', '').startswith('tag_') for command in applied
+                )
+                self._log(
+                    f"  [SCRIPT:{job.get('name', 'workflow')}] applied {len(applied)} command(s)"
+                )
+            if skipped:
+                self._log(
+                    f"  [SCRIPT:{job.get('name', 'workflow')}] skipped {len(skipped)} command(s)"
+                )
+        if refresh_tags and hasattr(self, '_tag_panel'):
             self._tag_panel._refresh_tags()
             self._tag_panel._refresh_entries()
             self._tag_panel._update_stats()

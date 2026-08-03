@@ -1,9 +1,11 @@
 """UniFile — Miscellaneous tool dialogs (undo, events, schedule, plugins, etc.)."""
+import json
 import math
 import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections import Counter
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -20,7 +22,9 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -34,7 +38,13 @@ from unifile.cache import _load_undo_stack, _save_undo_stack
 from unifile.config import clear_watch_history, get_active_stylesheet, get_active_theme, load_watch_history
 from unifile.dialogs.common import build_dialog_header
 from unifile.engine import EventGrouper, ScheduleManager
-from unifile.plugins import _PLUGINS_DIR, PluginManager, ProfileManager
+from unifile.plugins import _PLUGINS_DIR, PluginManager, ProfileManager, _safe_name
+from unifile.script import (
+    ScriptExecutionWorker,
+    ScriptValidationError,
+    validate_script,
+    workflow_template,
+)
 
 
 class UndoBatchDialog(QDialog):
@@ -920,8 +930,11 @@ class PluginManagerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Plugin Manager")
-        self.setMinimumSize(580, 420)
+        self.setMinimumSize(900, 760)
         self.setStyleSheet(get_active_stylesheet())
+        self._script_worker = None
+        self._workflow_scripts = []
+        self._workflow_path = None
 
         lay = QVBoxLayout(self)
         _t = get_active_theme()
@@ -951,6 +964,75 @@ class PluginManagerDialog(QDialog):
         )
         lay.addWidget(self.lbl_info)
 
+        workflow_title = QLabel("Workflow Script Editor")
+        workflow_title.setStyleSheet(
+            f"color: {_t['fg_bright']}; font-size: 13px; font-weight: 700; padding-top: 4px;"
+        )
+        lay.addWidget(workflow_title)
+        workflow_desc = QLabel(
+            "Write an on_scan_item or on_apply hook. Scripts are saved as untrusted until you explicitly trust them, "
+            "then execute in a restricted child process with a timeout."
+        )
+        workflow_desc.setWordWrap(True)
+        workflow_desc.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        lay.addWidget(workflow_desc)
+
+        editor_controls = QHBoxLayout()
+        editor_controls.addWidget(QLabel("Script:"))
+        self.txt_script_name = QLineEdit("workflow_example.py")
+        self.txt_script_name.setPlaceholderText("workflow_name.py")
+        self.txt_script_name.setAccessibleName("Workflow script file name")
+        editor_controls.addWidget(self.txt_script_name, 1)
+        editor_controls.addWidget(QLabel("Hook:"))
+        self.cmb_script_hook = QComboBox()
+        self.cmb_script_hook.addItems(["on_scan_item", "on_apply"])
+        self.cmb_script_hook.setAccessibleName("Workflow hook")
+        editor_controls.addWidget(self.cmb_script_hook)
+        editor_controls.addWidget(QLabel("Timeout:"))
+        self.spn_script_timeout = QSpinBox()
+        self.spn_script_timeout.setRange(1, 60)
+        self.spn_script_timeout.setValue(3)
+        self.spn_script_timeout.setSuffix(" s")
+        self.spn_script_timeout.setAccessibleName("Workflow script timeout")
+        editor_controls.addWidget(self.spn_script_timeout)
+        self.btn_script_new = QPushButton("New")
+        self.btn_script_new.setProperty("class", "toolbar")
+        self.btn_script_new.clicked.connect(self._new_workflow_script)
+        editor_controls.addWidget(self.btn_script_new)
+        self.btn_script_save = QPushButton("Save")
+        self.btn_script_save.setProperty("class", "toolbar")
+        self.btn_script_save.clicked.connect(self._save_workflow_script)
+        editor_controls.addWidget(self.btn_script_save)
+        self.btn_script_trust = QPushButton("Trust & Enable")
+        self.btn_script_trust.setProperty("class", "toolbar")
+        self.btn_script_trust.clicked.connect(self._trust_workflow_script)
+        editor_controls.addWidget(self.btn_script_trust)
+        lay.addLayout(editor_controls)
+
+        self.txt_script = QPlainTextEdit()
+        self.txt_script.setPlaceholderText("Define on_scan_item(item, classifier, tag_library, file_ops, log) ...")
+        self.txt_script.setAccessibleName("Workflow script editor")
+        self.txt_script.setMinimumHeight(150)
+        lay.addWidget(self.txt_script)
+
+        test_row = QHBoxLayout()
+        self.btn_script_validate = QPushButton("Validate")
+        self.btn_script_validate.setProperty("class", "toolbar")
+        self.btn_script_validate.clicked.connect(self._validate_workflow_script)
+        test_row.addWidget(self.btn_script_validate)
+        self.btn_script_run = QPushButton("Run Test Item")
+        self.btn_script_run.setProperty("class", "primary")
+        self.btn_script_run.clicked.connect(self._run_workflow_test)
+        test_row.addWidget(self.btn_script_run)
+        test_row.addStretch()
+        test_row.addWidget(QLabel("Debugger output:"))
+        lay.addLayout(test_row)
+        self.txt_script_output = QPlainTextEdit()
+        self.txt_script_output.setReadOnly(True)
+        self.txt_script_output.setAccessibleName("Workflow debugger output")
+        self.txt_script_output.setMaximumHeight(95)
+        lay.addWidget(self.txt_script_output)
+
         btn_row = QHBoxLayout()
         btn_open = QPushButton("Open Plugins Folder")
         btn_open.setProperty("class", "toolbar")
@@ -975,16 +1057,169 @@ class PluginManagerDialog(QDialog):
         lay.addLayout(btn_row)
 
         self.lst_plugins.currentRowChanged.connect(self._on_selected)
+        self._new_workflow_script()
         self._refresh()
+
+    def _new_workflow_script(self):
+        self._workflow_path = None
+        self.txt_script_name.setText("workflow_example.py")
+        self.cmb_script_hook.setCurrentText("on_scan_item")
+        self.txt_script.setPlainText(workflow_template())
+        self.txt_script_output.clear()
+        self.btn_script_trust.setEnabled(False)
+
+    def _selected_workflow_hook(self) -> str:
+        return self.cmb_script_hook.currentText().strip()
+
+    def _script_source_with_marker(self) -> str:
+        source = self.txt_script.toPlainText()
+        hook = self._selected_workflow_hook()
+        if "Workflow-Hook:" not in source:
+            source = f'"""UniFile workflow script\nWorkflow-Hook: {hook}\n"""\n\n{source}'
+        return source
+
+    def _validate_workflow_script(self) -> bool:
+        try:
+            hooks = validate_script(self._script_source_with_marker())
+            hook = self._selected_workflow_hook()
+            if hook not in hooks:
+                raise ScriptValidationError(f"The script does not define {hook}")
+            self.txt_script_output.setPlainText(
+                f"Validation passed. Declared hook(s): {', '.join(hooks)}"
+            )
+            return True
+        except ScriptValidationError as exc:
+            self.txt_script_output.setPlainText(f"Validation failed: {exc}")
+            return False
+
+    def _save_workflow_script(self):
+        source = self._script_source_with_marker()
+        if not self._validate_workflow_script():
+            return
+        name = self.txt_script_name.text().strip()
+        try:
+            name = _safe_name(name)
+        except ValueError as exc:
+            self.txt_script_output.setPlainText(f"Save failed: {exc}")
+            return
+        if not name.lower().endswith('.py'):
+            name += '.py'
+        path = os.path.abspath(os.path.join(_PLUGINS_DIR, name))
+        try:
+            if os.path.commonpath([path, os.path.abspath(_PLUGINS_DIR)]) != os.path.abspath(_PLUGINS_DIR):
+                raise ValueError("script path must remain inside the plugins folder")
+            fd, temp_path = tempfile.mkstemp(prefix='.workflow-', suffix='.tmp', dir=_PLUGINS_DIR)
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as stream:
+                    stream.write(source)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temp_path, path)
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            self._workflow_path = path
+            self.txt_script_name.setText(name)
+            self.txt_script_output.setPlainText(
+                f"Saved {name} as untrusted. Review it, then use Trust & Enable."
+            )
+            self._refresh()
+        except (OSError, ValueError) as exc:
+            self.txt_script_output.setPlainText(f"Save failed: {type(exc).__name__}: {exc}")
+
+    def _trust_workflow_script(self):
+        if not self._workflow_path or not os.path.isfile(self._workflow_path):
+            self.txt_script_output.setPlainText("Save the workflow script before trusting it.")
+            return
+        if PluginManager.trust(self._workflow_path):
+            PluginManager.load_all()
+            self.txt_script_output.setPlainText(
+                f"Trusted and enabled {os.path.basename(self._workflow_path)}."
+            )
+            self._refresh()
+        else:
+            self.txt_script_output.setPlainText("Trust failed: the script could not be fingerprinted.")
+
+    def _run_workflow_test(self):
+        source = self._script_source_with_marker()
+        if not self._validate_workflow_script():
+            return
+        if self._script_worker and self._script_worker.isRunning():
+            return
+        sample_path = os.path.join(_PLUGINS_DIR, 'workflow-test-photo.jpg')
+        sample_item = {
+            'name': 'workflow-test-photo.jpg',
+            'full_src': sample_path,
+            'category': 'Photo',
+            'confidence': 92,
+            'size': 12_000_000,
+            'method': 'test',
+            'metadata': {},
+        }
+        self.txt_script_output.setPlainText("Running test item in a restricted process…")
+        self.btn_script_run.setEnabled(False)
+        self._script_worker = ScriptExecutionWorker(
+            source,
+            self._selected_workflow_hook(),
+            sample_item,
+            timeout=self.spn_script_timeout.value(),
+            classifier_values={sample_path: sample_item},
+            tag_values={sample_path: []},
+        )
+        self._script_worker.log.connect(
+            lambda message: self.txt_script_output.appendPlainText(f"LOG: {message}")
+        )
+        self._script_worker.result_ready.connect(self._on_workflow_test_result)
+        self._script_worker.finished.connect(self._on_workflow_test_finished)
+        self._script_worker.finished.connect(self._script_worker.deleteLater)
+        self._script_worker.start()
+
+    def _on_workflow_test_result(self, result):
+        if result.success:
+            self.txt_script_output.appendPlainText(
+                "Completed successfully. Commands:\n" +
+                (json.dumps(result.commands, indent=2) if result.commands else "(none)")
+            )
+        else:
+            self.txt_script_output.appendPlainText(
+                f"Execution failed{' (timeout)' if result.timed_out else ''}: {result.error}"
+            )
+
+    def _on_workflow_test_finished(self):
+        self.btn_script_run.setEnabled(True)
+        self._script_worker = None
+
+    def _load_workflow_script(self, meta):
+        try:
+            with open(meta['path'], encoding='utf-8') as stream:
+                source = stream.read()
+            self._workflow_path = meta['path']
+            self.txt_script_name.setText(meta['file'])
+            hooks = meta.get('workflow_hooks', [])
+            if hooks:
+                self.cmb_script_hook.setCurrentText(hooks[0])
+            self.txt_script.setPlainText(source)
+            self.txt_script_output.setPlainText(
+                f"Loaded {meta['file']} [{meta.get('trust_status', 'untrusted')}]."
+            )
+            self.btn_script_trust.setEnabled(meta.get('trust_status') != 'trusted')
+        except OSError as exc:
+            self.txt_script_output.setPlainText(f"Could not load workflow: {exc}")
 
     def _refresh(self):
         current = self.lst_plugins.currentRow()
         self.lst_plugins.clear()
         self._discovered = PluginManager.discover()
+        self._workflow_scripts = [
+            meta for meta in self._discovered if meta.get('workflow_hooks')
+        ]
         for p in self._discovered:
-            hooks = ', '.join(p.get('hooks', [])) or 'no hooks'
+            hooks = ', '.join(p.get('workflow_hooks', [])) if p.get('workflow_hooks') \
+                else ', '.join(p.get('hooks', []))
+            hooks = hooks or 'no hooks'
             status = p.get('trust_status', 'untrusted').upper()
-            self.lst_plugins.addItem(f"{p['name']}  [{status}]  [{hooks}]")
+            kind = 'WORKFLOW ' if p.get('workflow_hooks') else ''
+            self.lst_plugins.addItem(f"{kind}{p['name']}  [{status}]  [{hooks}]")
         count = len(self._discovered)
         trusted = sum(1 for p in self._discovered if p.get('trusted'))
         errors = PluginManager.last_load_errors()
@@ -1005,7 +1240,9 @@ class PluginManagerDialog(QDialog):
     def _on_selected(self, row):
         if 0 <= row < len(self._discovered):
             p = self._discovered[row]
-            hooks = ', '.join(p.get('hooks', [])) or '(none)'
+            hooks = ', '.join(p.get('workflow_hooks', [])) if p.get('workflow_hooks') \
+                else ', '.join(p.get('hooks', []))
+            hooks = hooks or '(none)'
             trust_status = p.get('trust_status', 'untrusted')
             error_text = p.get('load_error') or ''
             for err in PluginManager.last_load_errors():
@@ -1014,6 +1251,7 @@ class PluginManagerDialog(QDialog):
                     break
             self.lbl_info.setText(
                 f"Name: {p['name']}\n"
+                f"Kind: {p.get('kind', 'legacy')}\n"
                 f"Trust: {trust_status}\n"
                 f"Hooks: {hooks}\n"
                 f"Description: {p['description']}\n"
@@ -1021,10 +1259,13 @@ class PluginManagerDialog(QDialog):
                 + (f"\nLoad error: {error_text}" if error_text else ""))
             self.btn_trust.setEnabled(trust_status in ('untrusted', 'changed') and not p.get('load_error'))
             self.btn_untrust.setEnabled(trust_status in ('trusted', 'changed'))
+            if p.get('workflow_hooks'):
+                self._load_workflow_script(p)
         else:
             self.lbl_info.setText("Select a plugin to inspect its hooks, description, and path.")
             self.btn_trust.setEnabled(False)
             self.btn_untrust.setEnabled(False)
+            self.btn_script_trust.setEnabled(False)
 
     def _open_folder(self):
         if sys.platform == 'win32':

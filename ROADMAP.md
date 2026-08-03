@@ -34,12 +34,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 Larger features requiring non-trivial architecture or multi-week effort.
 
-### Workflow Scripting (Python Hooks)
-- Expose `classifier`, `tag_library`, `file_ops` to user-authored hook scripts via a sandboxed `unifile.script` API
-- Script editor embedded in the Plugin panel with live debugger output
-- Example: after classification, if `item.category == "Photo"` and `item.size > 10_000_000` → `library.add_tag(item, "hires")`
-- Execution model: scripts run in a `QThread` with a timeout watchdog; cannot import arbitrary stdlib modules by default
-
 ### YAML Declarative Plugin Manifest
 - YAML descriptor for plugins (alongside the existing Python hook system):
   ```yaml

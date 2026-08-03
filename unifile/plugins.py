@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 
 from unifile.cloud_storage import iter_local_cloud_files, local_cloud_status
 from unifile.config import _APP_DATA_DIR, _PRESETS_DIR, _PROFILES_DIR, load_json_safe, save_json_safe
@@ -137,6 +138,7 @@ class PluginManager:
     """Safe loader for UniFile plugins."""
 
     HOOKS = ('classify', 'rename_token', 'post_move', 'post_scan')
+    WORKFLOW_HOOKS = ('on_scan_item', 'on_apply')
     _plugins = []  # list of (module, metadata_dict)
     _load_errors = []
 
@@ -217,7 +219,7 @@ class PluginManager:
             meta = {'file': fname, 'path': fpath, 'name': fname[:-3],
                     'hooks': [], 'description': '', 'enabled': False,
                     'trusted': False, 'trust_status': 'untrusted',
-                    'load_error': ''}
+                    'load_error': '', 'workflow_hooks': [], 'kind': 'legacy'}
             try:
                 with open(fpath, encoding='utf-8') as f:
                     src = f.read()
@@ -231,6 +233,12 @@ class PluginManager:
                         hook = line.split(':', 1)[1].strip().lower()
                         if hook in cls.HOOKS:
                             meta['hooks'].append(hook)
+                    if line.strip().lower().startswith('workflow-hook:'):
+                        hook = line.split(':', 1)[1].strip().lower()
+                        if hook in cls.WORKFLOW_HOOKS:
+                            meta['workflow_hooks'].append(hook)
+                if meta['workflow_hooks']:
+                    meta['kind'] = 'workflow'
                 status = cls.trust_status(fpath)
                 meta['trust_status'] = status
                 meta['trusted'] = status == 'trusted'
@@ -249,6 +257,10 @@ class PluginManager:
         cls._load_errors.clear()
         for meta in cls.discover():
             if not meta.get('trusted', False):
+                continue
+            # Workflow scripts execute in the restricted child-process runner;
+            # never import them into the host just because they are trusted.
+            if meta.get('workflow_hooks'):
                 continue
             try:
                 spec = importlib.util.spec_from_file_location(meta['name'], meta['path'])
@@ -319,6 +331,185 @@ class PluginManager:
                     fn(items)
                 except Exception:
                     pass
+
+    @classmethod
+    def workflow_scripts(cls) -> list[dict]:
+        """Return explicitly marked workflow scripts and trust status."""
+        return [meta for meta in cls.discover() if meta.get('workflow_hooks')]
+
+    @classmethod
+    def workflow_jobs(cls, hook: str) -> list[dict]:
+        """Load trusted workflow sources for a hook without importing them."""
+        jobs = []
+        for meta in cls.workflow_scripts():
+            if meta.get('trust_status') != 'trusted' or hook not in meta.get('workflow_hooks', []):
+                continue
+            try:
+                with open(meta['path'], encoding='utf-8') as stream:
+                    source = stream.read()
+            except OSError:
+                continue
+            jobs.append({'name': meta['name'], 'path': meta['path'], 'source': source})
+        return jobs
+
+    @classmethod
+    def run_workflow_hook(cls, hook: str, item, *, tag_library=None,
+                          classifier_values: dict | None = None,
+                          tag_values: dict | None = None,
+                          allow_file_ops: bool = False,
+                          allowed_roots: list[str] | None = None,
+                          timeout: float = 3.0,
+                          log_cb=None) -> list[dict]:
+        """Run trusted workflow scripts and apply their returned commands.
+
+        The script itself never receives a host ``TagLibrary`` or filesystem
+        object.  Only validated, serializable commands cross the process
+        boundary; file operations stay disabled unless the caller explicitly
+        opts in and supplies the allowed roots.
+        """
+        if hook not in cls.WORKFLOW_HOOKS:
+            return []
+        from unifile.script import execute_script, item_to_payload
+
+        outcomes = []
+        item_payload = (
+            [item_to_payload(value) for value in item]
+            if isinstance(item, list) else item_to_payload(item)
+        )
+        for job in cls.workflow_jobs(hook):
+            try:
+                result = execute_script(
+                    job['source'],
+                    hook,
+                    item,
+                    classifier_values=classifier_values,
+                    tag_values=tag_values,
+                    timeout=timeout,
+                )
+                for message in result.logs:
+                    if log_cb:
+                        log_cb(f"  [SCRIPT:{job['name']}] {message}")
+                applied, skipped = apply_workflow_commands(
+                    result.commands,
+                    tag_library=tag_library,
+                    allow_file_ops=allow_file_ops,
+                    allowed_roots=allowed_roots,
+                ) if result.success else ([], [])
+                outcomes.append({
+                    'script': job['name'],
+                    'path': job['path'],
+                    'success': result.success,
+                    'timed_out': result.timed_out,
+                    'error': result.error,
+                    'commands': result.commands,
+                    'applied': applied,
+                    'skipped': skipped,
+                    'item': item_payload,
+                })
+                if log_cb and result.error:
+                    log_cb(f"  [SCRIPT:{job['name']}] {result.error}")
+            except (OSError, ValueError, TypeError) as exc:
+                outcomes.append({
+                    'script': job['name'], 'path': job['path'],
+                    'success': False, 'timed_out': False,
+                    'error': f"{type(exc).__name__}: {exc}",
+                    'commands': [], 'applied': [], 'skipped': [],
+                    'item': item_payload,
+                })
+                if log_cb:
+                    log_cb(f"  [SCRIPT:{job['name']}] {type(exc).__name__}: {exc}")
+        return outcomes
+
+
+def _workflow_path_allowed(path: str, allowed_roots: list[str] | None) -> bool:
+    if not allowed_roots:
+        return False
+    try:
+        candidate = os.path.realpath(path)
+        return any(
+            os.path.commonpath([candidate, os.path.realpath(root)])
+            == os.path.realpath(root)
+            for root in allowed_roots
+        )
+    except (OSError, ValueError):
+        return False
+
+
+def apply_workflow_commands(commands: list[dict], *, tag_library=None,
+                            allow_file_ops: bool = False,
+                            allowed_roots: list[str] | None = None) -> tuple[list[dict], list[dict]]:
+    """Apply child-process workflow commands with explicit host-side guards."""
+    applied = []
+    skipped = []
+    for command in commands[:500]:
+        if not isinstance(command, dict):
+            skipped.append({'command': command, 'reason': 'invalid command'})
+            continue
+        operation = command.get('op')
+        if operation in {'tag_add', 'tag_remove'}:
+            if tag_library is None or not getattr(tag_library, 'is_open', False):
+                skipped.append({'command': command, 'reason': 'tag library is not open'})
+                continue
+            path = str(command.get('path', ''))
+            tag_name = str(command.get('tag', '')).strip()
+            if not path or not tag_name or '\x00' in path or '\x00' in tag_name:
+                skipped.append({'command': command, 'reason': 'invalid tag command'})
+                continue
+            try:
+                entry = tag_library.add_entry(path)
+                tag = tag_library.get_tag_by_name(tag_name)
+                if tag is None:
+                    tag = tag_library.add_tag(tag_name)
+                if entry is None or tag is None:
+                    raise ValueError('entry or tag could not be created')
+                if operation == 'tag_add':
+                    ok = tag_library.add_tags_to_entry(entry.id, [tag.id])
+                else:
+                    ok = tag_library.remove_tags_from_entry(entry.id, [tag.id])
+                if ok:
+                    applied.append(command)
+                else:
+                    skipped.append({'command': command, 'reason': 'tag operation failed'})
+            except Exception as exc:
+                skipped.append({'command': command, 'reason': f'{type(exc).__name__}: {exc}'})
+            continue
+
+        if not operation or not operation.startswith('file_'):
+            skipped.append({'command': command, 'reason': 'unsupported command'})
+            continue
+        if not allow_file_ops:
+            skipped.append({'command': command, 'reason': 'file operations are disabled'})
+            continue
+        source = os.path.abspath(str(command.get('source', '')))
+        destination = os.path.abspath(str(command.get('destination', '')))
+        if not _workflow_path_allowed(source, allowed_roots):
+            skipped.append({'command': command, 'reason': 'source is outside allowed roots'})
+            continue
+        if operation == 'file_rename':
+            new_name = str(command.get('destination', ''))
+            if os.path.basename(new_name) != new_name:
+                skipped.append({'command': command, 'reason': 'rename must use a file name'})
+                continue
+            destination = os.path.join(os.path.dirname(source), new_name)
+        if not _workflow_path_allowed(destination, allowed_roots):
+            skipped.append({'command': command, 'reason': 'destination is outside allowed roots'})
+            continue
+        if not os.path.isfile(source) or os.path.exists(destination):
+            skipped.append({'command': command, 'reason': 'source missing or destination exists'})
+            continue
+        try:
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            if operation == 'file_move' or operation == 'file_rename':
+                shutil.move(source, destination)
+            elif operation == 'file_copy':
+                shutil.copy2(source, destination)
+            else:
+                skipped.append({'command': command, 'reason': 'unsupported file operation'})
+                continue
+            applied.append(command)
+        except (OSError, shutil.Error) as exc:
+            skipped.append({'command': command, 'reason': f'{type(exc).__name__}: {exc}'})
+    return applied, skipped
 
 
 
