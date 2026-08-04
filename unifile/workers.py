@@ -113,6 +113,12 @@ from unifile.photos import (
     load_photo_settings,
 )
 from unifile.plugins import PluginManager
+from unifile.raw_photos import (
+    RAW_PHOTO_EXTENSIONS,
+    collapse_raw_photo_pairs,
+    extract_raw_photo_metadata,
+    family_for_path,
+)
 
 _OLLAMA_PULL_MODEL_COMPAT = _ollama_pull_model
 
@@ -1490,6 +1496,7 @@ class ScanFilesWorker(QThread):
         self.ext_filter     = ext_filter   # set of allowed extensions (e.g. _FILTER_IMAGE_EXTS) or None
         self.force_rescan   = force_rescan
         self._skip_cloud_placeholders = False
+        self._raw_families = {}
         self._cancelled     = False
 
     def cancel(self): self._cancelled = True
@@ -1531,6 +1538,11 @@ class ScanFilesWorker(QThread):
 
         total = len(items)
         self.log.emit(f"  Found {total} items to classify")
+        paired_raw_count = sum(1 for family in self._raw_families.values() if family.is_paired)
+        if paired_raw_count:
+            self.log.emit(
+                f"  RAW photo families: {paired_raw_count} RAW+JPEG pair(s) kept as one logical item"
+            )
 
         # ── Open scan cache for incremental rescans ──────────────────────────
         cache = _ScanCache()
@@ -1600,6 +1612,7 @@ class ScanFilesWorker(QThread):
             dup_detail = ''
             dup_is_original = False
             fpath_str = str(item_path)
+            raw_family = family_for_path(self._raw_families, fpath_str)
             if fpath_str in dup_map:
                 dinfo = dup_map[fpath_str]
                 dup_group = dinfo.group_id
@@ -1618,7 +1631,17 @@ class ScanFilesWorker(QThread):
                 cat      = cached['category']
                 conf     = cached['confidence']
                 method   = cached['method']
-                item_meta = cached.get('metadata', {})
+                cached_meta = cached.get('metadata', {})
+                if raw_family:
+                    item_meta = extract_raw_photo_metadata(
+                        fpath_str,
+                        raw_family.jpeg_path,
+                        log_cb=self.log.emit,
+                    )
+                    for key, value in cached_meta.items():
+                        item_meta.setdefault(key, value)
+                else:
+                    item_meta = cached_meta
                 cache_hits += 1
             else:
                 # Classify with multi-signal engine
@@ -1628,7 +1651,14 @@ class ScanFilesWorker(QThread):
                 # Extract metadata for files (skip folders)
                 item_meta = {}
                 if not is_folder:
-                    item_meta = MetadataExtractor.extract(fpath_str, log_cb=self.log.emit)
+                    if raw_family:
+                        item_meta = extract_raw_photo_metadata(
+                            fpath_str,
+                            raw_family.jpeg_path,
+                            log_cb=self.log.emit,
+                        )
+                    else:
+                        item_meta = MetadataExtractor.extract(fpath_str, log_cb=self.log.emit)
 
                     # Enrich metadata with filename-extracted dates if EXIF is missing
                     if 'date_taken' not in item_meta and 'creation_date' not in item_meta:
@@ -1707,7 +1737,8 @@ class ScanFilesWorker(QThread):
                 if not is_folder and fsize > 0:
                     cache.store(fpath_str, fmtime, fsize, cat, conf, method, item_meta)
 
-            detail = f"{'Folder' if is_folder else 'File'}: {os.path.splitext(name)[1] or '(no ext)'}"
+            pair_suffix = " + JPEG pair" if raw_family and raw_family.is_paired else ""
+            detail = f"{'Folder' if is_folder else 'File'}: {os.path.splitext(name)[1] or '(no ext)'}{pair_suffix}"
             self.log.emit(f"  {name}  →  {cat}  ({conf}%) [{method}]")
 
             self.result_ready.emit({
@@ -1801,7 +1832,8 @@ class ScanFilesWorker(QThread):
                             result.append((Path(root) / d, True))
         except (PermissionError, OSError) as e:
             self.log.emit(f"  ERROR: {e}")
-        return result
+        collapsed, self._raw_families = collapse_raw_photo_pairs(result)
+        return collapsed
 
 
 # ── PC File Apply Worker ──────────────────────────────────────────────────────
@@ -1819,6 +1851,30 @@ class ApplyFilesWorker(QThread):
         self._cancelled  = False
 
     def cancel(self): self._cancelled = True
+
+    @staticmethod
+    def _next_file_destination(path: str) -> str:
+        """Return a collision-safe file destination for a related photo."""
+        if not os.path.exists(path):
+            return path
+        base, extension = os.path.splitext(path)
+        number = 2
+        while os.path.exists(f"{base} ({number}){extension}"):
+            number += 1
+        return f"{base} ({number}){extension}"
+
+    @staticmethod
+    def _raw_family_members(item) -> list[str]:
+        metadata = getattr(item, "metadata", {}) or {}
+        members = metadata.get("raw_family_paths", [])
+        if not isinstance(members, (list, tuple)):
+            return []
+        source_key = os.path.normcase(os.path.abspath(item.full_src))
+        return [
+            os.fspath(member)
+            for member in members
+            if os.path.normcase(os.path.abspath(os.fspath(member))) != source_key
+        ]
 
     @staticmethod
     def _resolve_move_name(it):
@@ -1860,6 +1916,7 @@ class ApplyFilesWorker(QThread):
                 rename_info = f"  (→ {it.display_name})" if it.display_name != it.name else ""
                 self.log.emit(f"  {label}[{seq+1}/{total}] {it.name}{rename_info}  →  {it.category}/")
                 actual_dst = it.full_dst
+                completed_moves = []
                 try:
                     if not self.dry_run:
                         os.makedirs(os.path.dirname(it.full_dst), exist_ok=True)
@@ -1877,10 +1934,47 @@ class ApplyFilesWorker(QThread):
                                 shutil.move(it.full_src, actual_dst)
                         else:
                             shutil.move(it.full_src, actual_dst)
+                        completed_moves.append((actual_dst, it.full_src))
+
+                        # RAW+JPEG captures are represented by one scan item;
+                        # keep every member together when applying the move.
+                        for related_src in self._raw_family_members(it):
+                            if not os.path.isfile(related_src):
+                                continue
+                            related_name = Path(related_src).name
+                            related_dst = os.path.join(
+                                os.path.dirname(actual_dst),
+                                f"{Path(actual_dst).stem}{Path(related_src).suffix}",
+                            )
+                            related_dst = self._next_file_destination(related_dst)
+                            shutil.move(related_src, related_dst)
+                            completed_moves.append((related_dst, related_src))
+                            self.log.emit(f"    Paired photo moved: {related_name}")
                     ok += 1
-                    undo_ops.append({'type': 'move', 'src': actual_dst,
-                        'dst': it.full_src, 'timestamp': ts, 'category': it.category,
-                        'confidence': str(it.confidence), 'status': 'Done'})
+                    planned_moves = completed_moves
+                    if self.dry_run:
+                        planned_moves = [(actual_dst, it.full_src)]
+                        planned_moves.extend(
+                            (
+                                os.path.join(
+                                    os.path.dirname(actual_dst),
+                                    f"{Path(actual_dst).stem}{Path(related_src).suffix}",
+                                ),
+                                related_src,
+                            )
+                            for related_src in self._raw_family_members(it)
+                            if os.path.isfile(related_src)
+                        )
+                    elif not planned_moves and it.is_folder:
+                        # Folder merges do not have a reversible per-file move
+                        # list, so preserve the historical operation record.
+                        planned_moves = [(actual_dst, it.full_src)]
+                    for moved_src, original_src in planned_moves:
+                        undo_ops.append({
+                            'type': 'move', 'src': moved_src, 'dst': original_src,
+                            'timestamp': ts, 'category': it.category,
+                            'confidence': str(it.confidence), 'status': 'Done',
+                        })
                     self.log.emit("    ✅ Done")
                     self.item_done.emit(li, "Done")
                     try:
@@ -1892,12 +1986,16 @@ class ApplyFilesWorker(QThread):
                     self.log.emit(f"    ❌ Error: {e}")
                     self.item_done.emit(li, "Error")
                     if not self.dry_run:
-                        try:
-                            if os.path.exists(actual_dst) and not os.path.exists(it.full_src):
-                                shutil.move(actual_dst, it.full_src)
-                                self.log.emit("    ↩ Rolled back")
-                        except Exception:
-                            pass
+                        rolled_back = False
+                        for moved_src, original_src in reversed(completed_moves):
+                            try:
+                                if os.path.exists(moved_src) and not os.path.exists(original_src):
+                                    shutil.move(moved_src, original_src)
+                                    rolled_back = True
+                            except Exception:
+                                pass
+                        if rolled_back:
+                            self.log.emit("    ↩ Rolled back")
         finally:
             self.finished.emit(ok, err, undo_ops)
 
@@ -2120,6 +2218,13 @@ class ScanFilesLLMWorker(QThread):
         items = rule_worker._collect(src)
         if not items:
             self.log.emit("No items found."); self.finished.emit(); return
+        raw_families = getattr(rule_worker, "_raw_families", {})
+        self._raw_families = raw_families
+        paired_raw_count = sum(1 for family in raw_families.values() if family.is_paired)
+        if paired_raw_count:
+            self.log.emit(
+                f"  RAW photo families: {paired_raw_count} RAW+JPEG pair(s) kept as one logical item"
+            )
 
         cat_names = [c['name'] for c in self.categories]
         ext_map   = _build_ext_map(self.categories)
@@ -2349,7 +2454,14 @@ class ScanFilesLLMWorker(QThread):
 
         def _emit_cached(bd, cached):
             """Emit a result from cache without re-running AI or metadata."""
-            item_meta = cached.get('metadata', {})
+            item_meta = dict(cached.get('metadata', {}))
+            raw_family = family_for_path(raw_families, str(bd['item_path']))
+            if raw_family:
+                raw_meta = extract_raw_photo_metadata(
+                    bd['item_path'], raw_family.jpeg_path, log_cb=self.log.emit
+                )
+                for key, value in raw_meta.items():
+                    item_meta.setdefault(key, value)
             detail = item_meta.pop('_cached_detail', '')
             v_desc = item_meta.pop('_cached_vision_desc', '')
             v_ocr = item_meta.pop('_cached_vision_ocr', '')
@@ -2378,7 +2490,15 @@ class ScanFilesLLMWorker(QThread):
 
             item_meta = {}
             if not bd['is_folder']:
-                item_meta = MetadataExtractor.extract(str(bd['item_path']), log_cb=self.log.emit)
+                raw_family = family_for_path(raw_families, str(bd['item_path']))
+                if raw_family:
+                    item_meta = extract_raw_photo_metadata(
+                        bd['item_path'], raw_family.jpeg_path, log_cb=self.log.emit
+                    )
+                else:
+                    item_meta = MetadataExtractor.extract(
+                        str(bd['item_path']), log_cb=self.log.emit
+                    )
                 if 'date_taken' not in item_meta and 'creation_date' not in item_meta:
                     fname_dates = _extract_filename_date(bd['name'])
                     if fname_dates:
@@ -2393,7 +2513,7 @@ class ScanFilesLLMWorker(QThread):
             _photo_s_ext = load_photo_settings()
             if _photo_s_ext.get('enabled') and not bd['is_folder']:
                 _img_exts = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif',
-                             '.tiff', '.tif', '.bmp', '.raw', '.cr2', '.nef', '.arw', '.dng'}
+                             '.tiff', '.tif', '.bmp'} | RAW_PHOTO_EXTENSIONS
                 if Path(bd['name']).suffix.lower() in _img_exts:
                     # Reverse geocoding from EXIF GPS
                     if _photo_s_ext.get('geocoding_enabled'):

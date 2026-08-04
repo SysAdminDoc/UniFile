@@ -114,6 +114,7 @@ TMDb, TVDB, OMDb, and OpenSubtitles use your own API keys via the Media Lookup p
 | Copy Metadata | One-click copy of all metadata fields to clipboard |
 | Subtitle + Chapter Sidecars | Review `.srt`/`.ass` OpenSubtitles matches and save TMDb-derived `.chapters.json` metadata beside a local video |
 | NFO Sidecars | Save reviewed movie, TV, music, or book metadata as Kodi/Plex-compatible `.nfo` XML beside local media; the headless CLI also accepts Tag Library field JSON |
+| RAW Photo Families | Recognize CR2, CR3, NEF, ARW, ORF, DNG, and related RAW files; collapse same-stem RAW+JPEG captures into one move item and prefer RAW EXIF before filling gaps from the JPEG |
 | Cached Requests | API responses cached for 6 days to reduce API calls |
 
 For format-level metadata work, select a file, open **Tools → Batch Metadata Editor**, and choose **Inspect Raw Metadata**. The inspector enumerates EXIF, XMP sidecar, ID3, mutagen audio, and PDF fields, lets you edit writable values in a proposed-value column, and requires an explicit preview before applying. JPEG/TIFF EXIF, ID3, mutagen, and PDF writes are atomic and backed up for undo; XMP changes remain non-destructive adjacent `.xmp` sidecars.

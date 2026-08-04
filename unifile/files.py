@@ -27,8 +27,8 @@ _DEFAULT_PC_CATEGORIES = [
                     "csv","ppt","pptx","odp","pages","numbers","key","wps","wpd",
                     "tex","bib","fodt","fods","fodp","epub","mobi"]},
     {"name": "Images",       "color": "#34d399", "rename_template": "{year}-{month}-{day}_{name}",
-     "extensions": ["jpg","jpeg","png","gif","bmp","tiff","tif","webp","heic","heif",
-                    "raw","cr2","cr3","nef","arw","dng","orf","rw2","pef","srw",
+                    "extensions": ["jpg","jpeg","png","gif","bmp","tiff","tif","webp","heic","heif",
+                    "raw","cr2","cr3","crw","nef","arw","dng","orf","raf","rw2","pef","sr2","srw",
                     "ico","icns","svg","avif","jxl","jp2","j2k"]},
     {"name": "Videos",       "color": "#f472b6", "rename_template": "{year}-{month}-{day}_{name}",
      "extensions": ["mp4","mkv","avi","mov","wmv","flv","webm","m4v","mpg","mpeg",
@@ -679,5 +679,4 @@ _META_PDF_EXTS   = {'.pdf'}
 _META_DOCX_EXTS  = {'.docx'}
 _META_XLSX_EXTS  = {'.xlsx'}
 _META_PPTX_EXTS  = {'.pptx'}
-
 

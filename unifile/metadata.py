@@ -13,7 +13,8 @@ from pathlib import Path
 # self-contained even when files.py hasn't been imported yet.
 _META_IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tif', '.tiff',
                     '.webp', '.heic', '.heif', '.avif', '.jxl',
-                    '.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2',
+                    '.cr2', '.cr3', '.crw', '.nef', '.arw', '.dng', '.orf', '.raf', '.rw2',
+                    '.sr2',
                     '.pef', '.srw', '.raw'}
 _META_AUDIO_EXTS = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a',
                     '.opus', '.aiff', '.aif', '.ape', '.mka', '.wv', '.tta',
@@ -1098,4 +1099,3 @@ class ArchivePeeker:
 # ══════════════════════════════════════════════════════════════════════════════
 
 _RULES_FILE = os.path.join(_APP_DATA_DIR, 'rules.json')
-

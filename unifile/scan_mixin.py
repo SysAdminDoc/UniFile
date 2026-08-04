@@ -21,6 +21,7 @@ from unifile.naming import _beautify_name, _extract_name_hints, _smart_name
 from unifile.photos import _PHOTO_FOLDER_PRESETS, load_photo_settings
 from unifile.plugins import PluginManager, apply_workflow_commands
 from unifile.profiles import get_active_profile, get_confidence_tiers
+from unifile.raw_photos import RAW_PHOTO_EXTENSIONS
 from unifile.script import WorkflowBatchWorker
 from unifile.workers import (
     ScanAepWorker,
@@ -694,7 +695,7 @@ class ScanMixin:
         # Photo folder structure override for image files
         _photo_s_dst = load_photo_settings()
         _img_exts_photo = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif',
-                           '.tiff', '.tif', '.bmp', '.raw', '.cr2', '.nef', '.arw', '.dng'}
+                           '.tiff', '.tif', '.bmp'} | RAW_PHOTO_EXTENSIONS
         if (_photo_s_dst.get('enabled') and not it.is_folder
                 and os.path.splitext(it.name)[1].lower() in _img_exts_photo):
             preset_key = _photo_s_dst.get('folder_preset', 'flat')
