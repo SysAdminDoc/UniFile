@@ -77,9 +77,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Distribution & Packaging
 
-- **Chocolatey / Scoop package** — community-maintainable; updated automatically on each release via CI
-- **Homebrew formula** — macOS users `brew install unifile`; formula in `homebrew-unifile` tap
-- **Snap package** — `unifile` on Snapcraft for Ubuntu/Debian; confined snap with `home` and `network` plugs
 - **Portable ZIP** — no-installer option; `unifile-portable-vX.Y.Z.zip`; auto-detects portable mode and stores all config/DBs adjacent to the exe
 - **Auto-update checker** — on startup, poll the GitHub Releases API for a newer version; show unobtrusive banner with "Download" link; no auto-install; respects a `disable_update_check` config flag
 - **`unifile-sdk` package on PyPI** — core engine only (no PyQt6); `pip install unifile-sdk`; provides `Classifier`, `TagLibrary`, `SemanticIndex`, `PatternLearner` for embedding in third-party tools
