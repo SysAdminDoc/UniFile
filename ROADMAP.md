@@ -62,7 +62,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Performance & Scale
 
-- **ONNX embeddings** — local sentence-transformer model via `onnxruntime`; 10–50× faster than Ollama embedding endpoint on GPU; falls back to CPU if no GPU
 
 ---
 
