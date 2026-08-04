@@ -670,6 +670,7 @@ class ScanMixin:
             if suggested and len(suggested) >= 3:
                 ext = os.path.splitext(it.name)[1]
                 it.display_name = suggested + ext
+                it.rename_source = 'vision'
                 _vision_used = True
 
         # Fallback: rename template (for non-vision items like audio, video, docs)
@@ -678,11 +679,15 @@ class ScanMixin:
             if template and not it.is_folder:
                 self._rename_counters[it.category] = self._rename_counters.get(it.category, 0) + 1
                 counter = self._rename_counters[it.category]
-                new_stem = RenameTemplateEngine.resolve(
+                it.rename_template = template
+                it.rename_counter = counter
+                it.rename_source = 'template'
+                it.display_name = RenameTemplateEngine.resolve_filename(
                     template, it.full_src, it.metadata, it.category, counter)
-                ext = os.path.splitext(it.name)[1]
-                it.display_name = new_stem + ext
             else:
+                it.rename_template = ''
+                it.rename_counter = 0
+                it.rename_source = ''
                 it.display_name = it.name
 
         # Compute destination path with collision avoidance

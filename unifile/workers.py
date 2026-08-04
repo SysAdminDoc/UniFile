@@ -47,7 +47,7 @@ from unifile.cloud_storage import is_placeholder_file, local_cloud_status
 from unifile.config import is_protected
 from unifile.csv_rules import check_csv_rules, preload_csv_rules
 from unifile.duplicates import _PHASH_IMAGE_EXTS, ProgressiveDuplicateDetector
-from unifile.engine import RuleEngine, apply_rule_delta
+from unifile.engine import RenameTemplateEngine, RuleEngine, apply_rule_delta
 from unifile.files import (
     _JUNK_PATTERNS,
     _JUNK_SUFFIXES,
@@ -1820,6 +1820,29 @@ class ApplyFilesWorker(QThread):
 
     def cancel(self): self._cancelled = True
 
+    @staticmethod
+    def _resolve_move_name(it):
+        """Re-render a captured template immediately before a move.
+
+        Scans intentionally show an early preview, but metadata can be
+        enriched between scan and apply. Rendering here keeps the actual
+        filesystem operation aligned with the reviewed template and counter.
+        Vision-generated names remain authoritative because they do not carry
+        a template source.
+        """
+        template = getattr(it, 'rename_template', '')
+        if not template or it.is_folder or getattr(it, 'rename_source', '') == 'vision':
+            return
+        rendered = RenameTemplateEngine.resolve_filename(
+            template, it.full_src, getattr(it, 'metadata', {}) or {},
+            getattr(it, 'category', ''), getattr(it, 'rename_counter', 1) or 1)
+        if not rendered:
+            return
+        it.display_name = rendered
+        if it.full_dst:
+            parent = os.path.dirname(it.full_dst)
+            it.full_dst = os.path.join(parent, rendered)
+
     def run(self):
         ok = err = 0; undo_ops = []
         total = len(self.work_items)
@@ -1832,6 +1855,7 @@ class ApplyFilesWorker(QThread):
                 if is_protected(it.full_src):
                     self.log.emit(f"  ⛔ Skipped (protected): {it.name}")
                     self.item_done.emit(li, "Protected"); continue
+                self._resolve_move_name(it)
                 label = "[DRY RUN] " if self.dry_run else ""
                 rename_info = f"  (→ {it.display_name})" if it.display_name != it.name else ""
                 self.log.emit(f"  {label}[{seq+1}/{total}] {it.name}{rename_info}  →  {it.category}/")

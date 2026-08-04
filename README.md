@@ -141,7 +141,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | Color Palette Search | Index dominant image colors and search with `color:blue` or natural color-tone phrases |
 | Rules Editor | Custom if/then rules with condition builder UI |
 | Natural Language Rules | Compile one routing request into a local, reviewable action plan |
-| Rename Templates | Token-based rename templates with live preview |
+| Rename Templates | Token-based rename templates with live preview and move-time rendering, including media season/episode tokens |
 
 ### Natural Language Rules
 

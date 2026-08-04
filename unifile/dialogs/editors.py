@@ -246,6 +246,7 @@ class TemplateBuilderWidget(QWidget):
         'File':    ['name', 'original_name', 'ext', 'parent', 'category', 'size'],
         'Date':    ['year', 'month', 'month_name', 'day', 'hour', 'minute', 'second'],
         'Audio':   ['artist', 'album', 'title', 'genre', 'track', 'year_tag'],
+        'Media':   ['title', 'series', 'season', 'episode', 'media_year', 'codec', 'fps'],
         'Photo':   ['camera', 'camera_make', 'camera_model', 'width', 'height',
                      'city', 'country', 'scene', 'blur'],
         'AI':      ['vision_name', 'vision_ocr', 'smart_name', 'person', 'face_count'],
@@ -268,7 +269,8 @@ class TemplateBuilderWidget(QWidget):
 
         # Template input
         self.txt_template = QLineEdit()
-        self.txt_template.setPlaceholderText("e.g. {year}-{month}-{day}_{name}  or  {artist} - {title}")
+        self.txt_template.setPlaceholderText(
+            "e.g. {year}-{month}-{day}_{name}  or  {title} ({year}) - S{season:02d}E{episode:02d}{ext}")
         self.txt_template.setStyleSheet(
             f"QLineEdit{{background:{_t['input_bg']};color:{_t['sidebar_btn_active_fg']};border:1px solid {_t['sidebar_btn_hover_border']};"
             f"border-radius:4px;padding:5px 8px;font-size:12px;font-family:'Consolas','Courier New',monospace}}")
@@ -329,19 +331,21 @@ class TemplateBuilderWidget(QWidget):
 
     def _on_text_changed(self, text):
         self.template_changed.emit(text)
-        # Live preview with sample data
         if text.strip():
-            sample = {'name': 'photo', 'ext': 'jpg', 'year': '2024', 'month': '03',
-                      'day': '15', 'hour': '14', 'minute': '30', 'second': '00',
-                      'artist': 'Artist', 'album': 'Album', 'title': 'Title',
-                      'category': 'Images', 'counter': 1, 'city': 'Portland',
-                      'person': 'Alice', 'face_count': '2', 'scene': 'portrait',
-                      'camera': 'Canon EOS R5', 'vision_name': 'sunset_beach'}
+            sample = {
+                '_type': 'video', 'date_taken': '2024:06:15 14:30:00',
+                'name': 'Example.Show.S01E02', 'artist': 'Artist',
+                'album': 'Album', 'title': 'Example Episode',
+                'series': 'Example Show', 'season': 1, 'episode': 2,
+                'year': '2024', 'genre': 'Drama', 'category': 'Videos',
+                'counter': 1, 'city': 'Portland', 'person': 'Alice',
+                'face_count': '2', 'scene': 'portrait',
+                'camera': 'Canon EOS R5', 'vision_name': 'sunset_beach',
+            }
             try:
-                resolved = RenameTemplateEngine._resolve_conditionals(text, sample)
-                resolved = re.sub(r'\{([^}]+)\}',
-                    lambda m: str(sample.get(m.group(1).split(':')[0].strip().lower(), f'?{m.group(1)}')),
-                    resolved)
+                resolved = RenameTemplateEngine.preview(
+                    text, '/sample/Example.Show.S01E02.mkv', sample,
+                    'Videos', counter=1)
                 self.lbl_preview.setText(f"Preview: {resolved}")
             except Exception:
                 self.lbl_preview.setText("")
@@ -556,6 +560,7 @@ class PCCategoryEditorDialog(QDialog):
             '_type': 'image', 'date_taken': '2024:06:15 14:30:00',
             'camera_make': 'Canon', 'camera_model': 'EOS R5',
             'artist': 'The Beatles', 'album': 'Abbey Road', 'title': 'Come Together',
+            'series': 'Example Show', 'season': 1, 'episode': 2, 'year': '2024',
             'track': '1', 'genre': 'Rock', 'width': 4096, 'height': 2160,
             'author': 'John Doe', 'pages': 42, 'duration': 253.4, 'bitrate': 320,
         }

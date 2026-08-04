@@ -57,4 +57,6 @@ class FileItem:
         self.metadata     = {}       # extracted metadata dict
         self.vision_description = "" # AI vision description of image content
         self.vision_ocr   = ""       # text detected in image by vision model
-
+        self.rename_template = ""    # template captured for move-time rendering
+        self.rename_counter = 0       # stable per-category counter for templates
+        self.rename_source = ""       # "template", "vision", or empty

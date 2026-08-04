@@ -10,6 +10,7 @@ All notable changes to UniFile will be documented in this file.
 - Filesystem mount points (drive roots) are now always protected from scan-apply operations.
 
 ### Fixed
+- Rename templates now render media season/episode numbers with format specs, handle explicit extensions without duplication, use the same engine for live previews, and re-render immediately before file moves.
 - Cleanup safe-delete operations now fail closed when `send2trash` is unavailable instead of permanently removing files or folders.
 - Tag Library async search worker now creates its own SQLAlchemy Session per thread instead of sharing the GUI thread's Session, preventing crashes and corrupted results.
 - ApplyFilesWorker undo log now records the actual destination path after collision renames, not the original (pre-suffix) path — fixes silent undo failures for renamed files.

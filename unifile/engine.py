@@ -474,7 +474,7 @@ class ScheduleManager:
 #   {artist}, {album}, {title}, {genre}, {track}, {camera}, {camera_make},
 #   {camera_model}, {width}, {height}, {duration}, {bitrate}, {pages},
 #   {author}, {counter}, {counter:03d}, {parent}, {size}, {category},
-#   {vision_name}, {vision_ocr}
+#   {series}, {season}, {episode}, {media_year}, {vision_name}, {vision_ocr}
 # ══════════════════════════════════════════════════════════════════════════════
 
 class RenameTemplateEngine:
@@ -490,7 +490,8 @@ class RenameTemplateEngine:
 
     @staticmethod
     def resolve(template: str, filepath: str, metadata: dict,
-                category: str = '', counter: int = 1) -> str:
+                category: str = '', counter: int = 1,
+                _ext_value: str | None = None) -> str:
         """Resolve a template string into a concrete filename.
 
         Args:
@@ -514,6 +515,11 @@ class RenameTemplateEngine:
         # Build context dict with all available tokens
         ctx = RenameTemplateEngine._build_context(filepath, stem, ext_clean,
                                                    metadata, category, counter)
+        if _ext_value is not None:
+            # resolve() remains stem-oriented for backwards compatibility.
+            # resolve_filename() supplies the dotted extension so that an
+            # explicit {ext} token is rendered exactly once.
+            ctx['ext'] = _ext_value
 
         # Resolve conditional blocks before token substitution
         template = RenameTemplateEngine._resolve_conditionals(template, ctx)
@@ -544,8 +550,11 @@ class RenameTemplateEngine:
         except Exception:
             return stem
 
-        # Clean up result: collapse multiple separators, strip edges
-        result = re.sub(r'[_\-\s]{2,}', '_', result)  # collapse repeated separators
+        # Clean up accidental whitespace/repeated separators while preserving
+        # intentional human-readable separators such as "Title - 2024".
+        result = re.sub(r'[ \t]{2,}', ' ', result)
+        result = re.sub(r'_{2,}', '_', result)
+        result = re.sub(r'-{2,}', '-', result)
         result = result.strip(' _-.')
         if not result:
             return stem
@@ -554,7 +563,8 @@ class RenameTemplateEngine:
         if not any(c.isalpha() for c in result) or len(result) < 3:
             # Append original stem to give context: "03_recording" instead of "03"
             result = f"{result}_{stem}" if result else stem
-            result = re.sub(r'[_\-\s]{2,}', '_', result).strip(' _-.')
+            result = re.sub(r'[ \t]{2,}', ' ', result)
+            result = re.sub(r'_{2,}', '_', result).strip(' _-.')
 
         # Sanitise for filesystem safety
         result = re.sub(r'[<>:"/\\|?*]', '_', result)
@@ -563,11 +573,43 @@ class RenameTemplateEngine:
     @staticmethod
     def preview(template: str, filepath: str, metadata: dict,
                 category: str = '', counter: int = 1) -> str:
-        """Like resolve(), but returns stem + extension for display."""
+        """Return the rendered destination filename for display."""
+        return RenameTemplateEngine.resolve_filename(
+            template, filepath, metadata, category, counter)
+
+    @staticmethod
+    def resolve_filename(template: str, filepath: str, metadata: dict,
+                         category: str = '', counter: int = 1) -> str:
+        """Resolve a template to a complete destination filename.
+
+        ``resolve()`` intentionally returns a stem because older callers
+        append the source extension themselves.  This method is the canonical
+        API for move-time work: a template containing ``{ext}`` receives the
+        dotted source extension and a template without it receives the source
+        extension automatically.
+        """
+        basename = os.path.basename(filepath)
         if not template or not template.strip():
-            return os.path.basename(filepath)
+            return basename
+
+        ext = os.path.splitext(basename)[1]
+        has_ext_token = bool(re.search(r'\{\s*ext(?:\s*:[^}]*)?\s*\}',
+                                       template, re.IGNORECASE))
+        if has_ext_token:
+            rendered = RenameTemplateEngine.resolve(
+                template, filepath, metadata, category, counter,
+                _ext_value=ext)
+            # A template consisting only of {ext} is not useful as a filename;
+            # keep the original stem rather than moving a file to "mkv".
+            rendered_stem = rendered
+            if ext and rendered_stem.endswith(ext):
+                rendered_stem = rendered_stem[:-len(ext)]
+            if (not rendered_stem.strip(' ._-')
+                    or rendered.lower() in {ext.lower(), ext.lstrip('.').lower()}):
+                return os.path.splitext(basename)[0] + ext
+            return rendered.rstrip(' .') or basename
+
         stem = RenameTemplateEngine.resolve(template, filepath, metadata, category, counter)
-        ext = os.path.splitext(filepath)[1]
         return stem + ext
 
     @staticmethod
@@ -580,9 +622,10 @@ class RenameTemplateEngine:
             'camera', 'camera_make', 'camera_model', 'width', 'height',
             'duration', 'bitrate', 'pages', 'author',
             'counter', 'counter:03d',
+            'series', 'season', 'episode', 'media_year',
             'vision_name', 'vision_ocr',
             'city', 'country', 'scene', 'month_name', 'blur',
-            'person', 'face_count',
+            'person', 'face_count', 'codec', 'fps',
         ]
 
     @staticmethod
@@ -662,13 +705,52 @@ class RenameTemplateEngine:
         fc = metadata.get('_photo_face_count', -1)
         ctx['face_count'] = str(fc) if fc >= 0 else '0'
 
-        # ── Audio metadata ───────────────────────────────────────────────────
-        ctx['artist'] = metadata.get('artist', '')
-        ctx['album'] = metadata.get('album', '')
-        ctx['title'] = metadata.get('title', '')
-        ctx['genre'] = metadata.get('genre', '')
-        ctx['track'] = metadata.get('track', '')
-        ctx['year_tag'] = metadata.get('year', '')  # from ID3 tag
+        # ── Audio/media metadata ────────────────────────────────────────────
+        def _first(*keys):
+            for key in keys:
+                value = metadata.get(key, '')
+                if value is not None and str(value).strip():
+                    return value
+            return ''
+
+        def _year(value):
+            match = re.search(r'(?<!\d)(\d{4})(?!\d)', str(value or ''))
+            return match.group(1) if match else ''
+
+        def _number(value):
+            match = re.search(r'\d+', str(value or ''))
+            return int(match.group()) if match else ''
+
+        ctx['artist'] = _first('artist', 'performer')
+        ctx['album'] = _first('album')
+        ctx['title'] = _first('title', 'episode_title', 'track_title')
+        ctx['genre'] = _first('genre')
+        ctx['track'] = _first('track', 'track_number', 'tracknumber')
+        media_year = _year(_first(
+            'media_year', 'release_year', 'first_air_date', 'release_date',
+            'published', 'year'))
+        ctx['media_year'] = media_year
+        # Image EXIF dates remain the meaning of {year}; other metadata types
+        # use their embedded/release year when one is available.
+        if media_year and metadata.get('_type') != 'image':
+            ctx['year'] = media_year
+        ctx['year_tag'] = media_year or _first('year')
+
+        ctx['series'] = _first('series', 'series_name', 'show', 'show_name',
+                               'tv_show', 'program')
+        ctx['season'] = _number(_first('season', 'season_number'))
+        ctx['episode'] = _number(_first('episode', 'episode_number',
+                                        'episode_sort'))
+        # ffprobe and common filename conventions expose S01E02 without a
+        # normalized metadata schema. Fill only missing values from the stem.
+        episode_match = re.search(
+            r'(?ix)(?:\bs(\d{1,3})[ ._-]*e(\d{1,4})\b)|'
+            r'(?:\b(\d{1,3})x(\d{1,4})\b)', stem)
+        if episode_match:
+            if ctx['season'] == '':
+                ctx['season'] = int(episode_match.group(1) or episode_match.group(3))
+            if ctx['episode'] == '':
+                ctx['episode'] = int(episode_match.group(2) or episode_match.group(4))
 
         # ── Image metadata ───────────────────────────────────────────────────
         make = metadata.get('camera_make', '')

@@ -2034,11 +2034,15 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             if template and not it.is_folder:
                 self._rename_counters[new_cat] = self._rename_counters.get(new_cat, 0) + 1
                 counter = self._rename_counters[new_cat]
-                new_stem = RenameTemplateEngine.resolve(
+                it.rename_template = template
+                it.rename_counter = counter
+                it.rename_source = 'template'
+                it.display_name = RenameTemplateEngine.resolve_filename(
                     template, it.full_src, it.metadata, new_cat, counter)
-                ext = os.path.splitext(it.name)[1]
-                it.display_name = new_stem + ext
             else:
+                it.rename_template = ''
+                it.rename_counter = 0
+                it.rename_source = ''
                 it.display_name = it.name
             raw_dst  = os.path.join(self._pc_dst_for(new_cat), it.display_name)
             it.full_dst = self._dedup_file_dst(raw_dst)

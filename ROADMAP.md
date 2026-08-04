@@ -52,7 +52,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Media Metadata
 
-- **Auto-rename template engine** — format string: `{title} ({year}) - S{season:02d}E{episode:02d}{ext}`; live preview in settings; applied at move time
 - **Chapter + subtitle downloader** — fetch `.srt`/`.ass` subtitles from OpenSubtitles API; chapter metadata from TMDb; saved alongside media file
 - **EXIF/XMP/ID3 viewer + editor pane** — read/write any metadata field; changes previewed before write; backed by `piexif`, `mutagen`, `pypdf`
 - **Cover art fetcher** — for media files missing embedded artwork: fetch from TMDb poster, MusicBrainz Cover Art Archive, or OpenLibrary; embed into file metadata
