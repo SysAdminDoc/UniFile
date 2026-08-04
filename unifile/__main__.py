@@ -7,6 +7,7 @@ Usage:
     python -m unifile classify <path> [--json]     Headless classify one path.
     python -m unifile scan <path> [--apply-rules]  Headless scan and apply.
     python -m unifile tag --query <query>          Query the tag library.
+    python -m unifile report --format html        Export a library report.
     python -m unifile list-profiles [--json]       List saved scan profiles.
     python -m unifile list-models [--json]         List installed Ollama models.
     python -m unifile plugin create --name <name>  Generate a plugin scaffold.
@@ -271,6 +272,26 @@ def _cmd_tag(args) -> int:
         for entry in entries:
             tags = ", ".join(entry.get("tags", [])) or "(untagged)"
             print(f"{entry.get('id')}\t{entry.get('path', entry.get('name', ''))}\t{tags}")
+    return 0
+
+
+def _cmd_report(args) -> int:
+    """Export a Tag Library category distribution and file list."""
+    from unifile.reports import build_library_report, write_report
+
+    try:
+        report = build_library_report(args.library, limit=args.limit)
+        output_path = write_report(report, args.output, args.format)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        print(f"error: report export failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"Report written: {output_path}")
+    print(f"  entries:     {report['entry_count']}")
+    print(f"  listed:      {report['reported_entries']}")
+    print(f"  categories:  {len(report['category_distribution'])}")
+    if report["truncated"]:
+        print("  note:        report entry limit truncated the file list")
     return 0
 
 
@@ -887,6 +908,27 @@ def main():
     p_tag.add_argument("--limit", type=int, default=100, help="Maximum results (default: 100)")
     p_tag.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 
+    p_report = subparsers.add_parser(
+        "report",
+        help="Export a category distribution and file list",
+    )
+    p_report.add_argument(
+        "--library",
+        default=os.environ.get(
+            "UNIFILE_LIBRARY_DIR", os.path.join(os.path.expanduser("~"), "UniFileLibrary")
+        ),
+        help="Tag Library root (default: UNIFILE_LIBRARY_DIR or ~/UniFileLibrary)",
+    )
+    p_report.add_argument(
+        "--format", choices=("html", "pdf", "json"), default="html",
+        help="Report format (default: html)",
+    )
+    p_report.add_argument("--output", required=True, help="Output report path")
+    p_report.add_argument(
+        "--limit", type=int, default=10_000,
+        help="Maximum file rows to include (default: 10000)",
+    )
+
     p_list_profiles = subparsers.add_parser(
         "list-profiles",
         help="List saved scan profiles (one per line, or --json)",
@@ -1198,6 +1240,8 @@ def main():
         sys.exit(_cmd_scan(args))
     if args.subcommand == "tag":
         sys.exit(_cmd_tag(args))
+    if args.subcommand == "report":
+        sys.exit(_cmd_report(args))
     if args.subcommand == "list-profiles":
         sys.exit(_cmd_list_profiles(args))
     if args.subcommand == "list-models":

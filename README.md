@@ -388,6 +388,8 @@ python -m unifile scan path/to/inbox --json --destination path/to/organized
 python -m unifile scan path/to/inbox --apply-rules --destination path/to/organized
 python -m unifile scan path/to/inbox --apply-rules --dry-run --output-json plan.json
 python -m unifile tag --library path/to/unifile-library --query "cat AND outdoor" --json | jq '.entries[]'
+python -m unifile report --library path/to/unifile-library --format html --output report.html
+python -m unifile report --library path/to/unifile-library --format pdf --output report.pdf
 python -m unifile verify path/to/library --json --output health.json
 python -m unifile nfo generate path/to/movie.mkv --metadata-json metadata.json --json
 python -m unifile nfo generate path/to/episode.mkv --kind episode --no-overwrite
@@ -417,6 +419,9 @@ Only results at or above the default 80% confidence floor are candidates, and
 while selectors such as `tag:`, `ext:`, `rating:`, and `field:` remain available.
 The JSON response contains `query`, `normalized_query`, `count`, and `entries`
 so it can be piped directly to `jq`.
+`report` exports the category-tag distribution and bounded file inventory from a
+Tag Library as a self-contained HTML, dependency-free text PDF, or JSON file;
+use `--limit` when generating a report for a very large library.
 
 ### Headless Docker deployment
 

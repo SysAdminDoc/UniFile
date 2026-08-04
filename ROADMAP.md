@@ -67,7 +67,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Automation & CLI
 
-- `unifile report --format html --output /tmp/report.html` — export category distribution + file list as HTML/PDF report
 - `unifile verify /path` — re-verify checksums for all files in a directory; print mismatches
 - **Watch-folder daemon** — `unifile watch /path/to/inbox`; debounced file detection (500 ms settle); newly arrived files classified and optionally moved; `SIGTERM`-safe with graceful flush
 - **REST API (Flask)** — headless NAS runs; `/scan`, `/tag`, `/search`, `/report` endpoints; API key auth; JSON responses matching the existing `--output-json` schema
