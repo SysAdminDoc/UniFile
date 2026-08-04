@@ -387,6 +387,8 @@ python -m unifile classify path/to/folder --json
 python -m unifile scan path/to/inbox --json --destination path/to/organized
 python -m unifile scan path/to/inbox --apply-rules --destination path/to/organized
 python -m unifile scan path/to/inbox --apply-rules --dry-run --output-json plan.json
+python -m unifile watch path/to/inbox --apply-rules --destination path/to/organized
+python -m unifile watch path/to/inbox --once --include-existing --json
 python -m unifile tag --library path/to/unifile-library --query "cat AND outdoor" --json | jq '.entries[]'
 python -m unifile report --library path/to/unifile-library --format html --output report.html
 python -m unifile report --library path/to/unifile-library --format pdf --output report.pdf
@@ -415,6 +417,11 @@ plan, and only `--apply-rules` performs collision-safe moves. Use
 the command uses the same configured category destinations as the desktop app.
 Only results at or above the default 80% confidence floor are candidates, and
 `--min-confidence` can adjust that threshold.
+`watch` polls recursively without importing Qt, establishes the current folder as
+the baseline, then classifies files only after their size and modification time
+remain stable for 500 ms. Use `--apply-rules` to enable collision-safe moves;
+without it, arrivals are reported for review. `--once --include-existing` is
+useful for scripts, and `SIGINT`/`SIGTERM` trigger a bounded graceful flush.
 `tag --query` maps bare terms and `AND`/`OR` expressions to tag predicates,
 while selectors such as `tag:`, `ext:`, `rating:`, and `field:` remain available.
 The JSON response contains `query`, `normalized_query`, `count`, and `entries`

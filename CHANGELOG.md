@@ -35,6 +35,9 @@ All notable changes to UniFile will be documented in this file.
   confidence filtering, and configurable destination roots.
 - Qt-free `unifile tag --query` shell search with bare-term `AND`/`OR` tag syntax,
   advanced selector support, bounded results, and API-shaped JSON output for `jq`.
+- Qt-free `unifile watch` recursively settles new arrivals for 500 ms before
+  classification, supports review-only or collision-safe apply mode, and flushes
+  pending work on `SIGINT`/`SIGTERM`.
 - Qt-free `unifile report` exports category distributions and bounded file lists
   as escaped HTML, dependency-free PDF, or JSON with atomic output writes.
 - Large PC File Organizer results now use a paged `QAbstractTableModel`/`QTableView`, and the thumbnail grid uses fixed-size `QListView` delegates with visible-item thumbnail loading instead of one widget per result.

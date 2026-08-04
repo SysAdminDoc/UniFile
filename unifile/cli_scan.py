@@ -149,6 +149,71 @@ def _apply_rule_classification(
     return category, confidence, method
 
 
+def plan_file_action(
+    filepath: Path,
+    *,
+    source_path: Path,
+    destination_path: Path | None,
+    categories: list[dict[str, Any]],
+    ext_map: dict[str, str],
+    rules: list[dict[str, Any]],
+    min_confidence: int,
+    reserved: set[str],
+) -> dict[str, Any]:
+    """Classify one file and build the same safe action used by ``scan``.
+
+    The watch daemon uses this narrow helper so a settled file is handled by
+    the exact category, confidence, rule, and collision policy as a batch scan.
+    """
+    stat = filepath.stat()
+    category, confidence, method = _classify_pc_item(
+        str(filepath), ext_map, is_folder=False, categories=categories
+    )
+    category, confidence, method = _apply_rule_classification(
+        filepath, category, confidence, method, rules
+    )
+    category = str(category or "Other")
+    confidence = float(confidence or 0)
+    eligible = bool(category and category.casefold() != "other" and confidence >= min_confidence)
+    status = "Pending" if eligible else "Skip"
+    reason = "" if eligible else "below confidence threshold or unclassified"
+    target = ""
+    selected = False
+    if eligible:
+        destination_dir = _destination_for_category(
+            category, categories, source_path, destination_path
+        ).resolve()
+        target_path = destination_dir / filepath.name
+        if _inside(destination_dir, source_path):
+            status = "Unsafe destination"
+            reason = "destination is inside the source directory"
+        elif is_protected(str(destination_dir)):
+            status = "Protected destination"
+            reason = "destination is protected"
+        elif os.path.normcase(os.path.realpath(str(target_path))) == os.path.normcase(
+            os.path.realpath(str(filepath))
+        ):
+            status = "Already organized"
+            reason = "source is already at the planned destination"
+            target = str(target_path)
+        else:
+            target = str(_collision_safe_path(target_path, reserved))
+            selected = True
+
+    return {
+        "name": filepath.name,
+        "src": str(filepath),
+        "dst": target,
+        "category": category,
+        "confidence": int(confidence),
+        "method": method,
+        "size": stat.st_size,
+        "selected": selected,
+        "status": status,
+        "reason": reason,
+    }
+
+
 def scan_directory(
     source: str | os.PathLike[str],
     *,
@@ -192,57 +257,20 @@ def scan_directory(
         if len(items) >= bounded_limit:
             break
         try:
-            stat = filepath.stat()
-            category, confidence, method = _classify_pc_item(
-                str(filepath), ext_map, is_folder=False, categories=categories
-            )
-            category, confidence, method = _apply_rule_classification(
-                filepath, category, confidence, method, rules
+            item = plan_file_action(
+                filepath,
+                source_path=source_path,
+                destination_path=destination_path,
+                categories=categories,
+                ext_map=ext_map,
+                rules=rules,
+                min_confidence=confidence_floor,
+                reserved=reserved,
             )
         except (OSError, TypeError, ValueError) as exc:
             errors.append({"src": str(filepath), "error": str(exc)})
             continue
-
-        category = str(category or "Other")
-        confidence = float(confidence or 0)
-        eligible = bool(category and category.casefold() != "other" and confidence >= confidence_floor)
-        status = "Pending" if eligible else "Skip"
-        reason = "" if eligible else "below confidence threshold or unclassified"
-        target = ""
-        selected = False
-        if eligible:
-            destination_dir = _destination_for_category(
-                category, categories, source_path, destination_path
-            ).resolve()
-            target_path = destination_dir / filepath.name
-            if _inside(destination_dir, source_path):
-                status = "Unsafe destination"
-                reason = "destination is inside the source directory"
-            elif is_protected(str(destination_dir)):
-                status = "Protected destination"
-                reason = "destination is protected"
-            elif os.path.normcase(os.path.realpath(str(target_path))) == os.path.normcase(
-                os.path.realpath(str(filepath))
-            ):
-                status = "Already organized"
-                reason = "source is already at the planned destination"
-                target = str(target_path)
-            else:
-                target = str(_collision_safe_path(target_path, reserved))
-                selected = True
-
-        items.append({
-            "name": filepath.name,
-            "src": str(filepath),
-            "dst": target,
-            "category": category,
-            "confidence": int(confidence),
-            "method": method,
-            "size": stat.st_size,
-            "selected": selected,
-            "status": status,
-            "reason": reason,
-        })
+        items.append(item)
 
     moved = 0
     would_move = sum(1 for item in items if item["selected"])

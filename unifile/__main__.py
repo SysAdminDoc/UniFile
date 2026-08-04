@@ -6,6 +6,7 @@ Usage:
     python -m unifile --profile <name> --auto-apply
     python -m unifile classify <path> [--json]     Headless classify one path.
     python -m unifile scan <path> [--apply-rules]  Headless scan and apply.
+    python -m unifile watch <path>                 Watch and classify arrivals.
     python -m unifile tag --query <query>          Query the tag library.
     python -m unifile report --format html        Export a library report.
     python -m unifile list-profiles [--json]       List saved scan profiles.
@@ -203,6 +204,53 @@ def _cmd_scan(args) -> int:
         for item in result["errors"]:
             print(f"  error:       {item['src']}: {item['error']}", file=sys.stderr)
     return 1 if result["failed"] or result["errors"] else 0
+
+
+def _cmd_watch(args) -> int:
+    """Run a Qt-free settled-file watch daemon."""
+    from unifile.cli_watch import WatchDaemon
+
+    try:
+        daemon = WatchDaemon(
+            args.path,
+            destination=args.destination,
+            apply_rules=args.apply_rules,
+            settle_seconds=args.settle_seconds,
+            poll_seconds=args.poll_seconds,
+            min_confidence=args.min_confidence,
+            include_existing=args.include_existing,
+        )
+        try:
+            events = daemon.run_once() if args.once else daemon.run()
+        except KeyboardInterrupt:
+            daemon.request_stop()
+            events = daemon.flush_pending()
+        result = daemon.result(events)
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"error: watch failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+    if args.output_json:
+        from unifile.config import save_json_safe
+
+        if not save_json_safe(args.output_json, result):
+            print(f"error: could not write watch report: {args.output_json}", file=sys.stderr)
+            return 2
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Watch: {result['source']}")
+        print(f"  events:       {result['detected']}")
+        print(f"  moved:        {result['moved']}")
+        print(f"  errors:       {result['errors']}")
+        print(f"  deferred:     {result['deferred']}")
+        if args.output_json:
+            print(f"  report:       {args.output_json}")
+        for event in result["events"]:
+            item = event.get("item", {})
+            target = f" -> {item['dst']}" if item.get("dst") else ""
+            print(f"  {event.get('status', 'unknown')}: {event.get('path', '')}{target}")
+    return 1 if result["errors"] else 0
 
 
 _TAG_QUERY_SELECTORS = (
@@ -893,6 +941,42 @@ def main():
     p_scan.add_argument("--json", action="store_true", help="Emit the scan plan as JSON")
     p_scan.add_argument("--output-json", help="Write the scan plan to a JSON file")
 
+    p_watch = subparsers.add_parser(
+        "watch",
+        help="Watch a directory and classify settled file arrivals",
+    )
+    p_watch.add_argument("path", type=str, help="Directory to watch recursively")
+    p_watch.add_argument(
+        "--apply-rules", action="store_true",
+        help="Move settled high-confidence files to category destinations",
+    )
+    p_watch.add_argument(
+        "--destination", type=str, default=None,
+        help="Optional destination root; category folders are created beneath it",
+    )
+    p_watch.add_argument(
+        "--min-confidence", type=int, default=80,
+        help="Minimum confidence for a move candidate (default: 80)",
+    )
+    p_watch.add_argument(
+        "--settle-seconds", "--settle", dest="settle_seconds", type=float, default=0.5,
+        help="Required size/mtime stability before processing (default: 0.5)",
+    )
+    p_watch.add_argument(
+        "--poll-seconds", "--poll", dest="poll_seconds", type=float, default=0.25,
+        help="Polling interval (default: 0.25)",
+    )
+    p_watch.add_argument(
+        "--include-existing", action="store_true",
+        help="Process files already present when the watcher starts",
+    )
+    p_watch.add_argument(
+        "--once", action="store_true",
+        help="Run one discovery/settle cycle and exit",
+    )
+    p_watch.add_argument("--json", action="store_true", help="Emit a JSON summary")
+    p_watch.add_argument("--output-json", help="Write the final watch summary to a JSON file")
+
     p_tag = subparsers.add_parser(
         "tag",
         help="Query a local Tag Library from the shell",
@@ -1238,6 +1322,8 @@ def main():
         sys.exit(_cmd_classify(args))
     if args.subcommand == "scan":
         sys.exit(_cmd_scan(args))
+    if args.subcommand == "watch":
+        sys.exit(_cmd_watch(args))
     if args.subcommand == "tag":
         sys.exit(_cmd_tag(args))
     if args.subcommand == "report":
