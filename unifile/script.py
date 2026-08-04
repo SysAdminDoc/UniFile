@@ -85,7 +85,11 @@ class _ScriptValidator(ast.NodeVisitor):
         self.function_depth = 0
 
     @classmethod
-    def validate(cls, tree: ast.Module) -> tuple[str, ...]:
+    def validate(
+        cls,
+        tree: ast.Module,
+        allowed_functions: set[str] | None = None,
+    ) -> tuple[str, ...]:
         functions = tuple(
             node.name for node in tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -94,10 +98,11 @@ class _ScriptValidator(ast.NodeVisitor):
             raise ScriptValidationError(
                 "Define at least one workflow function: on_scan_item or on_apply"
             )
-        unknown_hooks = set(functions) - set(SCRIPT_HOOKS)
+        allowed = set(allowed_functions or SCRIPT_HOOKS)
+        unknown_hooks = set(functions) - allowed
         if unknown_hooks:
             raise ScriptValidationError(
-                f"Only supported workflow hooks are {', '.join(SCRIPT_HOOKS)}"
+                f"Only supported workflow functions are {', '.join(sorted(allowed))}"
             )
         validator = cls(set(functions))
         validator.visit(tree)
@@ -167,8 +172,8 @@ class _ScriptValidator(ast.NodeVisitor):
             self.visit(node.msg)
 
 
-def validate_script(source: str) -> tuple[str, ...]:
-    """Validate source and return its declared workflow hook names."""
+def validate_script(source: str, *, allowed_functions: set[str] | None = None) -> tuple[str, ...]:
+    """Validate source and return its declared workflow function names."""
     if not isinstance(source, str):
         raise ScriptValidationError("Workflow source must be text")
     if not source.strip():
@@ -179,7 +184,7 @@ def validate_script(source: str) -> tuple[str, ...]:
         tree = ast.parse(source, filename="<unifile-workflow>")
     except SyntaxError as exc:
         raise ScriptValidationError(f"Syntax error on line {exc.lineno}: {exc.msg}") from exc
-    return _ScriptValidator.validate(tree)
+    return _ScriptValidator.validate(tree, allowed_functions)
 
 
 @dataclass
@@ -360,15 +365,17 @@ def _run_script_process(
     connection,
     source: str,
     hook: str,
+    function_name: str | None,
     payload: dict[str, Any] | list[dict[str, Any]],
     classifier_values: dict[str, Any] | None,
     tag_values: dict[str, Any] | None,
 ) -> None:
     """Process entry point. Keep this top-level for Windows spawn pickling."""
     try:
-        hook_names = validate_script(source)
-        if hook not in hook_names:
-            raise ScriptValidationError(f"Workflow does not define {hook}")
+        target_function = function_name or hook
+        hook_names = validate_script(source, allowed_functions=set(SCRIPT_HOOKS) | {target_function})
+        if target_function not in hook_names:
+            raise ScriptValidationError(f"Workflow does not define {target_function}")
         commands: list[dict[str, Any]] = []
         logs: list[str] = []
 
@@ -393,9 +400,9 @@ def _run_script_process(
             "log": log,
         }
         exec(compile(source, "<unifile-workflow>", "exec"), namespace, namespace)
-        function = namespace.get(hook)
+        function = namespace.get(target_function)
         if not callable(function):
-            raise ScriptValidationError(f"Workflow hook {hook} is not callable")
+            raise ScriptValidationError(f"Workflow function {target_function} is not callable")
         if isinstance(item_value, list) and hook == "on_scan_item":
             for current_item in item_value:
                 function(current_item, classifier, tag_library, file_ops, log)
@@ -421,10 +428,12 @@ def execute_script(
     classifier_values: dict[str, Any] | None = None,
     tag_values: dict[str, Any] | None = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    function_name: str | None = None,
 ) -> ScriptResult:
     """Run one workflow hook in a bounded child process."""
     try:
-        validate_script(source)
+        target_function = function_name or hook
+        validate_script(source, allowed_functions=set(SCRIPT_HOOKS) | {target_function})
         if hook not in SCRIPT_HOOKS:
             raise ScriptValidationError(f"Unsupported workflow hook: {hook}")
     except ScriptValidationError as exc:
@@ -436,7 +445,15 @@ def execute_script(
     parent, child = context.Pipe(duplex=False)
     process = context.Process(
         target=_run_script_process,
-        args=(child, source, hook, payload, _safe_json(classifier_values or {}), _safe_json(tag_values or {})),
+        args=(
+            child,
+            source,
+            hook,
+            function_name,
+            payload,
+            _safe_json(classifier_values or {}),
+            _safe_json(tag_values or {}),
+        ),
     )
     process.daemon = True
     try:
@@ -489,6 +506,7 @@ class ScriptExecutionWorker(QThread):
     log = pyqtSignal(str)
 
     def __init__(self, source: str, hook: str, item: Any, *, timeout: float = DEFAULT_TIMEOUT_SECONDS,
+                 function_name: str | None = None,
                  classifier_values: dict[str, Any] | None = None,
                  tag_values: dict[str, Any] | None = None):
         super().__init__()
@@ -496,6 +514,7 @@ class ScriptExecutionWorker(QThread):
         self.hook = hook
         self.item = item
         self.timeout = timeout
+        self.function_name = function_name
         self.classifier_values = classifier_values
         self.tag_values = tag_values
 
@@ -505,6 +524,7 @@ class ScriptExecutionWorker(QThread):
             self.hook,
             self.item,
             timeout=self.timeout,
+            function_name=self.function_name,
             classifier_values=self.classifier_values,
             tag_values=self.tag_values,
         )
@@ -539,6 +559,7 @@ class WorkflowBatchWorker(QThread):
                 self.hook,
                 self.items,
                 timeout=self.timeout,
+                function_name=job.get("function", self.hook),
                 classifier_values=self.classifier_values,
                 tag_values=self.tag_values,
             )

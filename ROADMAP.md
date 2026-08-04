@@ -34,19 +34,6 @@ High-impact, achievable improvements. Each item is scoped to a few days–one we
 
 Larger features requiring non-trivial architecture or multi-week effort.
 
-### YAML Declarative Plugin Manifest
-- YAML descriptor for plugins (alongside the existing Python hook system):
-  ```yaml
-  id: plugin.my_classifier
-  name: My Custom Classifier
-  version: 1.0
-  hooks:
-    - on_scan_item: classify_custom
-    - on_apply: log_movement
-  ```
-- CLI scaffolding: `unifile plugin create --name "My Plugin"` generates the boilerplate directory structure
-- Community plugin discovery: GitHub-hosted index (plain JSON), browsable from Settings → Plugins
-
 ---
 
 ## Long-Term / Vision

@@ -8,7 +8,7 @@ import sys
 import tempfile
 from collections import Counter
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -38,6 +38,7 @@ from unifile.cache import _load_undo_stack, _save_undo_stack
 from unifile.config import clear_watch_history, get_active_stylesheet, get_active_theme, load_watch_history
 from unifile.dialogs.common import build_dialog_header
 from unifile.engine import EventGrouper, ScheduleManager
+from unifile.plugin_manifest import ManifestError, fetch_community_index
 from unifile.plugins import _PLUGINS_DIR, PluginManager, ProfileManager, _safe_name
 from unifile.script import (
     ScriptExecutionWorker,
@@ -924,6 +925,22 @@ class UndoTimelineDialog(QDialog):
         self.accept()
 
 
+class CommunityIndexWorker(QThread):
+    """Fetch the display-only community catalog without blocking the dialog."""
+
+    result_ready = pyqtSignal(object, str)
+
+    def __init__(self, url: str, parent=None):
+        super().__init__(parent)
+        self.url = url
+
+    def run(self):
+        try:
+            self.result_ready.emit(fetch_community_index(self.url), "")
+        except (ManifestError, OSError, ValueError) as exc:
+            self.result_ready.emit([], f"{type(exc).__name__}: {exc}")
+
+
 class PluginManagerDialog(QDialog):
     """Manage UniFile plugins."""
 
@@ -935,6 +952,10 @@ class PluginManagerDialog(QDialog):
         self._script_worker = None
         self._workflow_scripts = []
         self._workflow_path = None
+        self._workflow_function_name = None
+        self._workflow_manifest_path = None
+        self._community_worker = None
+        self._community_items = []
 
         lay = QVBoxLayout(self)
         _t = get_active_theme()
@@ -1033,6 +1054,39 @@ class PluginManagerDialog(QDialog):
         self.txt_script_output.setMaximumHeight(95)
         lay.addWidget(self.txt_script_output)
 
+        community_title = QLabel("Community Plugin Index")
+        community_title.setStyleSheet(
+            f"color: {_t['fg_bright']}; font-size: 13px; font-weight: 700; padding-top: 4px;"
+        )
+        lay.addWidget(community_title)
+        community_desc = QLabel(
+            "Browse metadata from a HTTPS GitHub-hosted JSON catalog. Entries are display-only; "
+            "download, review, and trust plugin code separately."
+        )
+        community_desc.setWordWrap(True)
+        community_desc.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        lay.addWidget(community_desc)
+        community_controls = QHBoxLayout()
+        community_controls.addWidget(QLabel("Index URL:"))
+        self.txt_community_url = QLineEdit(PluginManager.COMMUNITY_INDEX_URL)
+        self.txt_community_url.setAccessibleName("Community plugin index URL")
+        community_controls.addWidget(self.txt_community_url, 1)
+        self.btn_community_refresh = QPushButton("Refresh")
+        self.btn_community_refresh.setProperty("class", "toolbar")
+        self.btn_community_refresh.clicked.connect(self._refresh_community)
+        community_controls.addWidget(self.btn_community_refresh)
+        lay.addLayout(community_controls)
+        self.lst_community = QListWidget()
+        self.lst_community.setAccessibleName("Community plugin index")
+        self.lst_community.setAlternatingRowColors(True)
+        self.lst_community.setMaximumHeight(110)
+        self.lst_community.currentRowChanged.connect(self._on_community_selected)
+        lay.addWidget(self.lst_community)
+        self.lbl_community_status = QLabel("Community index has not been refreshed.")
+        self.lbl_community_status.setWordWrap(True)
+        self.lbl_community_status.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        lay.addWidget(self.lbl_community_status)
+
         btn_row = QHBoxLayout()
         btn_open = QPushButton("Open Plugins Folder")
         btn_open.setProperty("class", "toolbar")
@@ -1062,6 +1116,8 @@ class PluginManagerDialog(QDialog):
 
     def _new_workflow_script(self):
         self._workflow_path = None
+        self._workflow_function_name = None
+        self._workflow_manifest_path = None
         self.txt_script_name.setText("workflow_example.py")
         self.cmb_script_hook.setCurrentText("on_scan_item")
         self.txt_script.setPlainText(workflow_template())
@@ -1080,10 +1136,14 @@ class PluginManagerDialog(QDialog):
 
     def _validate_workflow_script(self) -> bool:
         try:
-            hooks = validate_script(self._script_source_with_marker())
+            allowed = None
+            if self._workflow_function_name:
+                allowed = {"on_scan_item", "on_apply", self._workflow_function_name}
+            hooks = validate_script(self._script_source_with_marker(), allowed_functions=allowed)
             hook = self._selected_workflow_hook()
-            if hook not in hooks:
-                raise ScriptValidationError(f"The script does not define {hook}")
+            function_name = self._workflow_function_name or hook
+            if function_name not in hooks:
+                raise ScriptValidationError(f"The script does not define {function_name}")
             self.txt_script_output.setPlainText(
                 f"Validation passed. Declared hook(s): {', '.join(hooks)}"
             )
@@ -1119,6 +1179,8 @@ class PluginManagerDialog(QDialog):
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
             self._workflow_path = path
+            self._workflow_function_name = None
+            self._workflow_manifest_path = None
             self.txt_script_name.setText(name)
             self.txt_script_output.setPlainText(
                 f"Saved {name} as untrusted. Review it, then use Trust & Enable."
@@ -1131,7 +1193,8 @@ class PluginManagerDialog(QDialog):
         if not self._workflow_path or not os.path.isfile(self._workflow_path):
             self.txt_script_output.setPlainText("Save the workflow script before trusting it.")
             return
-        if PluginManager.trust(self._workflow_path):
+        related = [self._workflow_manifest_path] if self._workflow_manifest_path else None
+        if PluginManager.trust(self._workflow_path, related):
             PluginManager.load_all()
             self.txt_script_output.setPlainText(
                 f"Trusted and enabled {os.path.basename(self._workflow_path)}."
@@ -1163,6 +1226,7 @@ class PluginManagerDialog(QDialog):
             self._selected_workflow_hook(),
             sample_item,
             timeout=self.spn_script_timeout.value(),
+            function_name=self._workflow_function_name,
             classifier_values={sample_path: sample_item},
             tag_values={sample_path: []},
         )
@@ -1194,10 +1258,14 @@ class PluginManagerDialog(QDialog):
             with open(meta['path'], encoding='utf-8') as stream:
                 source = stream.read()
             self._workflow_path = meta['path']
+            self._workflow_manifest_path = meta.get('manifest_path') or None
             self.txt_script_name.setText(meta['file'])
             hooks = meta.get('workflow_hooks', [])
             if hooks:
                 self.cmb_script_hook.setCurrentText(hooks[0])
+            self._workflow_function_name = meta.get('hook_functions', {}).get(
+                self._selected_workflow_hook(), self._selected_workflow_hook()
+            )
             self.txt_script.setPlainText(source)
             self.txt_script_output.setPlainText(
                 f"Loaded {meta['file']} [{meta.get('trust_status', 'untrusted')}]."
@@ -1205,6 +1273,51 @@ class PluginManagerDialog(QDialog):
             self.btn_script_trust.setEnabled(meta.get('trust_status') != 'trusted')
         except OSError as exc:
             self.txt_script_output.setPlainText(f"Could not load workflow: {exc}")
+
+    def _refresh_community(self):
+        if self._community_worker and self._community_worker.isRunning():
+            return
+        url = self.txt_community_url.text().strip()
+        if not url:
+            self.lbl_community_status.setText("Enter an HTTPS index URL first.")
+            return
+        self._community_items = []
+        self.lst_community.clear()
+        self.lbl_community_status.setText("Refreshing community index…")
+        self.btn_community_refresh.setEnabled(False)
+        self._community_worker = CommunityIndexWorker(url, self)
+        self._community_worker.result_ready.connect(self._on_community_result)
+        self._community_worker.finished.connect(self._on_community_finished)
+        self._community_worker.finished.connect(self._community_worker.deleteLater)
+        self._community_worker.start()
+
+    def _on_community_result(self, items, error: str):
+        self._community_items = list(items or [])
+        self.lst_community.clear()
+        if error:
+            self.lbl_community_status.setText(f"Community index unavailable: {error}")
+            return
+        for item in self._community_items:
+            hooks = ', '.join(item.get('hooks', [])) or 'metadata only'
+            self.lst_community.addItem(
+                f"{item['name']}  v{item['version']}  [{hooks}]"
+            )
+        self.lbl_community_status.setText(
+            f"{len(self._community_items)} community plugin"
+            f"{'s' if len(self._community_items) != 1 else ''} available."
+        )
+
+    def _on_community_finished(self):
+        self.btn_community_refresh.setEnabled(True)
+        self._community_worker = None
+
+    def _on_community_selected(self, row: int):
+        if 0 <= row < len(self._community_items):
+            item = self._community_items[row]
+            description = item.get('description') or 'No description.'
+            self.lbl_community_status.setText(
+                f"{item['name']} v{item['version']}: {description}\n{item['url']}"
+            )
 
     def _refresh(self):
         current = self.lst_plugins.currentRow()
@@ -1282,7 +1395,7 @@ class PluginManagerDialog(QDialog):
     def _trust_selected(self):
         row = self.lst_plugins.currentRow()
         if 0 <= row < len(self._discovered):
-            PluginManager.trust(self._discovered[row]['path'])
+            PluginManager.trust_metadata(self._discovered[row])
             PluginManager.load_all()
             self._refresh()
 

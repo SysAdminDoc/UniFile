@@ -271,6 +271,10 @@ python -m unifile classify path/to/folder --json
 # Inventory subcommands (no GUI)
 python -m unifile list-profiles --json
 python -m unifile list-models --url http://localhost:11434 --json
+
+# Manifest-backed plugin scaffolding (no GUI required)
+python -m unifile plugin create --name "My Plugin"
+python -m unifile plugin create --name "My Plugin" --output C:/path/to/plugins --json
 ```
 
 The `classify` subcommand is safe to use in cron jobs and CI — it loads
@@ -311,6 +315,8 @@ For local semantic embeddings, install `pip install -e ".[onnx]"` (or `.[onnx-gp
 For optional semantic duplicate detection, use the same ONNX extra and select the **Semantic duplicates (CLIP/SigLIP)** option in Duplicate Finder. Choose a local exported image graph named `model.onnx` or `vision_model.onnx`; it must accept NCHW float32 `pixel_values` and return one `[batch, embedding]` vector per image. The default cosine threshold is `0.92` and can be changed in the dialog. UniFile never downloads the image model or requires PyTorch for this feature.
 
 For workflow scripts, open **Tools → Plugins**, create or edit a script in the embedded editor, validate it, and explicitly choose **Trust & Enable** before it can run. Scripts live under `%APPDATA%\UniFile\plugins` and declare `Workflow-Hook: on_scan_item` or `Workflow-Hook: on_apply` in their module docstring. The restricted `unifile.script` API exposes `item`, `classifier`, `tag_library`/`library`, `file_ops`, and `log`; imports and arbitrary standard-library access are rejected, and each hook runs in a bounded child process. Tag commands are applied only when a Tag Library is open; file-operation commands remain disabled by default unless a host supplies explicit allowed roots.
+
+Manifest-backed plugins live in a folder containing `plugin.yaml` and a Python entrypoint. The manifest declares a stable `id`, display name/version, and a list or mapping of supported hooks to public function names. UniFile validates the YAML and entrypoint path before discovery, includes the manifest in the trust fingerprint, and keeps untrusted or changed packages disabled. **Tools → Plugins → Community Plugin Index** reads a bounded HTTPS JSON catalog for browsing only; it never downloads or executes catalog entries.
 
 Developer checks:
 

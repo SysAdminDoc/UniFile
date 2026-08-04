@@ -7,6 +7,7 @@ Usage:
     python -m unifile classify <path> [--json]     Headless classify one path.
     python -m unifile list-profiles [--json]       List saved scan profiles.
     python -m unifile list-models [--json]         List installed Ollama models.
+    python -m unifile plugin create --name <name>  Generate a plugin scaffold.
     python -m unifile validate-rules <dir> [--json]
                                                    Verify a directory's
                                                    .unifile_rules.json and
@@ -218,6 +219,27 @@ def _cmd_validate_rules(args) -> int:
     return 0 if report['ok'] else 4
 
 
+def _cmd_plugin_create(args) -> int:
+    """Create a manifest-backed plugin package without importing the GUI."""
+    from unifile.config import _APP_DATA_DIR
+    from unifile.plugin_manifest import ManifestError, create_plugin_scaffold
+
+    output_dir = args.output or os.path.join(_APP_DATA_DIR, 'plugins')
+    try:
+        result = create_plugin_scaffold(args.name, output_dir, force=args.force)
+    except (ManifestError, OSError, ValueError) as exc:
+        print(f"error: could not create plugin: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Created plugin scaffold: {result['directory']}")
+        print(f"  manifest:   {result['manifest']}")
+        print(f"  entrypoint: {result['entrypoint']}")
+        print("Review it, then trust it from Settings -> Plugins.")
+    return 0
+
+
 def _write_scan_json(window, output_path: str) -> None:
     """Serialize the current scan results to a JSON plan file.
 
@@ -350,6 +372,28 @@ def main():
     p_validate_rules.add_argument("--json", action="store_true",
                                   help="Emit a JSON report instead of human-readable output")
 
+    p_plugin = subparsers.add_parser(
+        "plugin",
+        help="Create or inspect manifest-backed plugins",
+    )
+    plugin_subparsers = p_plugin.add_subparsers(dest="plugin_command")
+    p_plugin_create = plugin_subparsers.add_parser(
+        "create",
+        help="Generate a YAML manifest and Python entrypoint scaffold",
+    )
+    p_plugin_create.add_argument("--name", required=True, help="Human-readable plugin name")
+    p_plugin_create.add_argument(
+        "--output",
+        default=None,
+        help="Plugin root directory (default: UniFile app-data plugins folder)",
+    )
+    p_plugin_create.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite the generated plugin.yaml and plugin.py in an existing target folder",
+    )
+    p_plugin_create.add_argument("--json", action="store_true", help="Emit generated paths as JSON")
+
     p_shell = subparsers.add_parser(
         "install-shell",
         help="Install Windows Explorer shell integration (context menu + Send To)",
@@ -394,6 +438,11 @@ def main():
         sys.exit(_cmd_list_models(args))
     if args.subcommand == "validate-rules":
         sys.exit(_cmd_validate_rules(args))
+    if args.subcommand == "plugin":
+        if args.plugin_command == "create":
+            sys.exit(_cmd_plugin_create(args))
+        print("error: choose a plugin command (currently: create)", file=sys.stderr)
+        sys.exit(2)
 
     if args.subcommand == "install-shell":
         from unifile import shell_integration as si

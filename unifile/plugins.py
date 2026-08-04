@@ -8,6 +8,14 @@ import shutil
 
 from unifile.cloud_storage import iter_local_cloud_files, local_cloud_status
 from unifile.config import _APP_DATA_DIR, _PRESETS_DIR, _PROFILES_DIR, load_json_safe, save_json_safe
+from unifile.plugin_manifest import (
+    DEFAULT_COMMUNITY_INDEX_URL,
+    ManifestError,
+    fetch_community_index,
+    find_manifests,
+    read_manifest,
+    resolve_entrypoint,
+)
 
 
 def _safe_name(name: str) -> str:
@@ -139,6 +147,7 @@ class PluginManager:
 
     HOOKS = ('classify', 'rename_token', 'post_move', 'post_scan')
     WORKFLOW_HOOKS = ('on_scan_item', 'on_apply')
+    COMMUNITY_INDEX_URL = DEFAULT_COMMUNITY_INDEX_URL
     _plugins = []  # list of (module, metadata_dict)
     _load_errors = []
 
@@ -147,16 +156,43 @@ class PluginManager:
         return os.path.normcase(os.path.abspath(path))
 
     @staticmethod
-    def _fingerprint(path: str) -> dict:
-        st = os.stat(path)
+    def _fingerprint(path: str, related_paths: list[str] | None = None) -> dict:
+        """Fingerprint one plugin, optionally including its manifest sidecar."""
+        related = [os.path.abspath(value) for value in (related_paths or [])]
+        if not related:
+            # Preserve the original trust record shape/hash for legacy plugins.
+            st = os.stat(path)
+            h = hashlib.sha256()
+            with open(path, 'rb') as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                    h.update(chunk)
+            return {
+                'path': PluginManager._trust_key(path),
+                'size': st.st_size,
+                'mtime_ns': getattr(st, 'st_mtime_ns', int(st.st_mtime * 1_000_000_000)),
+                'sha256': h.hexdigest(),
+            }
+        paths = [os.path.abspath(path), *related]
         h = hashlib.sha256()
-        with open(path, 'rb') as f:
-            for chunk in iter(lambda: f.read(1024 * 1024), b''):
-                h.update(chunk)
+        total_size = 0
+        newest_mtime = 0
+        for candidate in paths:
+            st = os.stat(candidate)
+            total_size += st.st_size
+            newest_mtime = max(
+                newest_mtime,
+                getattr(st, 'st_mtime_ns', int(st.st_mtime * 1_000_000_000)),
+            )
+            h.update(PluginManager._trust_key(candidate).encode('utf-8'))
+            h.update(b'\0')
+            with open(candidate, 'rb') as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b''):
+                    h.update(chunk)
+            h.update(b'\0')
         return {
             'path': PluginManager._trust_key(path),
-            'size': st.st_size,
-            'mtime_ns': getattr(st, 'st_mtime_ns', int(st.st_mtime * 1_000_000_000)),
+            'size': total_size,
+            'mtime_ns': newest_mtime,
             'sha256': h.hexdigest(),
         }
 
@@ -165,20 +201,20 @@ class PluginManager:
         return load_json_safe(_PLUGIN_TRUST_PATH, {}, expected_type=dict)
 
     @classmethod
-    def is_trusted(cls, path: str) -> bool:
+    def is_trusted(cls, path: str, related_paths: list[str] | None = None) -> bool:
         key = cls._trust_key(path)
         entry = cls._trust_store().get(key)
         if not isinstance(entry, dict):
             return False
         try:
-            return entry == cls._fingerprint(path)
+            return entry == cls._fingerprint(path, related_paths)
         except OSError:
             return False
 
     @classmethod
-    def trust(cls, path: str) -> bool:
+    def trust(cls, path: str, related_paths: list[str] | None = None) -> bool:
         try:
-            fp = cls._fingerprint(path)
+            fp = cls._fingerprint(path, related_paths)
         except OSError:
             return False
         store = cls._trust_store()
@@ -192,23 +228,34 @@ class PluginManager:
         return save_json_safe(_PLUGIN_TRUST_PATH, store)
 
     @classmethod
-    def trust_status(cls, path: str) -> str:
+    def trust_status(cls, path: str, related_paths: list[str] | None = None) -> str:
         key = cls._trust_key(path)
         store = cls._trust_store()
         if key not in store:
             return 'untrusted'
         try:
-            return 'trusted' if store.get(key) == cls._fingerprint(path) else 'changed'
+            return 'trusted' if store.get(key) == cls._fingerprint(path, related_paths) else 'changed'
         except OSError:
             return 'missing'
+
+    @classmethod
+    def trust_metadata(cls, meta: dict) -> bool:
+        """Trust a discovered plugin and bind its manifest to the fingerprint."""
+        related = [meta['manifest_path']] if meta.get('manifest_path') else None
+        return cls.trust(meta.get('path', ''), related)
 
     @classmethod
     def last_load_errors(cls) -> list:
         return list(cls._load_errors)
 
     @classmethod
+    def community_plugins(cls, url: str | None = None) -> list[dict]:
+        """Fetch the display-only community catalog over HTTPS."""
+        return fetch_community_index(url or cls.COMMUNITY_INDEX_URL)
+
+    @classmethod
     def discover(cls) -> list:
-        """Scan _PLUGINS_DIR for .py files, extract metadata from docstring."""
+        """Discover legacy root scripts and validated YAML plugin packages."""
         results = []
         if not os.path.isdir(_PLUGINS_DIR):
             return results
@@ -219,7 +266,8 @@ class PluginManager:
             meta = {'file': fname, 'path': fpath, 'name': fname[:-3],
                     'hooks': [], 'description': '', 'enabled': False,
                     'trusted': False, 'trust_status': 'untrusted',
-                    'load_error': '', 'workflow_hooks': [], 'kind': 'legacy'}
+                    'load_error': '', 'workflow_hooks': [], 'kind': 'legacy',
+                    'hook_functions': {}, 'manifest_path': ''}
             try:
                 with open(fpath, encoding='utf-8') as f:
                     src = f.read()
@@ -233,10 +281,14 @@ class PluginManager:
                         hook = line.split(':', 1)[1].strip().lower()
                         if hook in cls.HOOKS:
                             meta['hooks'].append(hook)
+                            meta['hook_functions'][hook] = (
+                                'rename_tokens' if hook == 'rename_token' else hook
+                            )
                     if line.strip().lower().startswith('workflow-hook:'):
                         hook = line.split(':', 1)[1].strip().lower()
                         if hook in cls.WORKFLOW_HOOKS:
                             meta['workflow_hooks'].append(hook)
+                            meta['hook_functions'][hook] = hook
                 if meta['workflow_hooks']:
                     meta['kind'] = 'workflow'
                 status = cls.trust_status(fpath)
@@ -245,6 +297,51 @@ class PluginManager:
                 meta['enabled'] = meta['trusted']
             except Exception as exc:
                 meta['description'] = f"Error parsing {fname}"
+                meta['trust_status'] = 'parse_error'
+                meta['load_error'] = f"{type(exc).__name__}: {exc}"
+            results.append(meta)
+
+        for manifest_path in find_manifests(_PLUGINS_DIR):
+            manifest_name = os.path.basename(os.path.dirname(manifest_path)) or 'plugin'
+            meta = {
+                'file': manifest_name,
+                'path': '',
+                'name': manifest_name,
+                'id': '',
+                'version': '',
+                'hooks': [],
+                'workflow_hooks': [],
+                'hook_functions': {},
+                'description': '',
+                'enabled': False,
+                'trusted': False,
+                'trust_status': 'untrusted',
+                'load_error': '',
+                'kind': 'manifest',
+                'manifest_path': os.path.abspath(manifest_path),
+            }
+            try:
+                manifest = read_manifest(manifest_path)
+                entrypoint = resolve_entrypoint(manifest)
+                meta.update({
+                    'path': entrypoint,
+                    'name': manifest['name'],
+                    'id': manifest['id'],
+                    'version': manifest['version'],
+                    'description': manifest['description'] or manifest['name'],
+                    'hook_functions': dict(manifest['hooks']),
+                })
+                for hook in manifest['hooks']:
+                    if hook in cls.WORKFLOW_HOOKS:
+                        meta['workflow_hooks'].append(hook)
+                    else:
+                        meta['hooks'].append(hook)
+                status = cls.trust_status(entrypoint, [manifest_path])
+                meta['trust_status'] = status
+                meta['trusted'] = status == 'trusted'
+                meta['enabled'] = meta['trusted']
+            except (ManifestError, OSError, ValueError) as exc:
+                meta['description'] = f"Error parsing {manifest_name}"
                 meta['trust_status'] = 'parse_error'
                 meta['load_error'] = f"{type(exc).__name__}: {exc}"
             results.append(meta)
@@ -260,7 +357,7 @@ class PluginManager:
                 continue
             # Workflow scripts execute in the restricted child-process runner;
             # never import them into the host just because they are trusted.
-            if meta.get('workflow_hooks'):
+            if not meta.get('hooks'):
                 continue
             try:
                 spec = importlib.util.spec_from_file_location(meta['name'], meta['path'])
@@ -279,7 +376,7 @@ class PluginManager:
         for mod, meta in cls._plugins:
             if 'classify' not in meta.get('hooks', []):
                 continue
-            fn = getattr(mod, 'classify', None)
+            fn = getattr(mod, meta.get('hook_functions', {}).get('classify', 'classify'), None)
             if fn:
                 try:
                     result = fn(filepath, metadata)
@@ -296,7 +393,7 @@ class PluginManager:
         for mod, meta in cls._plugins:
             if 'rename_token' not in meta.get('hooks', []):
                 continue
-            fn = getattr(mod, 'rename_tokens', None)
+            fn = getattr(mod, meta.get('hook_functions', {}).get('rename_token', 'rename_tokens'), None)
             if fn:
                 try:
                     t = fn()
@@ -312,7 +409,7 @@ class PluginManager:
         for mod, meta in cls._plugins:
             if 'post_move' not in meta.get('hooks', []):
                 continue
-            fn = getattr(mod, 'post_move', None)
+            fn = getattr(mod, meta.get('hook_functions', {}).get('post_move', 'post_move'), None)
             if fn:
                 try:
                     fn(src, dst, category)
@@ -325,7 +422,7 @@ class PluginManager:
         for mod, meta in cls._plugins:
             if 'post_scan' not in meta.get('hooks', []):
                 continue
-            fn = getattr(mod, 'post_scan', None)
+            fn = getattr(mod, meta.get('hook_functions', {}).get('post_scan', 'post_scan'), None)
             if fn:
                 try:
                     fn(items)
@@ -349,7 +446,12 @@ class PluginManager:
                     source = stream.read()
             except OSError:
                 continue
-            jobs.append({'name': meta['name'], 'path': meta['path'], 'source': source})
+            jobs.append({
+                'name': meta['name'],
+                'path': meta['path'],
+                'source': source,
+                'function': meta.get('hook_functions', {}).get(hook, hook),
+            })
         return jobs
 
     @classmethod
@@ -382,6 +484,7 @@ class PluginManager:
                     job['source'],
                     hook,
                     item,
+                    function_name=job.get('function', hook),
                     classifier_values=classifier_values,
                     tag_values=tag_values,
                     timeout=timeout,
