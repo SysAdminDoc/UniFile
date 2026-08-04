@@ -334,6 +334,16 @@ scans return the same versioned JSON plan shape used by `--output-json`, while
 tag writes are explicit. Leave `UNIFILE_ALLOW_UNAUTHENTICATED=0` in shared
 deployments.
 
+### Mobile Companion
+
+Start the read-only LAN browser on demand. UniFile prints an authenticated URL with a random token; open it from a phone on the same network and optionally install it as a PWA:
+
+```bash
+python -m unifile mobile --library /path/to/unifile-library
+```
+
+The companion browses entries, tags, fields, search results, and image previews. Mobile mode rejects every non-GET request, does not expose tag/scan/job writes, keeps paths relative to the configured library, and generates thumbnails in memory when Pillow is available. Use `--host 127.0.0.1` for local-only access or set `UNIFILE_MOBILE_HOST` / `UNIFILE_MOBILE_PORT` for a different bind address and port.
+
 ### JSON scan plan format
 
 `--output-json <path>` writes a plan file after the scan completes. Use it

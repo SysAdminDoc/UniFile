@@ -19,6 +19,8 @@ Usage:
                                                    Export Calibre metadata.opf files.
     python -m unifile projects audit SOURCE [--apply]
                                                    Audit project media references.
+    python -m unifile mobile --library LIBRARY
+                                                   Start the read-only LAN companion.
     python -m unifile validate-rules <dir> [--json]
                                                    Verify a directory's
                                                    .unifile_rules.json and
@@ -395,6 +397,13 @@ def _cmd_projects_audit(args) -> int:
     return 0 if not audit.errors and not payload.get("apply", {}).get("errors") else 2
 
 
+def _cmd_mobile(args) -> int:
+    """Start the token-protected, read-only PWA companion server."""
+    from unifile.mobile import run_mobile_server
+
+    return run_mobile_server(args.library, host=args.host, port=args.port, token=args.token)
+
+
 def _write_scan_json(window, output_path: str) -> None:
     """Serialize the current scan results to a JSON plan file.
 
@@ -643,6 +652,32 @@ def main():
     )
     p_projects_audit.add_argument("--json", action="store_true", help="Emit a JSON report")
 
+    p_mobile = subparsers.add_parser(
+        "mobile",
+        help="Start the read-only LAN PWA companion",
+    )
+    p_mobile.add_argument(
+        "--library",
+        default=os.environ.get("UNIFILE_LIBRARY_DIR", os.path.join(os.path.expanduser("~"), "UniFileLibrary")),
+        help="UniFile library root (default: UNIFILE_LIBRARY_DIR or ~/UniFileLibrary)",
+    )
+    p_mobile.add_argument(
+        "--host",
+        default=os.environ.get("UNIFILE_MOBILE_HOST", "0.0.0.0"),
+        help="Bind address (default: 0.0.0.0 for LAN access)",
+    )
+    p_mobile.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("UNIFILE_MOBILE_PORT", "8788")),
+        help="Bind port (default: 8788)",
+    )
+    p_mobile.add_argument(
+        "--token",
+        default=None,
+        help="Optional URL token; a random token is generated when omitted",
+    )
+
     p_shell = subparsers.add_parser(
         "install-shell",
         help="Install Windows Explorer shell integration (context menu + Send To)",
@@ -710,6 +745,8 @@ def main():
             sys.exit(_cmd_projects_audit(args))
         print("error: choose a projects command (currently: audit)", file=sys.stderr)
         sys.exit(2)
+    if args.subcommand == "mobile":
+        sys.exit(_cmd_mobile(args))
 
     if args.subcommand == "install-shell":
         from unifile import shell_integration as si

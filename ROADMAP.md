@@ -40,12 +40,6 @@ Larger features requiring non-trivial architecture or multi-week effort.
 
 Strategic / aspirational features. Some require significant architecture changes or external dependencies.
 
-### Mobile Companion App (Read-Only LAN Browser)
-- Lightweight web server started on demand; accessible from phone browser on local network
-- Browse tag library, search, preview thumbnails; no write operations
-- Progressive Web App (PWA manifest, installable to home screen)
-- Possible implementation: `bottle.py` + Jinja2 templates + base64 thumbnails; or Pyodide WASM for in-browser classifier
-
 ### Collaborative LAN Tagging
 - Multi-user mode: UniFile exposes tag library over LAN; other instances connect as clients
 - Role-based permissions: Admin (edit tags + rules), Editor (apply tags), Viewer (search only)

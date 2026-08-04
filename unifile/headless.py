@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import mimetypes
 import os
 import threading
 from contextlib import contextmanager
@@ -14,6 +15,10 @@ API_SCHEMA_VERSION = "1"
 DEFAULT_LIBRARY_ROOT = os.path.join(os.path.expanduser("~"), "UniFileLibrary")
 MAX_SCAN_ITEMS = 10_000
 MAX_QUERY_RESULTS = 500
+MOBILE_MAX_ENTRIES = 500
+MOBILE_IMAGE_EXTENSIONS = {
+    ".avif", ".bmp", ".gif", ".heic", ".heif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp",
+}
 
 
 def _truthy(value: Any) -> bool:
@@ -187,6 +192,91 @@ class HeadlessService:
                 for entry in library.search_entries(query, limit=bounded_limit)
             ]
 
+    def _mobile_entry_payload(self, entry, fields: dict[str, str] | None = None) -> dict[str, Any]:
+        """Build a read-only payload without leaking an absolute filesystem path."""
+        path = Path(entry.path).expanduser().resolve(strict=False)
+        relative = os.path.relpath(path, self.library_root)
+        try:
+            stat = path.stat()
+            size = stat.st_size
+            modified = datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")
+            is_file = path.is_file()
+        except OSError:
+            size = None
+            modified = ""
+            is_file = False
+        payload = {
+            "id": entry.id,
+            "path": relative,
+            "name": entry.filename,
+            "extension": entry.suffix,
+            "size": size,
+            "modified": modified,
+            "tags": sorted(tag.name for tag in getattr(entry, "tags", set())),
+            "fields": fields or {},
+            "preview_url": None,
+            "mime_type": mimetypes.guess_type(str(path))[0] or "application/octet-stream",
+            "absolute_path": str(path),
+        }
+        if is_file and path.suffix.lower() in MOBILE_IMAGE_EXTENSIONS and _inside(path, self.library_root):
+            payload["preview_url"] = f"/mobile/api/entries/{entry.id}/preview"
+        return payload
+
+    def mobile_library(self) -> dict[str, Any]:
+        """Return the minimal catalog summary needed by the PWA shell."""
+        with self._tag_library() as library:
+            tags = library.get_all_tags()
+            counts = library.get_tag_entry_counts()
+            return {
+                "version": API_SCHEMA_VERSION,
+                "library_root": str(self.library_root),
+                "entry_count": library.get_entry_count(),
+                "tag_count": len(tags),
+                "tags": [
+                    {"name": tag.name, "entry_count": counts.get(tag.id, 0)}
+                    for tag in tags
+                    if counts.get(tag.id, 0) > 0
+                ],
+            }
+
+    def mobile_entries(self, *, query: str = "", tag: str = "", limit: int = 80,
+                       offset: int = 0) -> list[dict[str, Any]]:
+        """Return paginated entries for the read-only companion."""
+        query = str(query or "").strip()
+        tag = str(tag or "").strip()
+        if len(query) > 500 or len(tag) > 120:
+            raise ValueError("mobile search query is too long")
+        bounded_limit = max(1, min(MOBILE_MAX_ENTRIES, int(limit)))
+        bounded_offset = max(0, int(offset))
+        with self._tag_library() as library:
+            if tag:
+                tag_obj = library.get_tag_by_name(tag)
+                entries = library.get_entries_by_tag(tag_obj.id) if tag_obj else []
+                entries = entries[bounded_offset:bounded_offset + bounded_limit]
+            elif query:
+                entries = library.search_entries(query, limit=MOBILE_MAX_ENTRIES)
+                entries = entries[bounded_offset:bounded_offset + bounded_limit]
+            else:
+                entries = library.get_all_entries(limit=bounded_limit, offset=bounded_offset)
+            payloads = [
+                self._mobile_entry_payload(entry, library.get_entry_fields(entry.id))
+                for entry in entries
+            ]
+            for payload in payloads:
+                payload.pop("absolute_path", None)
+            return payloads
+
+    def mobile_entry(self, entry_id: int, *, include_private: bool = False) -> dict[str, Any] | None:
+        """Return one entry and its fields for the mobile detail/preview route."""
+        with self._tag_library() as library:
+            entry = library.get_entry(entry_id)
+            if entry is None:
+                return None
+            payload = self._mobile_entry_payload(entry, library.get_entry_fields(entry.id))
+        if not include_private:
+            payload.pop("absolute_path", None)
+        return payload
+
     def report(self) -> dict[str, Any]:
         with self._tag_library() as library:
             tags = library.get_all_tags()
@@ -251,6 +341,8 @@ def create_app(config: dict[str, Any] | None = None, *, service: HeadlessService
         LIBRARY_ROOT=str(service.library_root),
         OLLAMA_URL=service.ollama_url,
         SCAN_INTERVAL=service.scan_interval,
+        MOBILE_ONLY=bool(supplied.get("MOBILE_ONLY", False)),
+        MOBILE_TOKEN=str(supplied.get("MOBILE_TOKEN", "")),
         SCHEDULER_FILE=str(supplied.get("SCHEDULER_FILE", os.path.join(
             os.path.expanduser("~"), "UniFile", "headless_jobs.json"
         ))),
@@ -259,6 +351,16 @@ def create_app(config: dict[str, Any] | None = None, *, service: HeadlessService
 
     def _auth_error():
         if request.path == "/health":
+            return None
+        if app.config.get("MOBILE_ONLY") and request.method not in {"GET", "HEAD", "OPTIONS"}:
+            return jsonify({"error": "mobile companion is read-only"}), 405
+        if request.path.startswith("/mobile"):
+            expected = str(app.config.get("MOBILE_TOKEN", ""))
+            provided = request.headers.get("X-API-Key", "") or request.args.get("token", "")
+            if not expected:
+                return jsonify({"error": "mobile token is not configured"}), 503
+            if not hmac.compare_digest(provided, expected):
+                return jsonify({"error": "invalid mobile token"}), 401
             return None
         expected = app.config.get("API_KEY", "")
         if not expected:
@@ -347,6 +449,11 @@ def create_app(config: dict[str, Any] | None = None, *, service: HeadlessService
             return jsonify(service.report())
         except (OSError, RuntimeError) as exc:
             return jsonify({"error": str(exc)}), 500
+
+    if app.config.get("MOBILE_ONLY") or app.config.get("MOBILE_TOKEN"):
+        from unifile.mobile import register_mobile_routes
+
+        register_mobile_routes(app, service)
 
     from unifile.scheduler import JobScheduler, load_jobs, save_jobs, validate_job
 
