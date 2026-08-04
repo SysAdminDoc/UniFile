@@ -2710,11 +2710,25 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         # Store metadata fields on any selected entries in the tag panel
         fields_map = {
             "title": "title",
+            "author": "author",
+            "artist": "artist",
             "synopsis": "ai_summary",
+            "source_url": "url",
+            "publisher": "publisher",
+            "isbn": "isbn",
+            "language": "language",
+            "published": "published",
+            "cover_url": "cover_url",
+            "genres": "genre",
             "id_imdb": "imdb_id",
             "id_tmdb": "tmdb_id",
         }
         if media_type == "episode":
+            fields_map["series"] = "series"
+            fields_map["season"] = "season"
+            fields_map["episode"] = "episode"
+            fields_map["date"] = "date"
+        elif media_type in {"book", "audiobook"}:
             fields_map["series"] = "series"
 
         saved = 0
@@ -2727,6 +2741,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             for src_key, field_key in fields_map.items():
                 val = meta.get(src_key, "")
                 if val:
+                    if isinstance(val, list):
+                        val = "; ".join(str(item) for item in val)
                     lib.set_entry_field(entry_id, field_key, str(val))
             # Apply genre tags
             for genre in meta.get("genres", []):

@@ -98,18 +98,18 @@ python -m unifile projects audit /path/to/projects --library /path/to/unifile-li
 
 ### Media Lookup (NEW in v8.0)
 
-Movie and TV metadata lookup powered by TMDb, OMDb, and TVMaze APIs (adapted from mnamer):
-TMDb and OMDb require your own API keys via the Media Lookup panel or `API_KEY_TMDB` / `API_KEY_OMDB`; TVMaze works without a key.
+Unified movie, TV, book, audiobook, and audio metadata lookup powered by TMDb, TVDB, TVMaze, OMDb, OpenLibrary, Google Books, and MusicBrainz (adapted from mnamer):
+TMDb, TVDB, and OMDb use your own API keys via the Media Lookup panel or `API_KEY_TMDB`, `API_KEY_TVDB`, and `API_KEY_OMDB`; TVDB can also use `API_KEY_TVDB_PIN`. TVMaze, OpenLibrary, Google Books, and MusicBrainz work without a key.
 
 | Feature | Description |
 |---------|-------------|
-| TMDb Search | Search movies by title/year with poster art and full details |
-| TVMaze Search | Search TV shows, browse full episode lists by season |
-| OMDb Fallback | Secondary movie lookup via IMDb IDs |
-| Provider Key Status | Missing or rejected TMDb/OMDb keys are shown before and after searches |
-| guessit Parser | Parse media filenames to auto-detect title, year, season, episode |
-| Poster Preview | Full poster art display with synopsis, genres, and external IDs |
-| Apply to Tags | Push metadata (title, synopsis, genres, IMDb/TMDb IDs) to Tag Library entries |
+| Video Search | TMDb → OMDb movie fallback and TVDB → TMDb → TVMaze TV fallback with full details and episode lists |
+| Book Search | OpenLibrary → Google Books fallback for books and audiobooks, including authors, ISBN, covers, and publication data |
+| Audio Search | MusicBrainz recording lookup with artist, album, release, and Cover Art Archive metadata |
+| Provider Key Status | Missing or rejected credentials are shown before and after searches, with environment-variable precedence |
+| guessit Parser | Parse video, book, audiobook, and audio filenames to auto-detect title, year, season, and episode |
+| Artwork Preview | Full poster or cover-art display with synopsis, genres, and external IDs |
+| Apply to Tags | Push normalized media metadata into matching Tag Library fields and genre tags |
 | Copy Metadata | One-click copy of all metadata fields to clipboard |
 | Cached Requests | API responses cached for 6 days to reduce API calls |
 
@@ -297,10 +297,10 @@ unifile/
 │   ├── models.py        # Tag, Entry, Folder, ValueType ORM models
 │   └── library.py       # TagLibrary CRUD API
 ├── media/
-│   └── providers.py     # TMDb, OMDb, TVMaze API + guessit parser
+│   └── providers.py     # Video, book, audiobook, and audio APIs + guessit parser
 └── dialogs/
     ├── tag_library.py   # Tag Library browser panel
-    ├── media_lookup.py  # Media Lookup panel (movie/TV search)
+    ├── media_lookup.py  # Media Lookup panel (video/book/audio search)
     ├── cleanup.py       # Cleanup results dialog
     ├── duplicates.py    # Duplicate comparison dialog
     ├── editors.py       # Rules/category editors

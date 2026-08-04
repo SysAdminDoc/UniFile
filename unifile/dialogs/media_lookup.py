@@ -30,17 +30,26 @@ from PyQt6.QtWidgets import (
 
 from unifile.config import get_active_theme
 from unifile.media.providers import (
+    AudioResult,
+    BookResult,
     EpisodeResult,
     MediaType,
     MovieResult,
     clear_media_provider_errors,
+    googlebooks_book_details,
     load_media_api_keys,
     media_provider_statuses,
+    musicbrainz_recording_details,
     omdb_details,
+    openlibrary_book_details,
     parse_media_filename,
     save_media_api_keys,
     search_media,
     tmdb_movie_details,
+    tmdb_show_details,
+    tmdb_show_episodes,
+    tvdb_show_details,
+    tvdb_show_episodes,
     tvmaze_show_details,
     tvmaze_show_episodes,
 )
@@ -100,22 +109,64 @@ class _DetailWorker(QThread):
                     full = omdb_details(self.result.id_imdb)
                     if full:
                         detail = full
+            elif isinstance(self.result, BookResult):
+                if self.result.id_openlibrary:
+                    full = openlibrary_book_details(self.result.id_openlibrary)
+                    if full:
+                        detail = full
+                elif self.result.id_googlebooks:
+                    full = googlebooks_book_details(self.result.id_googlebooks)
+                    if full:
+                        detail = full
+                if isinstance(detail, BookResult) and isinstance(self.result, BookResult):
+                    for attribute in (
+                        "authors", "year", "synopsis", "isbn", "language", "genres",
+                        "series", "publisher", "cover_url", "source_url",
+                        "id_openlibrary", "id_googlebooks",
+                    ):
+                        if not getattr(detail, attribute) and getattr(self.result, attribute):
+                            setattr(detail, attribute, getattr(self.result, attribute))
+            elif isinstance(self.result, AudioResult) and self.result.id_musicbrainz:
+                full = musicbrainz_recording_details(self.result.id_musicbrainz)
+                if full:
+                    detail = full
+                if isinstance(detail, AudioResult) and isinstance(self.result, AudioResult):
+                    for attribute in ("artist", "album", "year", "genre", "release_id", "cover_url", "source_url"):
+                        if not getattr(detail, attribute) and getattr(self.result, attribute):
+                            setattr(detail, attribute, getattr(self.result, attribute))
+            elif isinstance(self.result, EpisodeResult):
+                if self.result.id_tvdb:
+                    full = tvdb_show_details(self.result.id_tvdb)
+                    if full:
+                        detail = full
+                elif self.result.id_tmdb:
+                    full = tmdb_show_details(self.result.id_tmdb)
+                    if full:
+                        detail = full
             self.detail_ready.emit(detail)
 
             # Fetch poster
-            if self.fetch_poster and detail.poster_url:
+            poster_url = getattr(detail, "poster_url", "") or getattr(detail, "cover_url", "")
+            if self.fetch_poster and poster_url:
                 import requests
-                resp = requests.get(detail.poster_url, timeout=10)
+                resp = requests.get(poster_url, timeout=10)
                 if resp.status_code == 200:
                     self.poster_ready.emit(resp.content)
 
             # Fetch episodes for TV shows
-            if self.fetch_episodes and isinstance(detail, EpisodeResult) and detail.id_tvmaze:
-                episodes = tvmaze_show_episodes(int(detail.id_tvmaze))
-                show = tvmaze_show_details(int(detail.id_tvmaze))
+            if self.fetch_episodes and isinstance(detail, EpisodeResult):
+                if detail.id_tvdb:
+                    episodes = tvdb_show_episodes(detail.id_tvdb)
+                elif detail.id_tmdb:
+                    episodes = tmdb_show_episodes(detail.id_tmdb)
+                elif detail.id_tvmaze:
+                    episodes = tvmaze_show_episodes(int(detail.id_tvmaze))
+                else:
+                    episodes = []
+                show = tvmaze_show_details(int(detail.id_tvmaze)) if detail.id_tvmaze else None
                 series_name = show.get("name", "") if show else detail.series
                 for ep in episodes:
-                    ep.series = series_name
+                    ep.series = ep.series or series_name
                 self.episodes_ready.emit(episodes)
         except Exception as e:
             self.error.emit(str(e))
@@ -159,7 +210,7 @@ class MediaLookupPanel(QWidget):
         self.lbl_header_title = QLabel("Media Lookup")
         header_copy.addWidget(self.lbl_header_title)
         self.lbl_header_subtitle = QLabel(
-            "Search TMDb, OMDb, and TVMaze, then review a richer detail card before sending metadata into your library."
+            "Search movie, TV, book, audiobook, and audio catalogs, then review a richer detail card before sending metadata into your library."
         )
         self.lbl_header_subtitle.setWordWrap(True)
         header_copy.addWidget(self.lbl_header_subtitle)
@@ -180,30 +231,37 @@ class MediaLookupPanel(QWidget):
         sb_lay.setSpacing(8)
 
         self.cmb_type = QComboBox()
-        self.cmb_type.addItems(["Movie", "TV Show"])
-        self.cmb_type.setFixedWidth(100)
+        self.cmb_type.addItems(["Movie", "TV Show", "Book", "Audiobook", "Audio"])
+        self.cmb_type.setAccessibleName("Media type")
+        self.cmb_type.setToolTip("Choose the catalog to search")
+        self.cmb_type.currentIndexChanged.connect(self._update_search_placeholder)
+        self.cmb_type.setFixedWidth(110)
         self.cmb_type.setFixedHeight(28)
         sb_lay.addWidget(self.cmb_type)
 
         self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("Search movies or TV shows…")
+        self.txt_search.setPlaceholderText("Search movies, TV, books, or audio…")
+        self.txt_search.setAccessibleName("Media search query")
         self.txt_search.setFixedHeight(28)
         self.txt_search.returnPressed.connect(self._on_search)
         sb_lay.addWidget(self.txt_search, 1)
 
         self.txt_year = QLineEdit()
         self.txt_year.setPlaceholderText("Year")
+        self.txt_year.setAccessibleName("Release or publication year")
         self.txt_year.setFixedWidth(60)
         self.txt_year.setFixedHeight(28)
         sb_lay.addWidget(self.txt_year)
 
         self.btn_search = QPushButton("Search")
         self.btn_search.setProperty("class", "primary")
+        self.btn_search.setAccessibleName("Search media providers")
         self.btn_search.clicked.connect(self._on_search)
         sb_lay.addWidget(self.btn_search)
 
         self.btn_parse = QPushButton("Parse Filename")
-        self.btn_parse.setToolTip("Parse a media filename to auto-fill the search query")
+        self.btn_parse.setToolTip("Parse a video, book, audiobook, or audio filename to auto-fill the search query")
+        self.btn_parse.setAccessibleName("Parse media filename")
         self.btn_parse.setProperty("class", "success")
         self.btn_parse.clicked.connect(self._on_parse_filename)
         sb_lay.addWidget(self.btn_parse)
@@ -224,15 +282,32 @@ class MediaLookupPanel(QWidget):
 
         self.txt_tmdb_key = QLineEdit()
         self.txt_tmdb_key.setPlaceholderText("TMDb API key")
+        self.txt_tmdb_key.setAccessibleName("TMDb API key")
         self.txt_tmdb_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.txt_tmdb_key.setFixedHeight(28)
         key_lay.addWidget(self.txt_tmdb_key)
 
         self.txt_omdb_key = QLineEdit()
         self.txt_omdb_key.setPlaceholderText("OMDb API key")
+        self.txt_omdb_key.setAccessibleName("OMDb API key")
         self.txt_omdb_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.txt_omdb_key.setFixedHeight(28)
         key_lay.addWidget(self.txt_omdb_key)
+
+        self.txt_tvdb_key = QLineEdit()
+        self.txt_tvdb_key.setPlaceholderText("TVDB API key")
+        self.txt_tvdb_key.setAccessibleName("TVDB API key")
+        self.txt_tvdb_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_tvdb_key.setFixedHeight(28)
+        key_lay.addWidget(self.txt_tvdb_key)
+
+        self.txt_tvdb_pin = QLineEdit()
+        self.txt_tvdb_pin.setPlaceholderText("TVDB PIN (optional)")
+        self.txt_tvdb_pin.setAccessibleName("TVDB subscriber PIN")
+        self.txt_tvdb_pin.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_tvdb_pin.setFixedHeight(28)
+        self.txt_tvdb_pin.setFixedWidth(115)
+        key_lay.addWidget(self.txt_tvdb_pin)
 
         self.btn_save_keys = QPushButton("Save Keys")
         self.btn_save_keys.setProperty("class", "toolbar")
@@ -376,6 +451,7 @@ class MediaLookupPanel(QWidget):
         fields = {
             "tmdb": self.txt_tmdb_key,
             "omdb": self.txt_omdb_key,
+            "tvdb": self.txt_tvdb_key,
         }
         for provider, field in fields.items():
             status = statuses.get(provider, {})
@@ -388,10 +464,22 @@ class MediaLookupPanel(QWidget):
                 field.setText(keys.get(provider, ""))
                 field.setPlaceholderText(f"{status.get('label', provider)} API key")
 
+        tvdb_status = statuses.get("tvdb", {})
+        if tvdb_status.get("pin_source") == "environment":
+            self.txt_tvdb_pin.setText("")
+            self.txt_tvdb_pin.setPlaceholderText(
+                f"Using {tvdb_status.get('pin_env_var', 'API_KEY_TVDB_PIN')}"
+            )
+            self.txt_tvdb_pin.setEnabled(False)
+        else:
+            self.txt_tvdb_pin.setEnabled(True)
+            self.txt_tvdb_pin.setText(keys.get("tvdb_pin", ""))
+            self.txt_tvdb_pin.setPlaceholderText("TVDB PIN (optional)")
+
     def _refresh_provider_status(self) -> str:
         statuses = media_provider_statuses()
         parts = []
-        for provider in ("tmdb", "omdb", "tvmaze"):
+        for provider in ("tmdb", "tvdb", "omdb", "tvmaze", "openlibrary", "googlebooks", "musicbrainz"):
             status = statuses.get(provider, {})
             label = status.get("label", provider)
             last_error = status.get("last_error", "")
@@ -410,7 +498,13 @@ class MediaLookupPanel(QWidget):
 
     def _provider_issue_text(self, media_type: MediaType) -> str:
         statuses = media_provider_statuses()
-        providers = ("tmdb", "omdb") if media_type == MediaType.MOVIE else ("tvmaze",)
+        providers = {
+            MediaType.MOVIE: ("tmdb", "omdb"),
+            MediaType.EPISODE: ("tvdb", "tmdb", "tvmaze"),
+            MediaType.BOOK: ("openlibrary", "googlebooks"),
+            MediaType.AUDIOBOOK: ("openlibrary", "googlebooks"),
+            MediaType.AUDIO: ("musicbrainz",),
+        }.get(media_type, ())
         issues = []
         for provider in providers:
             status = statuses.get(provider, {})
@@ -425,12 +519,45 @@ class MediaLookupPanel(QWidget):
             return "Movie lookup needs a TMDb or OMDb key. Add one above or set API_KEY_TMDB/API_KEY_OMDB."
         return "Provider status: " + "; ".join(issues)
 
+    def _selected_media_type(self) -> MediaType:
+        return (
+            MediaType.MOVIE,
+            MediaType.EPISODE,
+            MediaType.BOOK,
+            MediaType.AUDIOBOOK,
+            MediaType.AUDIO,
+        )[min(max(self.cmb_type.currentIndex(), 0), 4)]
+
+    def _set_media_type(self, media_type: MediaType) -> None:
+        index = {
+            MediaType.MOVIE: 0,
+            MediaType.EPISODE: 1,
+            MediaType.BOOK: 2,
+            MediaType.AUDIOBOOK: 3,
+            MediaType.AUDIO: 4,
+        }.get(media_type, 0)
+        self.cmb_type.setCurrentIndex(index)
+
+    def _update_search_placeholder(self, _index: int = 0) -> None:
+        placeholders = {
+            MediaType.MOVIE: "Search movie titles…",
+            MediaType.EPISODE: "Search TV show titles…",
+            MediaType.BOOK: "Search book titles or authors…",
+            MediaType.AUDIOBOOK: "Search audiobook titles or authors…",
+            MediaType.AUDIO: "Search song titles or artists…",
+        }
+        self.txt_search.setPlaceholderText(placeholders[self._selected_media_type()])
+
     def _on_save_api_keys(self):
         keys = load_media_api_keys()
         if self.txt_tmdb_key.isEnabled():
             keys["tmdb"] = self.txt_tmdb_key.text().strip()
         if self.txt_omdb_key.isEnabled():
             keys["omdb"] = self.txt_omdb_key.text().strip()
+        if self.txt_tvdb_key.isEnabled():
+            keys["tvdb"] = self.txt_tvdb_key.text().strip()
+        if self.txt_tvdb_pin.isEnabled():
+            keys["tvdb_pin"] = self.txt_tvdb_pin.text().strip()
         if save_media_api_keys(keys):
             clear_media_provider_errors()
             self.lbl_status.setText("Media provider keys saved")
@@ -448,12 +575,12 @@ class MediaLookupPanel(QWidget):
             self.lbl_status.setText("Enter a title, then search")
             return
 
-        media_type = MediaType.MOVIE if self.cmb_type.currentIndex() == 0 else MediaType.EPISODE
+        media_type = self._selected_media_type()
         year = self.txt_year.text().strip() or None
         self._refresh_provider_status()
 
         self.lbl_status.setText("Searching connected providers…")
-        self.lbl_results_hint.setText("Reviewing TMDb, OMDb, and TVMaze for the best matches.")
+        self.lbl_results_hint.setText(self._provider_chain_text(media_type))
         self.tbl_results.setRowCount(0)
         self.tbl_episodes.setRowCount(0)
         self.tbl_episodes.setVisible(False)
@@ -465,10 +592,21 @@ class MediaLookupPanel(QWidget):
         self._worker.error.connect(self._on_search_error)
         self._worker.start()
 
+    @staticmethod
+    def _provider_chain_text(media_type: MediaType) -> str:
+        chains = {
+            MediaType.MOVIE: "Reviewing TMDb, then OMDb, for the best movie matches.",
+            MediaType.EPISODE: "Reviewing TVDB, then TMDb, then TVMaze, for the best TV matches.",
+            MediaType.BOOK: "Reviewing OpenLibrary, then Google Books, for the best book matches.",
+            MediaType.AUDIOBOOK: "Reviewing OpenLibrary, then Google Books, for the best audiobook matches.",
+            MediaType.AUDIO: "Reviewing MusicBrainz for recording, artist, and release metadata.",
+        }
+        return chains.get(media_type, "Reviewing connected providers.")
+
     def _on_parse_filename(self):
         files, _ = QFileDialog.getOpenFileNames(
             self, "Select Media File",
-            filter="Media Files (*.mp4 *.mkv *.avi *.m4v *.wmv *.ts *.mov *.srt *.sub);;All Files (*)")
+            filter="Media Files (*.mp4 *.mkv *.avi *.m4v *.wmv *.ts *.mov *.srt *.sub *.epub *.pdf *.mobi *.azw3 *.m4b *.aax *.mp3 *.flac *.m4a *.wav *.ogg *.opus);;All Files (*)")
         if not files:
             return
 
@@ -478,10 +616,7 @@ class MediaLookupPanel(QWidget):
         self.txt_search.setText(parsed.get("title", ""))
         self.txt_year.setText(parsed.get("year", "") or "")
 
-        if parsed.get("type") == MediaType.EPISODE:
-            self.cmb_type.setCurrentIndex(1)
-        else:
-            self.cmb_type.setCurrentIndex(0)
+        self._set_media_type(parsed.get("type", MediaType.MOVIE))
 
         # Auto-search
         self._on_search()
@@ -491,10 +626,7 @@ class MediaLookupPanel(QWidget):
         parsed = parse_media_filename(filename)
         self.txt_search.setText(parsed.get("title", ""))
         self.txt_year.setText(parsed.get("year", "") or "")
-        if parsed.get("type") == MediaType.EPISODE:
-            self.cmb_type.setCurrentIndex(1)
-        else:
-            self.cmb_type.setCurrentIndex(0)
+        self._set_media_type(parsed.get("type", MediaType.MOVIE))
         self._on_search()
 
     @pyqtSlot(list)
@@ -512,13 +644,26 @@ class MediaLookupPanel(QWidget):
                 id_str = result.id_tmdb or result.id_imdb or ""
                 self.tbl_results.setItem(row, 3, QTableWidgetItem(id_str))
             elif isinstance(result, EpisodeResult):
-                self.tbl_results.setItem(row, 0, QTableWidgetItem(result.series))
-                self.tbl_results.setItem(row, 1, QTableWidgetItem(""))
+                self.tbl_results.setItem(row, 0, QTableWidgetItem(result.series or result.title))
+                self.tbl_results.setItem(row, 1, QTableWidgetItem(result.year))
                 self.tbl_results.setItem(row, 2, QTableWidgetItem("TV Show"))
-                self.tbl_results.setItem(row, 3, QTableWidgetItem(result.id_tvmaze))
+                id_str = result.id_tvdb or result.id_tmdb or result.id_tvmaze or result.id_imdb
+                self.tbl_results.setItem(row, 3, QTableWidgetItem(id_str))
+            elif isinstance(result, BookResult):
+                self.tbl_results.setItem(row, 0, QTableWidgetItem(result.title))
+                self.tbl_results.setItem(row, 1, QTableWidgetItem(result.year))
+                label = "Audiobook" if self._selected_media_type() == MediaType.AUDIOBOOK else "Book"
+                self.tbl_results.setItem(row, 2, QTableWidgetItem(label))
+                id_str = result.id_openlibrary or result.id_googlebooks
+                self.tbl_results.setItem(row, 3, QTableWidgetItem(id_str))
+            elif isinstance(result, AudioResult):
+                self.tbl_results.setItem(row, 0, QTableWidgetItem(result.title))
+                self.tbl_results.setItem(row, 1, QTableWidgetItem(result.year))
+                self.tbl_results.setItem(row, 2, QTableWidgetItem("Audio"))
+                self.tbl_results.setItem(row, 3, QTableWidgetItem(result.id_musicbrainz))
 
         count = len(results)
-        media_type = MediaType.MOVIE if self.cmb_type.currentIndex() == 0 else MediaType.EPISODE
+        media_type = self._selected_media_type()
         provider_issue = self._provider_issue_text(media_type)
         self._refresh_provider_status()
         self.lbl_status.setText(
@@ -570,7 +715,6 @@ class MediaLookupPanel(QWidget):
     @pyqtSlot(object)
     def _on_detail_ready(self, detail):
         self._current_detail = detail
-        _t = get_active_theme()
 
         if isinstance(detail, MovieResult):
             self.lbl_detail_title.setText(detail.title)
@@ -595,10 +739,52 @@ class MediaLookupPanel(QWidget):
             self.lbl_genres.setText(", ".join(detail.genres) if detail.genres else "")
             self.txt_synopsis.setText(detail.synopsis or "No synopsis available.")
             ids = []
+            if detail.id_tvdb:
+                ids.append(f"TVDB: {detail.id_tvdb}")
+            if detail.id_tmdb:
+                ids.append(f"TMDb: {detail.id_tmdb}")
             if detail.id_tvmaze:
                 ids.append(f"TVMaze: {detail.id_tvmaze}")
             if detail.id_imdb:
                 ids.append(f"IMDb: {detail.id_imdb}")
+            self.lbl_ids.setText("  |  ".join(ids))
+
+        elif isinstance(detail, BookResult):
+            label = "Audiobook" if self._selected_media_type() == MediaType.AUDIOBOOK else "Book"
+            self.lbl_detail_title.setText(detail.title)
+            author_text = ", ".join(detail.authors)
+            meta = f"{label}  |  {detail.year}" if detail.year else label
+            if author_text:
+                meta += f"  |  {author_text}"
+            self.lbl_detail_meta.setText(meta)
+            self.lbl_genres.setText(", ".join(detail.genres) if detail.genres else "")
+            self.txt_synopsis.setText(detail.synopsis or "No synopsis available.")
+            ids = []
+            if detail.id_openlibrary:
+                ids.append(f"OpenLibrary: {detail.id_openlibrary}")
+            if detail.id_googlebooks:
+                ids.append(f"Google Books: {detail.id_googlebooks}")
+            if detail.isbn:
+                ids.append(f"ISBN: {detail.isbn}")
+            self.lbl_ids.setText("  |  ".join(ids))
+
+        elif isinstance(detail, AudioResult):
+            self.lbl_detail_title.setText(detail.title)
+            meta = "Audio"
+            if detail.year:
+                meta += f"  |  {detail.year}"
+            if detail.artist:
+                meta += f"  |  {detail.artist}"
+            if detail.album:
+                meta += f"  |  {detail.album}"
+            self.lbl_detail_meta.setText(meta)
+            self.lbl_genres.setText(detail.genre)
+            self.txt_synopsis.setText(detail.synopsis or "No synopsis available.")
+            ids = []
+            if detail.id_musicbrainz:
+                ids.append(f"MusicBrainz: {detail.id_musicbrainz}")
+            if detail.release_id:
+                ids.append(f"Release: {detail.release_id}")
             self.lbl_ids.setText("  |  ".join(ids))
 
         self.lbl_status.setText("Metadata ready")
@@ -646,7 +832,16 @@ class MediaLookupPanel(QWidget):
         ep_str = f"S{ep.season:02d}E{ep.episode:02d}" if ep.season and ep.episode else ""
         self.lbl_detail_meta.setText(f"TV Show  |  {ep_str}  {ep.title}")
         self.txt_synopsis.setText(ep.synopsis or "No synopsis available.")
-        self.lbl_ids.setText(f"TVMaze: {ep.id_tvmaze}" if ep.id_tvmaze else "")
+        ids = []
+        if ep.id_tvdb:
+            ids.append(f"TVDB: {ep.id_tvdb}")
+        if ep.id_tmdb:
+            ids.append(f"TMDb: {ep.id_tmdb}")
+        if ep.id_tvmaze:
+            ids.append(f"TVMaze: {ep.id_tvmaze}")
+        if ep.id_imdb:
+            ids.append(f"IMDb: {ep.id_imdb}")
+        self.lbl_ids.setText("  |  ".join(ids))
         self.lbl_detail_hint.setText("Episode-level metadata is ready to review or send to Tag Library.")
         self.btn_apply_tags.setEnabled(True)
         self.btn_copy.setEnabled(True)
@@ -689,8 +884,42 @@ class MediaLookupPanel(QWidget):
             meta["synopsis"] = detail.synopsis
             meta["genres"] = detail.genres
             meta["id_tvmaze"] = detail.id_tvmaze
+            meta["id_tvdb"] = detail.id_tvdb
+            meta["id_tmdb"] = detail.id_tmdb
             meta["id_imdb"] = detail.id_imdb
             meta["media_type"] = "episode"
+        elif isinstance(detail, BookResult):
+            meta["title"] = detail.title
+            meta["author"] = "; ".join(detail.authors)
+            meta["authors"] = detail.authors
+            meta["year"] = detail.year
+            meta["synopsis"] = detail.synopsis
+            meta["genres"] = detail.genres
+            meta["isbn"] = detail.isbn
+            meta["language"] = detail.language
+            meta["series"] = detail.series
+            meta["publisher"] = detail.publisher
+            meta["published"] = detail.year
+            meta["cover_url"] = detail.cover_url
+            meta["source_url"] = detail.source_url
+            meta["id_openlibrary"] = detail.id_openlibrary
+            meta["id_googlebooks"] = detail.id_googlebooks
+            meta["media_type"] = (
+                "audiobook" if self._selected_media_type() == MediaType.AUDIOBOOK else "book"
+            )
+        elif isinstance(detail, AudioResult):
+            meta["title"] = detail.title
+            meta["artist"] = detail.artist
+            meta["album"] = detail.album
+            meta["year"] = detail.year
+            meta["synopsis"] = detail.synopsis
+            meta["genre"] = detail.genre
+            meta["genres"] = [detail.genre] if detail.genre else []
+            meta["id_musicbrainz"] = detail.id_musicbrainz
+            meta["release_id"] = detail.release_id
+            meta["cover_url"] = detail.cover_url
+            meta["source_url"] = detail.source_url
+            meta["media_type"] = "audio"
         return meta
 
     def _on_apply_to_tags(self):
