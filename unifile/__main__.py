@@ -6,6 +6,7 @@ Usage:
     python -m unifile --profile <name> --auto-apply
     python -m unifile classify <path> [--json]     Headless classify one path.
     python -m unifile scan <path> [--apply-rules]  Headless scan and apply.
+    python -m unifile tag --query <query>          Query the tag library.
     python -m unifile list-profiles [--json]       List saved scan profiles.
     python -m unifile list-models [--json]         List installed Ollama models.
     python -m unifile plugin create --name <name>  Generate a plugin scaffold.
@@ -36,6 +37,7 @@ Usage:
 """
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -200,6 +202,76 @@ def _cmd_scan(args) -> int:
         for item in result["errors"]:
             print(f"  error:       {item['src']}: {item['error']}", file=sys.stderr)
     return 1 if result["failed"] or result["errors"] else 0
+
+
+_TAG_QUERY_SELECTORS = (
+    "tag:", "-tag:", "ext:", "field:", "special:", "rating:",
+    "inbox:", "ns:", "group:", "color:",
+)
+
+
+def _normalize_tag_query(query: str) -> str:
+    """Interpret bare CLI terms as tags while preserving query selectors."""
+    raw = str(query or "").strip()
+    if not raw:
+        raise ValueError("a query is required")
+    if len(raw) > 500:
+        raise ValueError("search query is too long")
+    parts = re.split(r"\s+(AND|OR)\s+", raw, flags=re.IGNORECASE)
+    terms = []
+    for index in range(0, len(parts), 2):
+        term = parts[index].strip()
+        if not term:
+            raise ValueError("query contains an empty term")
+        lowered = term.casefold()
+        selector = next(
+            (candidate for candidate in _TAG_QUERY_SELECTORS if lowered.startswith(candidate)),
+            None,
+        )
+        if selector:
+            normalized = selector + term[len(selector):]
+        elif term.startswith("-"):
+            normalized = "-tag:" + term[1:].strip()
+        else:
+            normalized = "tag:" + term
+        if normalized in {"tag:", "-tag:"}:
+            raise ValueError("query contains an empty tag")
+        terms.append(normalized)
+        if index + 1 < len(parts):
+            terms.append(parts[index + 1].upper())
+    return " ".join(terms)
+
+
+def _cmd_tag(args) -> int:
+    """Search a local Tag Library without importing Qt."""
+    from unifile.headless import HeadlessService
+
+    raw_query = str(args.query or "").strip()
+    try:
+        normalized_query = _normalize_tag_query(raw_query)
+        service = HeadlessService(args.library)
+        entries = service.search(normalized_query, limit=args.limit)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        print(f"error: tag search failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+    result = {
+        "version": "1",
+        "library": str(Path(args.library).expanduser().resolve()),
+        "query": raw_query,
+        "normalized_query": normalized_query,
+        "count": len(entries),
+        "entries": entries,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Tag search: {raw_query}")
+        print(f"Results: {len(entries)}")
+        for entry in entries:
+            tags = ", ".join(entry.get("tags", [])) or "(untagged)"
+            print(f"{entry.get('id')}\t{entry.get('path', entry.get('name', ''))}\t{tags}")
+    return 0
 
 
 def _cmd_validate_rules(args) -> int:
@@ -800,6 +872,21 @@ def main():
     p_scan.add_argument("--json", action="store_true", help="Emit the scan plan as JSON")
     p_scan.add_argument("--output-json", help="Write the scan plan to a JSON file")
 
+    p_tag = subparsers.add_parser(
+        "tag",
+        help="Query a local Tag Library from the shell",
+    )
+    p_tag.add_argument(
+        "--library",
+        default=os.environ.get(
+            "UNIFILE_LIBRARY_DIR", os.path.join(os.path.expanduser("~"), "UniFileLibrary")
+        ),
+        help="Tag Library root (default: UNIFILE_LIBRARY_DIR or ~/UniFileLibrary)",
+    )
+    p_tag.add_argument("--query", required=True, help="Tag query, e.g. 'cat AND outdoor'")
+    p_tag.add_argument("--limit", type=int, default=100, help="Maximum results (default: 100)")
+    p_tag.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+
     p_list_profiles = subparsers.add_parser(
         "list-profiles",
         help="List saved scan profiles (one per line, or --json)",
@@ -1109,6 +1196,8 @@ def main():
         sys.exit(_cmd_classify(args))
     if args.subcommand == "scan":
         sys.exit(_cmd_scan(args))
+    if args.subcommand == "tag":
+        sys.exit(_cmd_tag(args))
     if args.subcommand == "list-profiles":
         sys.exit(_cmd_list_profiles(args))
     if args.subcommand == "list-models":

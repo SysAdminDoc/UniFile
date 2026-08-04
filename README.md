@@ -387,6 +387,7 @@ python -m unifile classify path/to/folder --json
 python -m unifile scan path/to/inbox --json --destination path/to/organized
 python -m unifile scan path/to/inbox --apply-rules --destination path/to/organized
 python -m unifile scan path/to/inbox --apply-rules --dry-run --output-json plan.json
+python -m unifile tag --library path/to/unifile-library --query "cat AND outdoor" --json | jq '.entries[]'
 python -m unifile verify path/to/library --json --output health.json
 python -m unifile nfo generate path/to/movie.mkv --metadata-json metadata.json --json
 python -m unifile nfo generate path/to/episode.mkv --kind episode --no-overwrite
@@ -412,6 +413,10 @@ plan, and only `--apply-rules` performs collision-safe moves. Use
 the command uses the same configured category destinations as the desktop app.
 Only results at or above the default 80% confidence floor are candidates, and
 `--min-confidence` can adjust that threshold.
+`tag --query` maps bare terms and `AND`/`OR` expressions to tag predicates,
+while selectors such as `tag:`, `ext:`, `rating:`, and `field:` remain available.
+The JSON response contains `query`, `normalized_query`, `count`, and `entries`
+so it can be piped directly to `jq`.
 
 ### Headless Docker deployment
 
