@@ -6,9 +6,10 @@ import uuid
 import zipfile
 from datetime import datetime as dt
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, joinedload
 
 # Sentinel for "not passed" (distinct from None, which means "clear the field")
@@ -68,9 +69,12 @@ class TagLibrary:
 
     def __init__(self, library_dir: str | None = None):
         self.library_dir = library_dir
-        self.engine = None
-        self._session = None
-        self._folder = None
+        # These values are initialized by ``open``.  Keeping the closed-state
+        # sentinel explicit lets the rest of the API use SQLAlchemy's typed
+        # Session/Engine interfaces without weakening every query to Any.
+        self.engine: Engine = cast(Engine, None)
+        self._session: Session = cast(Session, None)
+        self._folder: Folder = cast(Folder, None)
         self.last_field_error: str | None = None
 
     @property
@@ -100,16 +104,16 @@ class TagLibrary:
         logger.info("Tag library opened: %s", db_path)
         return True
 
-    def close(self):
+    def close(self) -> None:
         if self._session:
             self._session.close()
-            self._session = None
+            self._session = cast(Session, None)
         if self.engine:
             self.engine.dispose()
-            self.engine = None
-        self._folder = None
+            self.engine = cast(Engine, None)
+        self._folder = cast(Folder, None)
 
-    def _init_default_fields(self):
+    def _init_default_fields(self) -> None:
         for field_def in DEFAULT_FIELDS:
             existing = self._session.get(ValueType, field_def["key"])
             if not existing:
@@ -224,10 +228,10 @@ class TagLibrary:
     def update_tag(self, tag_id: int, name: str | None = None,
                    color_slug: str | None = None,
                    is_category: bool | None = None,
-                   namespace=_UNSET,
+                   namespace: Any = _UNSET,
                    is_hidden: bool | None = None,
-                   description=_UNSET,
-                   icon=_UNSET) -> bool:
+                   description: Any = _UNSET,
+                   icon: Any = _UNSET) -> bool:
         tag = self._session.get(Tag, tag_id)
         if not tag:
             return False
@@ -470,7 +474,7 @@ class TagLibrary:
             batch = file_paths[i:i + batch_size]
             batch_paths = [Path(fp) for fp in batch]
             # Fetch all already-present paths in one query (avoids N+1)
-            existing_paths: set = set(
+            existing_paths: set[Path] = set(
                 self._session.execute(
                     select(Entry.path).where(Entry.path.in_(batch_paths))
                 ).scalars().all()
@@ -810,7 +814,7 @@ class TagLibrary:
 
     @staticmethod
     def _delete_entry_field_rows(
-        session, entry_id: int | None, field_key: str
+        session: Session, entry_id: int | None, field_key: str
     ) -> None:
         for model in (TextField, DatetimeField, BooleanField):
             conditions = [model.type_key == field_key]
@@ -820,7 +824,7 @@ class TagLibrary:
 
     @classmethod
     def _set_entry_field_in_session(
-        cls, session, entry_id: int, field_key: str, value: Any
+        cls, session: Session, entry_id: int, field_key: str, value: Any
     ) -> tuple[bool, str | None]:
         entry = session.get(Entry, entry_id)
         value_type = session.get(ValueType, field_key)
@@ -865,7 +869,7 @@ class TagLibrary:
 
     @staticmethod
     def set_entry_field_with_session(
-        session, entry_id: int, field_key: str, value: Any
+        session: Session, entry_id: int, field_key: str, value: Any
     ) -> bool:
         """Thread-safe variant: caller provides an explicit SQLAlchemy session."""
         success, _ = TagLibrary._set_entry_field_in_session(
@@ -1119,7 +1123,7 @@ class TagLibrary:
         return True
 
     def export_entry_group(self, group_id: int, destination: str,
-                           mode: str = 'zip') -> dict:
+                           mode: str = 'zip') -> dict[str, Any]:
         """Export group members without moving or copying source files.
 
         ``mode='zip'`` creates a new archive with collision-safe basenames.
@@ -1231,7 +1235,7 @@ class TagLibrary:
         folders = self._session.execute(select(Folder)).scalars().all()
         return [str(f.path) for f in folders]
 
-    def get_root_statuses(self) -> list[dict]:
+    def get_root_statuses(self) -> list[dict[str, Any]]:
         """Return root health, writability, and indexed-entry counts."""
         statuses = []
         for folder in self._session.execute(select(Folder).order_by(Folder.path)).scalars().all():
@@ -1273,7 +1277,7 @@ class TagLibrary:
         self._session.commit()
         return True
 
-    def relink_root(self, root_id: int, new_path: str) -> dict:
+    def relink_root(self, root_id: int, new_path: str) -> dict[str, Any]:
         """Relink every entry under a moved root to a new root location."""
         folder = self._session.get(Folder, root_id)
         if not folder:
@@ -1400,7 +1404,7 @@ class TagLibrary:
 
         if ' OR ' in q:
             parts = [p.strip() for p in q.split(' OR ')]
-            all_ids = set()
+            all_ids: set[int] = set()
             for p in parts:
                 all_ids.update(e.id for e in self.search_entries(p, limit=10000))
             if not all_ids:
@@ -1634,15 +1638,15 @@ class TagLibrary:
             select(Tag).where(Tag.name == tag.name, Tag.id != tag.id)
         ).scalars().all()
         if not others:
-            return tag.name
+            return str(tag.name)
         # Find disambiguating parent
         if tag.parent_tags:
             parent = next(iter(tag.parent_tags))
-            suffix = parent.shorthand or parent.name
+            suffix = str(parent.shorthand or parent.name)
             return f"{tag.name} ({suffix})"
-        return tag.name
+        return str(tag.name)
 
-    def get_tag_hierarchy(self) -> list[dict]:
+    def get_tag_hierarchy(self) -> list[dict[str, Any]]:
         """Get full tag hierarchy as a tree structure for UI display.
 
         Returns list of root tags (those with no parents) with their children nested.
@@ -1653,7 +1657,9 @@ class TagLibrary:
         # Find roots (tags with no parents)
         roots = [t for t in all_tags if not t.parent_tags]
 
-        def _build_tree(tag, visited: set) -> dict | None:
+        def _build_tree(
+            tag: Tag, visited: set[int]
+        ) -> dict[str, Any] | None:
             if tag.id in visited:
                 return None  # cycle detected — skip
             branch = visited | {tag.id}
@@ -1688,9 +1694,14 @@ class TagLibrary:
             filepath: Output file path.
             tag_ids: Specific tag IDs to export, or None for all.
         """
-        tags = self.get_all_tags() if not tag_ids else [
-            self.get_tag(tid) for tid in tag_ids if self.get_tag(tid)]
-        pack = {
+        tags: list[Tag] = self.get_all_tags()
+        if tag_ids:
+            tags = []
+            for tag_id in tag_ids:
+                tag = self.get_tag(tag_id)
+                if tag is not None:
+                    tags.append(tag)
+        pack: dict[str, Any] = {
             'version': '1.0',
             'name': os.path.splitext(os.path.basename(filepath))[0],
             'created': dt.now().isoformat(),
@@ -1744,7 +1755,7 @@ class TagLibrary:
             json.dump(pack, f, indent=2)
         return True
 
-    def import_tag_pack(self, filepath: str) -> dict:
+    def import_tag_pack(self, filepath: str) -> dict[str, Any]:
         """Import tags from a tag pack (TOML or JSON).
 
         Returns: {'imported': int, 'skipped': int, 'errors': int}
@@ -1831,7 +1842,7 @@ class TagLibrary:
 
     # ── Stats ─────────────────────────────────────────────────────────────────
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, int]:
         return {
             "entries": self.get_entry_count(),
             "tags": self._session.execute(select(func.count(Tag.id))).scalar() or 0,

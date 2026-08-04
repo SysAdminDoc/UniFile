@@ -4,11 +4,28 @@ import os
 import re
 import threading
 from collections import Counter, defaultdict
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any, TypedDict
 
 from unifile.config import _APP_DATA_DIR
 
 _LEARNING_DB = os.path.join(_APP_DATA_DIR, 'learning_patterns.json')
+
+
+class LearningPrediction(TypedDict):
+    category: str
+    confidence: float
+    method: str
+    detail: str
+
+
+class LearningStats(TypedDict):
+    total_corrections: int
+    extension_patterns: int
+    token_patterns: int
+    folder_patterns: int
+    size_patterns: int
 
 
 class PatternLearner:
@@ -28,21 +45,21 @@ class PatternLearner:
     LEARNED_CONFIDENCE = 75       # confidence score for learned classifications
     _lock = threading.Lock()
 
-    def __init__(self):
-        self._ext_patterns: dict[str, Counter] = defaultdict(Counter)
-        self._token_patterns: dict[str, Counter] = defaultdict(Counter)
-        self._folder_patterns: dict[str, Counter] = defaultdict(Counter)
-        self._size_patterns: dict[str, Counter] = defaultdict(Counter)
+    def __init__(self) -> None:
+        self._ext_patterns: dict[str, Counter[str]] = defaultdict(Counter)
+        self._token_patterns: dict[str, Counter[str]] = defaultdict(Counter)
+        self._folder_patterns: dict[str, Counter[str]] = defaultdict(Counter)
+        self._size_patterns: dict[str, Counter[str]] = defaultdict(Counter)
         self._total_corrections = 0
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         """Load learned patterns from disk."""
         if not os.path.isfile(_LEARNING_DB):
             return
         try:
             with open(_LEARNING_DB, encoding='utf-8') as f:
-                data = json.load(f)
+                data: dict[str, Any] = json.load(f)
             self._ext_patterns = defaultdict(Counter, {
                 k: Counter(v) for k, v in data.get('ext', {}).items()
             })
@@ -55,11 +72,11 @@ class PatternLearner:
             self._size_patterns = defaultdict(Counter, {
                 k: Counter(v) for k, v in data.get('sizes', {}).items()
             })
-            self._total_corrections = data.get('total', 0)
+            self._total_corrections = int(data.get('total', 0))
         except (json.JSONDecodeError, OSError):
             pass
 
-    def _save(self):
+    def _save(self) -> None:
         """Persist learned patterns to disk."""
         data = {
             'ext': {k: dict(v) for k, v in self._ext_patterns.items()},
@@ -76,7 +93,7 @@ class PatternLearner:
             pass
 
     def record_correction(self, filename: str, filepath: str, category: str,
-                          old_category: str = ""):
+                          old_category: str = "") -> None:
         """Record a user correction to strengthen patterns."""
         with self._lock:
             self._total_corrections += 1
@@ -106,7 +123,9 @@ class PatternLearner:
 
             self._save()
 
-    def record_batch_corrections(self, corrections: list[dict]):
+    def record_batch_corrections(
+        self, corrections: list[Mapping[str, str]]
+    ) -> None:
         """Record multiple corrections at once.
 
         Each dict: {'filename': str, 'filepath': str, 'category': str}
@@ -132,20 +151,23 @@ class PatternLearner:
         else:
             return "huge"
 
-    def predict(self, filename: str, filepath: str) -> dict | None:
+    def predict(self, filename: str, filepath: str) -> LearningPrediction | None:
         """Predict category based on learned patterns.
 
         Returns:
             dict with 'category', 'confidence', 'method', 'detail' or None
         """
-        votes: Counter = Counter()
-        evidence = []
+        votes: dict[str, float] = {}
+        evidence: list[str] = []
+
+        def add_vote(category: str, weight: float) -> None:
+            votes[category] = votes.get(category, 0.0) + weight
 
         ext = os.path.splitext(filename)[1].lower()
         if ext and ext in self._ext_patterns:
             top = self._ext_patterns[ext].most_common(1)
             if top and top[0][1] >= self.MIN_CONFIDENCE_THRESHOLD:
-                votes[top[0][0]] += top[0][1] * 2  # extensions get double weight
+                add_vote(top[0][0], top[0][1] * 2)  # extensions get double weight
                 evidence.append(f"ext:{ext}->{top[0][0]}(x{top[0][1]})")
 
         # Token matches
@@ -154,7 +176,7 @@ class PatternLearner:
             if tok in self._token_patterns:
                 top = self._token_patterns[tok].most_common(1)
                 if top and top[0][1] >= self.MIN_CONFIDENCE_THRESHOLD:
-                    votes[top[0][0]] += top[0][1]
+                    add_vote(top[0][0], top[0][1])
                     evidence.append(f"token:{tok}->{top[0][0]}(x{top[0][1]})")
 
         # Folder structure
@@ -162,7 +184,7 @@ class PatternLearner:
         if parent and parent in self._folder_patterns:
             top = self._folder_patterns[parent].most_common(1)
             if top and top[0][1] >= self.MIN_CONFIDENCE_THRESHOLD:
-                votes[top[0][0]] += top[0][1] * 1.5
+                add_vote(top[0][0], top[0][1] * 1.5)
                 evidence.append(f"folder:{parent}->{top[0][0]}(x{top[0][1]})")
 
         # Size pattern
@@ -172,7 +194,7 @@ class PatternLearner:
             if bucket in self._size_patterns:
                 top = self._size_patterns[bucket].most_common(1)
                 if top and top[0][1] >= self.MIN_CONFIDENCE_THRESHOLD:
-                    votes[top[0][0]] += top[0][1] * 0.5
+                    add_vote(top[0][0], top[0][1] * 0.5)
                     evidence.append(f"size:{bucket}->{top[0][0]}(x{top[0][1]})")
         except OSError:
             pass
@@ -180,7 +202,7 @@ class PatternLearner:
         if not votes:
             return None
 
-        winner, score = votes.most_common(1)[0]
+        winner, score = max(votes.items(), key=lambda item: item[1])
         total_evidence = sum(votes.values())
         # Calculate confidence: higher score relative to total = more confident
         raw_conf = min(95, self.LEARNED_CONFIDENCE + (score / max(1, total_evidence)) * 20)
@@ -192,7 +214,7 @@ class PatternLearner:
             'detail': f"Adaptive: {', '.join(evidence[:3])}",
         }
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> LearningStats:
         """Return learning statistics."""
         return {
             'total_corrections': self._total_corrections,
@@ -202,7 +224,7 @@ class PatternLearner:
             'size_patterns': sum(len(v) for v in self._size_patterns.values()),
         }
 
-    def clear(self):
+    def clear(self) -> None:
         """Reset all learned patterns."""
         with self._lock:
             self._ext_patterns.clear()

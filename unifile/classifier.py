@@ -2,22 +2,17 @@
 import os
 import re
 from collections import Counter
+from collections.abc import Callable
+from typing import Any
 
 from unifile.archive_inference import aggregate_archive_names
-from unifile.bootstrap import HAS_RAPIDFUZZ
-
-try:
-    from rapidfuzz import fuzz as _rfuzz
-except ImportError:
-    _rfuzz = None
-
-from unifile.bootstrap import HAS_PSD_TOOLS
+from unifile.bootstrap import HAS_PSD_TOOLS, HAS_RAPIDFUZZ
 from unifile.categories import (
     TOPIC_CATEGORIES,
     _CategoryIndex,
     get_all_categories,
 )
-from unifile.config import _APP_DATA_DIR, CONF_FUZZY_CAP
+from unifile.config import CONF_FUZZY_CAP
 from unifile.metadata import (
     _envato_api_classify,
     detect_envato_item_code,
@@ -30,9 +25,15 @@ from unifile.naming import (
     _strip_source_name,
 )
 
+_rfuzz: Any = None
+try:
+    from rapidfuzz import fuzz as _rfuzz
+except ImportError:
+    _rfuzz = None
+
 # ── Keyword-based folder categorization ───────────────────────────────────────
 
-def categorize_folder(folder_name):
+def categorize_folder(folder_name: str) -> tuple[str | None, float, str]:
     """Match folder name against categories. Returns (category, score, cleaned_name) or (None, 0, cleaned).
     Strips marketplace prefixes and item IDs before matching.
     Uses pre-computed keyword index for speed."""
@@ -47,12 +48,12 @@ def categorize_folder(folder_name):
     norm_loose = _normalize(cleaned.lower().replace('-', ' ').replace('_', ' ').replace('.', ' '))
     tokens = set(norm.split())
     best_cat = None
-    best_score = 0
+    best_score = 0.0
 
     index = _CategoryIndex.get()
 
     for cat_name, cat_norm, kw_list in index.entries:
-        score = 0
+        score = 0.0
 
         # Auto-match: folder name matches category name itself
         if norm == cat_norm:
@@ -230,7 +231,7 @@ _SCAN_FILTERS = {
 
 # ── Level 2 Enhancement: Fuzzy keyword matching ──────────────────────────────
 
-def fuzzy_match_categories(name: str, threshold: int = 75) -> tuple:
+def fuzzy_match_categories(name: str, threshold: int = 75) -> tuple[str | None, float, str]:
     """Use rapidfuzz to find best fuzzy match against all category keywords.
     Returns (category, confidence, match_detail) or (None, 0, '')."""
     if not HAS_RAPIDFUZZ:
@@ -241,7 +242,7 @@ def fuzzy_match_categories(name: str, threshold: int = 75) -> tuple:
         return (None, 0, '')
 
     best_cat = None
-    best_score = 0
+    best_score = 0.0
     best_detail = ''
 
     for cat_name, keywords in get_all_categories():
@@ -430,7 +431,7 @@ _NOISE_EXTS = {'.txt', '.html', '.htm', '.url', '.ini', '.log',
                '.md', '.json', '.xml', '.csv', '.rtf', '.nfo',
                '.ds_store', '.zip', '.rar', '.7z'}
 
-def _scan_folder_once(folder_path: str) -> dict:
+def _scan_folder_once(folder_path: str) -> dict[str, Any]:
     """Single-pass folder scan that collects ALL data needed by every classification level.
     Eliminates the 3-4 redundant os.walk() calls per folder.
 
@@ -449,17 +450,17 @@ def _scan_folder_once(folder_path: str) -> dict:
         has_footage/has_audio/has_preview: bool
         project_files: list[tuple[str, str]]  (filepath, ext) for metadata extraction
     """
-    ext_counts = Counter()
-    project_ext_counts = Counter()
+    ext_counts: Counter[str] = Counter()
+    project_ext_counts: Counter[str] = Counter()
     total_project_files = 0
-    subfolder_names = []
+    subfolder_names: list[str] = []
     total_size = 0
     file_count = 0
-    all_filenames_clean = []
+    all_filenames_clean: list[str] = []
     design_count = 0
     video_count = 0
-    project_files = []  # Files to extract metadata from
-    archive_stems = []  # Stems of archive files for name-based inference
+    project_files: list[tuple[str, str]] = []  # Files to extract metadata from
+    archive_stems: list[str] = []  # Stems of archive files for name-based inference
 
     _ARCHIVE_EXTS = {'.zip', '.rar', '.7z', '.tgz', '.tar', '.gz', '.bz2'}
 
@@ -544,14 +545,14 @@ def _scan_folder_once(folder_path: str) -> dict:
     }
 
 
-def _classify_ext_from_scan(scan: dict) -> tuple:
+def _classify_ext_from_scan(scan: dict[str, Any]) -> tuple[str | None, float, str]:
     """Level 1 extension classification using pre-scanned data (no os.walk)."""
     ext_counts = scan['project_ext_counts']
     total_project_files = scan['total_project_files']
     if total_project_files == 0:
         return (None, 0, '')
 
-    best = (None, 0, '')
+    best: tuple[str | None, float, str] = (None, 0.0, '')
     for ext_set, category, base_conf in EXTENSION_CATEGORY_MAP:
         matching = sum(ext_counts.get(e, 0) for e in ext_set)
         if matching == 0:
@@ -570,7 +571,7 @@ def _classify_ext_from_scan(scan: dict) -> tuple:
     return best
 
 
-def _classify_composition_from_scan(scan: dict) -> tuple:
+def _classify_composition_from_scan(scan: dict[str, Any]) -> tuple[str | None, float, str]:
     """Level 4 composition classification using pre-scanned data (no os.walk)."""
     ext = scan['ext_counts']
     total = scan['file_count']
@@ -668,7 +669,7 @@ def _classify_composition_from_scan(scan: dict) -> tuple:
     return (None, 0, '')
 
 
-def _asset_clues_from_scan(scan: dict, folder_path: str) -> dict:
+def _asset_clues_from_scan(scan: dict[str, Any], folder_path: str) -> dict[str, Any]:
     """Asset type clue detection using pre-scanned data (no os.walk)."""
     result = {
         'asset_type': None, 'asset_confidence': 0, 'asset_detail': '',
@@ -702,7 +703,11 @@ def _asset_clues_from_scan(scan: dict, folder_path: str) -> dict:
     return result
 
 
-def _extract_metadata_from_scan(scan: dict, folder_name: str, log_cb=None) -> dict:
+def _extract_metadata_from_scan(
+    scan: dict[str, Any],
+    folder_name: str,
+    log_cb: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     """Metadata extraction using pre-scanned project file list (no rglob)."""
     metadata = {
         'keywords': [], 'project_names': [],
@@ -739,8 +744,13 @@ def _extract_metadata_from_scan(scan: dict, folder_name: str, log_cb=None) -> di
     return metadata
 
 
-def _apply_context_from_scan(result: dict, scan: dict, folder_path: str,
-                              folder_name: str, log_cb=None) -> dict:
+def _apply_context_from_scan(
+    result: dict[str, Any],
+    scan: dict[str, Any],
+    folder_path: str,
+    folder_name: str,
+    log_cb: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     """Post-processing using pre-scanned data (no os.walk in infer_asset_type)."""
     if not result['category']:
         return result
@@ -824,7 +834,11 @@ def _apply_context_from_scan(result: dict, scan: dict, folder_path: str,
     return result
 
 
-def tiered_classify(folder_name: str, folder_path: str = None, log_cb=None) -> dict:
+def tiered_classify(
+    folder_name: str,
+    folder_path: str | None = None,
+    log_cb: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     """Run the full tiered classification pipeline on a folder.
 
     Returns dict:
@@ -836,16 +850,17 @@ def tiered_classify(folder_name: str, folder_path: str = None, log_cb=None) -> d
         metadata: dict (extracted metadata if any)
         topic: str or None  (original topic category before context override, if any)
     """
-    result = {
+    result: dict[str, Any] = {
         'category': None, 'confidence': 0, 'cleaned_name': folder_name,
         'method': '', 'detail': '', 'metadata': {}, 'topic': None
     }
 
     # ── Single-pass folder scan: collect ALL data once for all levels ──
-    has_folder = folder_path and os.path.isdir(folder_path)
+    folder_root = folder_path or ""
+    has_folder = bool(folder_root) and os.path.isdir(folder_root)
     scan = None
     if has_folder:
-        scan = _scan_folder_once(folder_path)
+        scan = _scan_folder_once(folder_root)
 
     # ── Level 1: Extension-based classification ──
     if scan:
@@ -859,13 +874,13 @@ def tiered_classify(folder_name: str, folder_path: str = None, log_cb=None) -> d
             if log_cb:
                 log_cb(f"    L1 Extension: {ext_cat} ({ext_conf:.0f}%) [{ext_detail}]")
             if scan:
-                return _apply_context_from_scan(result, scan, folder_path, folder_name, log_cb)
+                return _apply_context_from_scan(result, scan, folder_root, folder_name, log_cb)
             return result
 
     # Helper: context application using scan data when available
-    def _ctx(r):
+    def _ctx(r: dict[str, Any]) -> dict[str, Any]:
         if scan:
-            return _apply_context_from_scan(r, scan, folder_path, folder_name, log_cb)
+            return _apply_context_from_scan(r, scan, folder_root, folder_name, log_cb)
 
         return r
 
@@ -881,7 +896,7 @@ def tiered_classify(folder_name: str, folder_path: str = None, log_cb=None) -> d
         return _ctx(result)
 
     # Store lower-confidence keyword result as fallback
-    keyword_fallback = (cat, conf) if cat else (None, 0)
+    keyword_fallback: tuple[str | None, float] = (cat, conf) if cat else (None, 0.0)
 
     # ── Level 2.5: Fuzzy matching (rapidfuzz) ──
     if HAS_RAPIDFUZZ:

@@ -5,6 +5,8 @@ import logging
 import math
 import os
 import sqlite3
+from collections.abc import Callable, Mapping
+from typing import Any, cast
 
 _log = logging.getLogger(__name__)
 
@@ -25,7 +27,7 @@ _SEMANTIC_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'semantic_settings.json')
 _EMBEDDING_BACKENDS = {'auto', 'onnx', 'ollama'}
 
 
-def load_semantic_settings(path: str = _SEMANTIC_SETTINGS_FILE) -> dict:
+def load_semantic_settings(path: str = _SEMANTIC_SETTINGS_FILE) -> dict[str, Any]:
     """Load embedding backend settings with safe defaults."""
     raw = load_json_safe(path, {}, expected_type=dict)
     backend = str(raw.get('backend', 'auto')).strip().lower()
@@ -46,16 +48,18 @@ def load_semantic_settings(path: str = _SEMANTIC_SETTINGS_FILE) -> dict:
     }
 
 
-def save_semantic_settings(settings: dict, path: str = _SEMANTIC_SETTINGS_FILE) -> bool:
+def save_semantic_settings(
+    settings: Mapping[str, Any], path: str = _SEMANTIC_SETTINGS_FILE
+) -> bool:
     """Persist only known embedding settings atomically."""
     current = load_semantic_settings(path)
     merged = dict(current)
     merged.update({key: value for key, value in settings.items() if key in current})
     normalized = load_semantic_settings_from_dict(merged)
-    return save_json_safe(path, normalized)
+    return bool(save_json_safe(path, normalized))
 
 
-def load_semantic_settings_from_dict(raw: dict) -> dict:
+def load_semantic_settings_from_dict(raw: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize a settings mapping without reading from disk."""
     backend = str(raw.get('backend', 'auto')).strip().lower()
     if backend not in _EMBEDDING_BACKENDS:
@@ -100,7 +104,7 @@ class SemanticIndex:
     def __init__(self, ollama_url: str = "http://localhost:11434",
                  model: str | None = None, backend: str | None = None,
                  onnx_model_dir: str | None = None,
-                 onnx_provider: str | None = None):
+                 onnx_provider: str | None = None) -> None:
         settings = load_semantic_settings()
         self._url = ollama_url.rstrip('/')
         self._model = model or settings['model']
@@ -109,9 +113,9 @@ class SemanticIndex:
             self._backend_name = 'auto'
         self._onnx_model_dir = onnx_model_dir or settings['onnx_model_dir']
         self._onnx_provider = onnx_provider or settings['onnx_provider']
-        self._conn = None
-        self._available = None
-        self._onnx_backend = None
+        self._conn: sqlite3.Connection | None = None
+        self._available: bool | None = None
+        self._onnx_backend: OnnxEmbeddingBackend | None = None
         self._onnx_checked = False
         self._backend_error = ''
 
@@ -120,7 +124,7 @@ class SemanticIndex:
         """Return the configured backend preference."""
         return self._backend_name
 
-    def backend_status(self) -> dict:
+    def backend_status(self) -> dict[str, Any]:
         """Return local backend capability without probing Ollama."""
         if self._backend_name in {'auto', 'onnx'}:
             onnx = self._get_onnx_backend()
@@ -144,18 +148,24 @@ class SemanticIndex:
             'error': self._backend_error,
         }
 
-    def _ensure_db(self):
+    def _connection(self) -> sqlite3.Connection:
+        self._ensure_db()
+        assert self._conn is not None
+        return self._conn
+
+    def _ensure_db(self) -> None:
         """Create/open the embedding database. Uses check_same_thread=False
         so the connection can be shared between the UI thread and workers —
         callers are responsible for serializing writes."""
         if self._conn is not None:
             return
         os.makedirs(os.path.dirname(_EMBED_DB), exist_ok=True)
-        self._conn = sqlite3.connect(_EMBED_DB, check_same_thread=False, timeout=10)
-        register_sqlite_connection(self._conn)
-        self._conn.execute('PRAGMA journal_mode=WAL')
-        self._conn.execute('PRAGMA busy_timeout=5000')
-        self._conn.execute('''CREATE TABLE IF NOT EXISTS embeddings (
+        conn = sqlite3.connect(_EMBED_DB, check_same_thread=False, timeout=10)
+        self._conn = conn
+        register_sqlite_connection(conn)
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA busy_timeout=5000')
+        conn.execute('''CREATE TABLE IF NOT EXISTS embeddings (
             id TEXT PRIMARY KEY,
             filepath TEXT,
             description TEXT,
@@ -168,16 +178,16 @@ class SemanticIndex:
         )''')
         # Older installations predate archive-member embeddings.  Keep their
         # rows intact and add the nullable metadata in place.
-        columns = {row[1] for row in self._conn.execute(
+        columns = {row[1] for row in conn.execute(
             'PRAGMA table_info(embeddings)').fetchall()}
         for name, definition in (
                 ('source_type', "TEXT NOT NULL DEFAULT 'file'"),
                 ('archive_path', 'TEXT'),
                 ('inner_path', 'TEXT')):
             if name not in columns:
-                self._conn.execute(
+                conn.execute(
                     f'ALTER TABLE embeddings ADD COLUMN {name} {definition}')
-        self._conn.commit()
+        conn.commit()
 
     def _get_onnx_backend(self) -> OnnxEmbeddingBackend | None:
         if self._onnx_checked:
@@ -208,7 +218,7 @@ class SemanticIndex:
                               retries=1)
             embeddings = data.get('embeddings', [])
             if embeddings:
-                return embeddings[0]
+                return cast(list[float], embeddings[0])
         except (AIRequestError, Exception) as e:
             _log.debug("Embedding request failed for model %s: %s", self._model, e)
         return None
@@ -273,7 +283,7 @@ class SemanticIndex:
             description: Text description (AI-generated, category, etc.)
             tags: Optional tag list to include in the text.
         """
-        self._ensure_db()
+        conn = self._connection()
 
         # Build searchable text from all metadata
         text = self._build_search_text(filepath, description, tags)
@@ -287,13 +297,13 @@ class SemanticIndex:
             return False
 
         blob = self._pack_vector(vec)
-        self._conn.execute(
+        conn.execute(
             'INSERT OR REPLACE INTO embeddings '
             '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             (file_id, filepath, text, blob, len(vec), 'file', None, None)
         )
-        self._conn.commit()
+        conn.commit()
         return True
 
     def index_archive_entry(self, archive_path: str, inner_path: str,
@@ -305,7 +315,7 @@ class SemanticIndex:
         compound key, so they cannot overwrite the container's normal file
         embedding or appear as mutable Tag Library entries.
         """
-        self._ensure_db()
+        conn = self._connection()
         archive_path = os.path.abspath(str(archive_path))
         inner_path = str(inner_path).replace('\\', '/').strip('/')
         if not archive_path or not inner_path:
@@ -320,23 +330,29 @@ class SemanticIndex:
             return False
         member_id = hashlib.md5(
             f"archive\\0{archive_path}\\0{inner_path}".encode()).hexdigest()
-        if not force and self._conn.execute(
+        if not force and conn.execute(
                 'SELECT 1 FROM embeddings WHERE id = ?', (member_id,)).fetchone():
             return True
         vec = self._get_embedding(text)
         if not vec:
             return False
-        self._conn.execute(
+        conn.execute(
             'INSERT OR REPLACE INTO embeddings '
             '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             (member_id, archive_path, text, self._pack_vector(vec), len(vec),
              'archive', archive_path, inner_path)
         )
-        self._conn.commit()
+        conn.commit()
         return True
 
-    def index_archive_entries(self, entries, callback=None, *, force: bool = False) -> int:
+    def index_archive_entries(
+        self,
+        entries: Any,
+        callback: Callable[[int, int], None] | None = None,
+        *,
+        force: bool = False,
+    ) -> int:
         """Index archive-entry objects or dictionaries with stable metadata."""
         entries = list(entries or [])
         count = 0
@@ -359,7 +375,11 @@ class SemanticIndex:
                 callback(index + 1, len(entries))
         return count
 
-    def index_batch(self, items: list[dict], callback=None) -> int:
+    def index_batch(
+        self,
+        items: list[dict[str, Any]],
+        callback: Callable[[int, int], None] | None = None,
+    ) -> int:
         """Index multiple files.
 
         Each item: {'filepath': str, 'description': str, 'tags': list[str]}
@@ -367,7 +387,7 @@ class SemanticIndex:
 
         Returns: number of files indexed.
         """
-        self._ensure_db()
+        conn = self._connection()
         count = 0
         total = len(items)
         texts = [self._build_search_text(
@@ -378,7 +398,7 @@ class SemanticIndex:
             vec = vectors[i] if i < len(vectors) else None
             if text and vec:
                 file_id = hashlib.md5(item['filepath'].encode()).hexdigest()
-                self._conn.execute(
+                conn.execute(
                     'INSERT OR REPLACE INTO embeddings '
                     '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
                     'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -386,13 +406,13 @@ class SemanticIndex:
                      'file', None, None)
                 )
                 count += 1
-                self._conn.commit()
+                conn.commit()
             if callback:
                 callback(i + 1, total)
         return count
 
     def search(self, query: str, limit: int = 20,
-               threshold: float = 0.3, *, top_k: int | None = None) -> list[dict]:
+               threshold: float = 0.3, *, top_k: int | None = None) -> list[dict[str, Any]]:
         """Natural language search across indexed files.
 
         Args:
@@ -405,17 +425,17 @@ class SemanticIndex:
         """
         if top_k is not None:
             limit = top_k
-        self._ensure_db()
+        conn = self._connection()
         query_vec = self._get_embedding(query)
         if not query_vec:
             return []
 
-        rows = self._conn.execute(
+        rows = conn.execute(
             'SELECT filepath, description, embedding, dim, source_type, '
             'archive_path, inner_path FROM embeddings'
         ).fetchall()
 
-        results = []
+        results: list[dict[str, Any]] = []
         for filepath, desc, blob, dim, source_type, archive_path, inner_path in rows:
             stored_vec = self._unpack_vector(blob, dim)
             if len(stored_vec) != len(query_vec):
@@ -442,24 +462,24 @@ class SemanticIndex:
 
     def get_indexed_count(self) -> int:
         """Return number of indexed files."""
-        self._ensure_db()
-        row = self._conn.execute('SELECT COUNT(*) FROM embeddings').fetchone()
+        conn = self._connection()
+        row = conn.execute('SELECT COUNT(*) FROM embeddings').fetchone()
         return row[0] if row else 0
 
-    def remove_file(self, filepath: str):
+    def remove_file(self, filepath: str) -> None:
         """Remove a file's embedding from the index."""
-        self._ensure_db()
+        conn = self._connection()
         file_id = hashlib.md5(filepath.encode()).hexdigest()
-        self._conn.execute('DELETE FROM embeddings WHERE id = ?', (file_id,))
-        self._conn.commit()
+        conn.execute('DELETE FROM embeddings WHERE id = ?', (file_id,))
+        conn.commit()
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all embeddings."""
-        self._ensure_db()
-        self._conn.execute('DELETE FROM embeddings')
-        self._conn.commit()
+        conn = self._connection()
+        conn.execute('DELETE FROM embeddings')
+        conn.commit()
 
-    def close(self):
+    def close(self) -> None:
         """Close the database connection."""
         if self._conn:
             try:
