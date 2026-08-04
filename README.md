@@ -226,7 +226,7 @@ require the dialog's review button.
 - Photo map view with geotagged markers (Leaflet)
 - AI event grouping — cluster photos by vision descriptions
 - Face detection and person-based organization (optional)
-- Thumbnail grid view with flow layout
+- Virtualized thumbnail grid with fixed-size item delegates and visible-item loading; large PC result tables use a lazy `QAbstractTableModel`/`QTableView` surface instead of one widget per result
 
 ### Watch Mode
 
@@ -287,6 +287,7 @@ unifile/
 ├── engine.py            # Rule engine, scheduler, templates
 ├── naming.py            # Smart rename logic
 ├── metadata.py          # File metadata extraction
+├── virtualized_view.py  # Paged PC results model and thumbnail-grid delegates
 ├── ollama.py            # Ollama LLM integration
 ├── photos.py            # Photo/EXIF/face processing
 ├── files.py             # PC file organizer logic

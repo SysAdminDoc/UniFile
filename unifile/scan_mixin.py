@@ -586,6 +586,13 @@ class ScanMixin:
         if tmpl_cats:
             self._log(f"  Rename templates active: {', '.join(tmpl_cats)}")
         self.file_items.clear(); self.tbl.setRowCount(0)
+        if getattr(self, '_virtual_files_active', False):
+            self.virtual_tbl.set_items(
+                self.file_items,
+                source_root=src,
+                category_colors={c.get('name', ''): c.get('color', '#4ade80')
+                                 for c in self._pc_categories},
+            )
         self._files_dest_paths = {}   # collision tracking per full path
         self._rename_counters  = {}   # per-category counter for {counter} token
         depth = self.spn_depth.value()

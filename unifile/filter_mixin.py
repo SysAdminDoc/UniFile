@@ -46,6 +46,28 @@ class FilterMixin:
         spec = parse_query(raw)
         all_items = self._items()
 
+        # The large-library PC surface is model-backed.  Filter the item
+        # indices in the model so the view keeps constant widget memory; the
+        # legacy row-hidden path below remains for AEP/category tables.
+        if getattr(self, '_virtual_files_active', False) and self.cmb_op.currentIndex() == self.OP_FILES:
+            model = self.virtual_tbl.model()
+
+            def _matches(item_index, item):
+                if item is None:
+                    return False
+                show = True
+                if raw.strip():
+                    if spec.is_chainable:
+                        show = item_matches(spec, item)
+                    else:
+                        show = spec.text in model.search_text(item_index)
+                if show and face != "All Persons":
+                    show = face in item.metadata.get('_photo_face_persons', [])
+                return show
+
+            model.set_filter(_matches if raw.strip() or face != "All Persons" else None)
+            return
+
         for row in range(self.tbl.rowCount()):
             show = True
             if raw.strip():
@@ -90,6 +112,16 @@ class FilterMixin:
         elif op == self.OP_FILES:
             items = [it for it in self.file_items if not it.is_duplicate]
         else:
+            return
+        if getattr(self, '_virtual_files_active', False) and op == self.OP_FILES:
+            for it in items:
+                should_select = (
+                    it.confidence >= val
+                    and getattr(it, 'confidence_tier', 'skip') != 'skip'
+                )
+                it.selected = should_select
+            self.virtual_tbl.model().refresh_all()
+            self._upd_stats()
             return
         # Build reverse map: item list index → visual row (sort-safe)
         all_items = self._items()

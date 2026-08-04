@@ -8,7 +8,7 @@ import sys
 import time
 from collections import Counter
 
-from PyQt6.QtCore import QSettings, QStringListModel, Qt, QThread, QThreadPool, QTimer, pyqtSignal
+from PyQt6.QtCore import QSettings, QStringListModel, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QPixmap, QTextCursor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -117,14 +117,12 @@ from unifile.scan_mixin import ScanMixin
 from unifile.theme_mixin import ThemeMixin
 from unifile.tray_mixin import TrayMixin
 from unifile.undo_mixin import UndoMixin
+from unifile.virtualized_view import VirtualizedResultsView, VirtualizedThumbnailView
 from unifile.watch_mixin import WatchMixin
 from unifile.widgets import (
     CategoryBarChart,
     FilePreviewPanel,
-    FlowLayout,
     PhotoMapWidget,
-    ThumbnailCard,
-    ThumbnailLoader,
     _load_watch_settings,
 )
 from unifile.workers import (
@@ -1329,6 +1327,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         # ── Results Table ────────────────────────────────────────────────
         self.tbl = QTableWidget()
+        # Keep the legacy table for AEP/category workflows.  PC Files mode
+        # swaps in a model/view surface so a large scan never creates one
+        # QWidget per result row.
+        self._legacy_tbl = self.tbl
         self.tbl.installEventFilter(self)
         self.tbl.setObjectName("main_table")
         self.tbl.setAccessibleName("Results table")
@@ -1347,13 +1349,21 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.tbl.currentCellChanged.connect(self._on_row_selected)
         self._setup_aep_tbl()
 
-        # Thumbnail Grid View (hidden by default)
-        self.grid_scroll = QScrollArea()
-        self.grid_scroll.setWidgetResizable(True)
-        self.grid_scroll.setStyleSheet(f"QScrollArea {{ background: {_t['header_bg']}; border: none; }}")
-        self._grid_container = QWidget()
-        self._grid_layout = FlowLayout(self._grid_container, margin=8, spacing=8)
-        self.grid_scroll.setWidget(self._grid_container)
+        self.virtual_tbl = VirtualizedResultsView()
+        self.virtual_tbl.installEventFilter(self)
+        self.virtual_tbl.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.virtual_tbl.customContextMenuRequested.connect(self._context_menu)
+        self.virtual_tbl.currentCellChanged.connect(self._on_row_selected)
+        self.virtual_tbl.model().item_toggled.connect(self._files_cb)
+        self.virtual_tbl.hide()
+        self._virtual_files_active = False
+
+        # Thumbnail Grid View (hidden by default).  QListView creates fixed
+        # delegates for visible cards instead of a FlowLayout child widget
+        # for every scanned file.
+        self.grid_scroll = VirtualizedThumbnailView()
+        self.grid_scroll.setStyleSheet(f"QListView {{ background: {_t['header_bg']}; border: none; }}")
+        self.grid_scroll.clicked.connect(self._on_grid_card_clicked)
         self.grid_scroll.hide()
 
         # Map View (hidden by default)
@@ -1372,6 +1382,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         left_lay.setContentsMargins(0, 0, 0, 0)
         left_lay.setSpacing(0)
         left_lay.addWidget(self.tbl, 1)
+        left_lay.addWidget(self.virtual_tbl, 1)
         left_lay.addWidget(self.grid_scroll, 1)
         left_lay.addWidget(self.map_widget, 1)
         left_lay.addWidget(self.graph_widget, 1)
@@ -2570,6 +2581,28 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_preview_toggle.setChecked(False)
         self.btn_before_after.setVisible(False)
         self.btn_events.setVisible(False)
+        # PC files use the lazy model/view surface; the other modes retain
+        # the legacy QTableWidget helpers used by their editing workflows.
+        self._virtual_files_active = is_files
+        if is_files:
+            self._legacy_tbl.hide()
+            self.virtual_tbl.show()
+            self.tbl = self.virtual_tbl
+            self.virtual_tbl.set_items(
+                self.file_items,
+                source_root=self._pc_src_path(),
+                category_colors={c.get('name', ''): c.get('color', '#4ade80')
+                                 for c in self._pc_categories},
+            )
+        else:
+            self.virtual_tbl.setRowCount(0)
+            self.virtual_tbl.hide()
+            self._legacy_tbl.show()
+            self.tbl = self._legacy_tbl
+        if hasattr(self, 'empty_state'):
+            self.empty_state.setParent(self.tbl.viewport())
+        if hasattr(self, 'lbl_toast'):
+            self.lbl_toast.setParent(self.tbl)
         self.tbl.show()
         self.tbl.setRowCount(0)
         self.aep_items.clear(); self.cat_items.clear(); self.file_items.clear()
@@ -2670,6 +2703,24 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.tbl.setColumnWidth(0,40); self.tbl.setColumnWidth(2,30); self.tbl.setColumnWidth(4,55); self.tbl.setColumnWidth(5,80); self.tbl.setColumnWidth(6,70)
 
     def _setup_files_tbl(self):
+        if getattr(self, '_virtual_files_active', False):
+            self.virtual_tbl.setHorizontalHeaderLabels(
+                ["", "", "Name", "Directory", "→", "Category", "Rename To",
+                 "Size", "Conf", "Method", "Status"]
+            )
+            header = self.virtual_tbl.horizontalHeader()
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+            header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+            for column, width in ((0, 40), (1, 48), (2, 180), (4, 30),
+                                  (5, 100), (7, 70), (8, 45), (9, 80), (10, 60)):
+                self.virtual_tbl.setColumnWidth(column, width)
+            self.virtual_tbl.verticalHeader().setDefaultSectionSize(40)
+            return
         self.tbl.setColumnCount(11)
         self.tbl.setHorizontalHeaderLabels(["","","Name","Directory","\u2192","Category","Rename To","Size","Conf","Method","Status"])
         h = self.tbl.horizontalHeader(); h.setFixedHeight(36)
@@ -3120,6 +3171,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
     def _sel_all(self):
         for it in self._items(): it.selected = True
+        if getattr(self, '_virtual_files_active', False):
+            self.virtual_tbl.model().refresh_all()
+            self._upd_stats()
+            return
         for r in range(self.tbl.rowCount()):
             cb = self.tbl.cellWidget(r, 0)
             if cb:
@@ -3129,6 +3184,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
     def _sel_none(self):
         for it in self._items(): it.selected = False
+        if getattr(self, '_virtual_files_active', False):
+            self.virtual_tbl.model().refresh_all()
+            self._upd_stats()
+            return
         for r in range(self.tbl.rowCount()):
             cb = self.tbl.cellWidget(r, 0)
             if cb:
@@ -3139,6 +3198,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
     def _sel_inv(self):
         for it in self._items():
             it.selected = not it.selected
+        if getattr(self, '_virtual_files_active', False):
+            self.virtual_tbl.model().refresh_all()
+            self._upd_stats()
+            return
         for r in range(self.tbl.rowCount()):
             cb = self.tbl.cellWidget(r, 0)
             if cb:
@@ -3164,6 +3227,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             item_idx = self._item_idx_from_row(r)
             if 0 <= item_idx < len(items):
                 items[item_idx].selected = checked
+                if getattr(self, '_virtual_files_active', False):
+                    self.virtual_tbl.model().refresh_item(item_idx)
+                    continue
                 cb = self.tbl.cellWidget(r, 0)
                 if cb:
                     inner = cb.findChild(QCheckBox)
@@ -3386,6 +3452,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
     def _item_idx_from_row(self, row: int) -> int:
         """Get the item list index stored in a visual table row (sort-safe)."""
+        if getattr(self, '_virtual_files_active', False):
+            return self.virtual_tbl.item_index(row)
         item = self.tbl.item(row, 2)  # Name column always has a QTableWidgetItem
         if item is None:
             item = self.tbl.item(row, 1)
@@ -3397,12 +3465,25 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
     def _visual_row_for_idx(self, list_idx: int) -> int:
         """Find the visual table row that maps to a given item list index (sort-safe)."""
+        if getattr(self, '_virtual_files_active', False):
+            return self.virtual_tbl.row_for_item(list_idx)
         for r in range(self.tbl.rowCount()):
             if self._item_idx_from_row(r) == list_idx:
                 return r
         return -1
 
     def _add_files_row(self, it: 'FileItem', idx: int):
+        if getattr(self, '_virtual_files_active', False):
+            del it, idx
+            if self.virtual_tbl.model().store.source is not self.file_items:
+                self.virtual_tbl.set_items(
+                    self.file_items,
+                    source_root=self._pc_src_path(),
+                    category_colors={c.get('name', ''): c.get('color', '#4ade80')
+                                     for c in self._pc_categories},
+                )
+            self.virtual_tbl.sync_appended_items()
+            return
         r = self.tbl.rowCount(); self.tbl.insertRow(r)
         it.tbl_row = r
         self.tbl.setRowHeight(r, 40)
@@ -3761,6 +3842,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
     def _toggle_selected_result_rows(self):
         """Toggle the review checkbox for every selected result row."""
         for row in self._selected_result_rows():
+            if getattr(self, '_virtual_files_active', False):
+                item_idx = self._item_idx_from_row(row)
+                if 0 <= item_idx < len(self.file_items):
+                    self.virtual_tbl.model().set_item_selected(
+                        item_idx, not self.file_items[item_idx].selected)
+                continue
             checkbox = self.tbl.cellWidget(row, 0)
             if isinstance(checkbox, QCheckBox):
                 checkbox.setChecked(not checkbox.isChecked())
@@ -3773,8 +3860,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         row = rows[0]
         op = self.cmb_op.currentIndex()
         path = None
-        if op == self.OP_FILES and row < len(self.file_items):
-            path = self.file_items[row].full_src
+        item_idx = self._item_idx_from_row(row)
+        if op == self.OP_FILES and 0 <= item_idx < len(self.file_items):
+            path = self.file_items[item_idx].full_src
         elif op in (self.OP_CAT, self.OP_SMART) and row < len(self.cat_items):
             path = self.cat_items[row].full_source_path
         elif row < len(self.aep_items):
@@ -3813,6 +3901,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             self._open_selected_result_location()
         elif key == Qt.Key.Key_Delete:
             # Uncheck selected rows
+            if getattr(self, '_virtual_files_active', False):
+                self._set_highlighted_check(False)
+                return
             sel_rows = sorted(set(idx.row() for idx in self.tbl.selectionModel().selectedRows()))
             for r in sel_rows:
                 w = self.tbl.cellWidget(r, 0)
@@ -3965,45 +4056,30 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             self.btn_grid_toggle.setText("Grid View")
 
     def _populate_grid(self):
-        """Populate the thumbnail grid with current file_items."""
-        # Clear existing
-        while self._grid_layout.count():
-            item = self._grid_layout.takeAt(0)
-            if item and item.widget():
-                item.widget().deleteLater()
-        # Add cards
-        _IMAGE_EXTS = ThumbnailCard._IMAGE_EXTS
-        pool = QThreadPool.globalInstance()
-        for idx, it in enumerate(self.file_items):
-            cat_color = next(
-                (c.get('color', '#4ade80') for c in self._pc_categories
-                 if c['name'] == it.category), '#4ade80')
-            card = ThumbnailCard(
-                idx, os.path.basename(it.full_src), it.category,
-                cat_color, it.full_src, self._grid_container)
-            card.clicked.connect(self._on_grid_card_clicked)
-            self._grid_layout.addWidget(card)
-            # Load thumbnail in background for image files
-            ext = os.path.splitext(it.full_src)[1].lower()
-            if ext in _IMAGE_EXTS:
-                loader = ThumbnailLoader(it.full_src, 150)
-                loader.signals.ready.connect(self._on_thumb_loaded)
-                pool.start(loader)
+        """Bind the fixed-delegate thumbnail view to current file_items."""
+        self.grid_scroll.set_items(
+            self.file_items,
+            category_colors={c.get('name', ''): c.get('color', '#4ade80')
+                             for c in self._pc_categories},
+            theme=get_active_theme(),
+        )
 
     def _on_thumb_loaded(self, file_path: str, pm: QPixmap):
-        """Called when a thumbnail finishes loading."""
-        for i in range(self._grid_layout.count()):
-            item = self._grid_layout.itemAt(i)
-            if item and item.widget():
-                card = item.widget()
-                if isinstance(card, ThumbnailCard) and card.file_path == file_path:
-                    card.set_pixmap(pm)
-                    break
+        """Legacy thumbnail callback retained for plugin compatibility."""
+        del file_path, pm
+        self.grid_scroll.viewport().update()
 
-    def _on_grid_card_clicked(self, idx: int):
-        """Handle click on a grid card — toggle selection on the item."""
+    def _on_grid_card_clicked(self, idx):
+        """Handle a grid click — toggle selection on the referenced item."""
+        if not isinstance(idx, int):
+            idx = self.grid_scroll.item_index(idx)
         if 0 <= idx < len(self.file_items):
             self.file_items[idx].selected = not self.file_items[idx].selected
+            self.grid_scroll.model().dataChanged.emit(
+                self.grid_scroll.model().index(idx, 0),
+                self.grid_scroll.model().index(idx, 0),
+                [Qt.ItemDataRole.CheckStateRole],
+            )
 
     # ═══ MAP VIEW ════════════════════════════════════════════════════════════
     def _toggle_map_view(self):
