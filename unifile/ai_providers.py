@@ -897,7 +897,8 @@ class ProviderChain:
         items.sort(key=lambda x: x[0])
         return [(k, p) for _, k, p in items]
 
-    def classify(self, prompt: str, system: str = '') -> tuple[str, str]:
+    def classify(self, prompt: str, system: str = '',
+                 format: dict | None = None) -> tuple[str, str]:
         """Classify using the first available provider.
 
         Returns:
@@ -905,7 +906,7 @@ class ProviderChain:
         """
         for key, provider in self._ordered_providers("text"):
             try:
-                result = provider.classify(prompt, system=system)
+                result = provider.classify(prompt, system=system, format=format)
                 if result:
                     return result, key
             except Exception:

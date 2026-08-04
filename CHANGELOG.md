@@ -29,6 +29,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Natural Language Rules: compile one plain-language routing request into a validated local action DAG, preview exact file moves, and apply only after explicit approval with collision-safe destinations and undo operations.
 - Native Anthropic Messages and Google Gemini `generateContent` adapters with text/vision support, structured JSON requests, provider-specific authentication, and token accounting in the fallback chain.
 - AI Provider Health dashboard with local latency/error history, background reachability probes, token totals, optional estimated token cost, and per-provider latency sparklines.
 - Batched vision inference now queues up to 32 images per multimodal request, preserves indexed result order, and retries failed images individually before rule fallback; the batch size is configurable in Ollama settings.

@@ -17,6 +17,7 @@ from unifile.dialogs import (
     ConfidenceTiersDialog,
     CsvRulesDialog,
     CustomCategoriesDialog,
+    NaturalLanguageRulesDialog,
     OllamaSettingsDialog,
     PluginManagerDialog,
     ProtectedPathsDialog,
@@ -294,6 +295,11 @@ class DialogsMixin:
                 self._log(f"Could not save confidence tiers for {name}")
 
     # Rule / plugin / schedule / theme ----------------------------------------
+
+    def _open_natural_language_rules(self):
+        """Open the review-first natural-language rule planner."""
+        source = self.txt_src.text().strip() if hasattr(self, "txt_src") else ""
+        NaturalLanguageRulesDialog(self, source_root=source).exec()
 
     def _open_schedule_dialog(self):
         """Open the scheduled scans dialog (Windows only)."""

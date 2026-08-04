@@ -201,6 +201,9 @@ class SettingsHubDialog(QDialog):
                 ("Rules Editor…",
                  "Define if/then classification rules with visual condition builder.",
                  self._open_rules),
+                ("Natural Language Rules…",
+                 "Describe one local routing rule, review the action DAG, and approve moves explicitly.",
+                 self._open_natural_rules),
                 ("CSV Sort Rules…",
                  "Bulk import/export extension → category mappings via spreadsheet.",
                  self._open_csv_rules),
@@ -314,6 +317,7 @@ class SettingsHubDialog(QDialog):
     # Rules tab
     def _open_categories(self):       self._call('_open_custom_cats')
     def _open_rules(self):            self._call('_open_rule_editor')
+    def _open_natural_rules(self):    self._call('_open_natural_language_rules')
     def _open_csv_rules(self):        self._call('_open_sort_rules')
     def _open_schedule(self):         self._call('_open_schedule_dialog')
     def _open_watch(self):            self._call('_open_watch_history')

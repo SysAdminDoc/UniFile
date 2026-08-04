@@ -44,8 +44,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## AI & Inference
 
-- **Natural language rules** — "all screenshots older than 30 days → Archive/Screenshots/YYYY-MM"; compiled to an action DAG, previewed before apply; uses the LLM to parse the rule once, then runs rule-engine locally
-
 ---
 
 ## Library & Tags

@@ -137,7 +137,17 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | 7-Level Pipeline | Extension > Keyword > Fuzzy > Metadata > Composition > Context > LLM |
 | Multiple Profiles | Design Assets, Book Library, PC Files, Photo Library, and custom profiles |
 | Rules Editor | Custom if/then rules with condition builder UI |
+| Natural Language Rules | Compile one routing request into a local, reviewable action plan |
 | Rename Templates | Token-based rename templates with live preview |
+
+### Natural Language Rules
+
+Open **Settings → Natural Language Rules**, describe one routing request, and
+choose the source folder. UniFile asks the configured provider for one
+structured rule, evaluates matching files locally, and previews the resulting
+action DAG with exact source and destination paths. Click **Apply approved
+plan** only after reviewing the rows; the apply step makes no further AI calls,
+never overwrites an existing file, and records successful moves for undo.
 
 ### Voice Control
 

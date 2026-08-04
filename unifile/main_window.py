@@ -610,6 +610,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             menu_tools.addAction("Unregister Shell Extension", self._unregister_shell_extension)
         menu_tools.addSeparator()
         menu_tools.addAction("Classification Rules...", self._open_rule_editor)
+        menu_tools.addAction("Natural Language Rules...", self._open_natural_language_rules)
         if sys.platform == 'win32':
             menu_tools.addAction("Scheduled Scans...", self._open_schedule_dialog)
         menu_tools.addAction("Plugins...", self._open_plugin_manager)

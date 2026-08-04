@@ -28,6 +28,7 @@ from unifile.dialogs.editors import (
 from unifile.dialogs.file_health import FileHealthDialog
 from unifile.dialogs.library_roots import LibraryRootsDialog
 from unifile.dialogs.metadata_editor import BatchMetadataEditorDialog
+from unifile.dialogs.natural_rules import NaturalLanguageRulesDialog
 from unifile.dialogs.project_audit import ProjectAuditDialog
 from unifile.dialogs.provider_health import ProviderHealthDialog
 from unifile.dialogs.settings import (
@@ -68,6 +69,7 @@ __all__ = [
     'SettingsHubDialog',
     'CloudRemotesDialog',
     'BatchMetadataEditorDialog',
+    'NaturalLanguageRulesDialog',
     'ProjectAuditDialog',
     'ProviderHealthDialog',
     'LibraryRootsDialog',

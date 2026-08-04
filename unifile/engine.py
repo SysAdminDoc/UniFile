@@ -178,8 +178,13 @@ class RuleEngine:
             return metadata.get(field, '')
 
     @classmethod
-    def evaluate(cls, item, rules: list, metadata: dict = None) -> tuple:
-        """Returns (category, rename_template, confidence) or None if no match."""
+    def match(cls, item, rules: list, metadata: dict = None) -> dict | None:
+        """Return the first matching rule, or ``None``.
+
+        Keeping the matched rule available lets review-first workflows explain
+        why a file was selected without reimplementing the condition evaluator.
+        ``evaluate`` below remains the compatibility API used by the scanner.
+        """
         if metadata is None:
             metadata = getattr(item, 'metadata', {})
         for rule in sorted(rules, key=lambda r: r.get('priority', 99)):
@@ -202,10 +207,18 @@ class RuleEngine:
                     results.append(False)
             matched = all(results) if logic == 'all' else any(results)
             if matched:
-                return (rule.get('action_category', ''),
-                        rule.get('action_rename', ''),
-                        rule.get('confidence', 90))
+                return rule
         return None
+
+    @classmethod
+    def evaluate(cls, item, rules: list, metadata: dict = None) -> tuple:
+        """Returns (category, rename_template, confidence) or None if no match."""
+        rule = cls.match(item, rules, metadata=metadata)
+        if rule is None:
+            return None
+        return (rule.get('action_category', ''),
+                rule.get('action_rename', ''),
+                rule.get('confidence', 90))
 
     @staticmethod
     def export_rules_yaml(rules: list, output_path: str) -> bool:
