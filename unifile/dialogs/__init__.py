@@ -25,6 +25,7 @@ from unifile.dialogs.editors import (
     TemplateBuilderWidget,
     _FileBrowserDialog,
 )
+from unifile.dialogs.field_schemas import EntryFieldsDialog, FieldSchemaDialog
 from unifile.dialogs.file_health import FileHealthDialog
 from unifile.dialogs.library_roots import LibraryRootsDialog
 from unifile.dialogs.metadata_editor import BatchMetadataEditorDialog
@@ -75,5 +76,7 @@ __all__ = [
     'LibraryRootsDialog',
     'CollectionBoardDialog',
     'FileHealthDialog',
+    'FieldSchemaDialog',
+    'EntryFieldsDialog',
     'VoiceControlDialog',
 ]

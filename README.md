@@ -56,6 +56,7 @@ Full tag-based file management adapted from TagStudio's SQLAlchemy models:
 | Category Tags | Distinguish organizational categories from descriptive tags |
 | Quick Presets | One-click Favorite, Important, Review, Archive tags |
 | Entry Fields | 21 built-in field types (title, author, AI summary, TMDb ID, etc.) |
+| Custom Field Schemas | Per-library currency, date, status/enum, checkbox, and text fields with validation |
 | Auto-Tagging | Classification results automatically create and apply tags |
 | Bulk Operations | Scan directories, bulk-add files, batch tag assignment |
 | Tag Search | Real-time search across tags and entries |
@@ -166,6 +167,15 @@ dominant-color palette index. Use **Index Colors** in the Tag Library header to
 rebuild the index for existing images, then search with `color:blue` or phrases
 such as `show me files with predominant blue tones`. Searches remain local and
 read-only; unsupported or unreadable images are simply left without palette rows.
+
+### Custom Field Schemas
+
+Open **Field Schemas** in the Tag Library header to add fields scoped to the
+active library. Currency fields support optional minimum and maximum values;
+status fields use a fixed choice list; dates normalize to `YYYY-MM-DD`; and
+checkboxes accept true/false values. Select one file and choose **Edit Fields**
+to update built-in or custom metadata. Invalid values are rejected before they
+reach the library database, and blank values clear the stored field.
 
 ### Voice Control
 

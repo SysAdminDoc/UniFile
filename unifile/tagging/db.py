@@ -85,6 +85,13 @@ def _add_column_if_missing(conn: Connection, table: str, column: str, ddl: str) 
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
 
 
+def _table_exists(conn: Connection, table: str) -> bool:
+    return bool(conn.execute(
+        text("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:table"),
+        {"table": table},
+    ).scalar())
+
+
 def _migration_1(conn: Connection) -> None:
     _add_column_if_missing(conn, "tags", "namespace", "namespace TEXT")
     _add_column_if_missing(conn, "tags", "description", "description TEXT")
@@ -181,12 +188,19 @@ def _migration_3(conn: Connection) -> None:
     ))
 
 
-TAG_DB_SCHEMA_VERSION = 3
+def _migration_4(conn: Connection) -> None:
+    """Store JSON validation rules alongside per-library value types."""
+    if _table_exists(conn, "value_type"):
+        _add_column_if_missing(conn, "value_type", "schema_json", "schema_json TEXT")
+
+
+TAG_DB_SCHEMA_VERSION = 4
 
 MIGRATIONS = (
     Migration(1, "legacy tag and entry metadata columns", _migration_1),
     Migration(2, "FTS5 search indexes for tags and entries", _migration_2),
     Migration(3, "normalized image palette color index", _migration_3),
+    Migration(4, "custom field schema validation rules", _migration_4),
 )
 
 

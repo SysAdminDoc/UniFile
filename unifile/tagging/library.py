@@ -1,10 +1,12 @@
 """UniFile — Tag Library Manager (core API for tag operations)."""
+import json
 import logging
 import os
 import uuid
 import zipfile
 from datetime import datetime as dt
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.orm import Session, joinedload
@@ -12,13 +14,21 @@ from sqlalchemy.orm import Session, joinedload
 # Sentinel for "not passed" (distinct from None, which means "clear the field")
 _UNSET = object()
 
+from unifile.field_schemas import (  # noqa: E402  -- sentinel above
+    normalize_field_type,
+    normalize_schema,
+    validate_field_value,
+)
 from unifile.tagging.db import make_engine, make_tables  # noqa: E402  -- sentinel above
 from unifile.tagging.models import (  # noqa: E402
     DEFAULT_FIELDS,
+    BooleanField,
+    DatetimeField,
     Entry,
     EntryColor,
     EntryGroup,
     EntryGroupMember,
+    FieldTypeEnum,
     Folder,
     Tag,
     TagAlias,
@@ -61,6 +71,7 @@ class TagLibrary:
         self.engine = None
         self._session = None
         self._folder = None
+        self.last_field_error: str | None = None
 
     @property
     def is_open(self) -> bool:
@@ -560,6 +571,9 @@ class TagLibrary:
         if not entry:
             return False
         self._session.execute(delete(EntryColor).where(EntryColor.entry_id == entry_id))
+        # Delete every typed row because entry removal has no field key filter.
+        for model in (TextField, DatetimeField, BooleanField):
+            self._session.execute(delete(model).where(model.entry_id == entry_id))
         self._session.delete(entry)
         self._session.commit()
         return True
@@ -620,66 +634,268 @@ class TagLibrary:
             select(Entry).where(~Entry.id.in_(subq)).order_by(Entry.filename)
         ).scalars().all())
 
-    # ── Entry Field Operations ────────────────────────────────────────────────
+    # ── Field Schemas and Entry Field Operations ──────────────────────────────
 
-    def set_entry_field(self, entry_id: int, field_key: str, value: str) -> bool:
-        entry = self._session.get(Entry, entry_id)
-        vt = self._session.get(ValueType, field_key)
-        if not entry or not vt:
-            return False
+    @staticmethod
+    def _schema_for_value_type(value_type: ValueType) -> dict[str, Any]:
+        if not value_type.schema_json:
+            return {}
+        try:
+            value = json.loads(value_type.schema_json)
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
 
-        # Check if field already exists
-        existing = self._session.execute(
-            select(TextField).where(
-                TextField.entry_id == entry_id,
-                TextField.type_key == field_key,
+    @classmethod
+    def _field_schema_record(cls, value_type: ValueType) -> dict[str, Any]:
+        schema = cls._schema_for_value_type(value_type)
+        record = {
+            "key": value_type.key,
+            "name": value_type.name,
+            "type": getattr(value_type.type, "value", str(value_type.type)),
+            "is_default": bool(value_type.is_default),
+            "position": value_type.position,
+            "schema": schema,
+        }
+        for key in ("options", "min", "max"):
+            if key in schema:
+                record[key] = schema[key]
+        return record
+
+    def get_field_schemas(self) -> list[dict[str, Any]]:
+        """Return this library's ordered built-in and custom field definitions."""
+        value_types = self._session.execute(
+            select(ValueType).order_by(ValueType.position, ValueType.name)
+        ).scalars().all()
+        return [self._field_schema_record(value_type) for value_type in value_types]
+
+    def get_field_schema(self, field_key: str) -> dict[str, Any] | None:
+        value_type = self._session.get(ValueType, field_key)
+        return self._field_schema_record(value_type) if value_type else None
+
+    @staticmethod
+    def _slug_field_key(value: str) -> str:
+        import re
+
+        return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_") or "custom_field"
+
+    def add_field_schema(
+        self,
+        name: str,
+        field_type: FieldTypeEnum | str,
+        schema: dict[str, Any] | None = None,
+        key: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Create a custom field definition scoped to this library database."""
+        self.last_field_error = None
+        clean_name = str(name or "").strip()
+        if not clean_name:
+            self.last_field_error = "Field name is required"
+            return None
+        normalized_type = normalize_field_type(field_type)
+        normalized_schema, error = normalize_schema(normalized_type or "", schema)
+        if error:
+            self.last_field_error = error
+            return None
+        duplicate_name = self._session.execute(
+            select(ValueType).where(func.lower(ValueType.name) == clean_name.casefold())
+        ).scalar_one_or_none()
+        if duplicate_name:
+            self.last_field_error = "A field with that name already exists"
+            return None
+
+        base_key = self._slug_field_key(str(key or clean_name))
+        candidate = base_key
+        suffix = 2
+        while self._session.get(ValueType, candidate):
+            if key:
+                self.last_field_error = "A field with that key already exists"
+                return None
+            candidate = f"{base_key}_{suffix}"
+            suffix += 1
+
+        max_position = self._session.execute(select(func.max(ValueType.position))).scalar()
+        value_type = ValueType(
+            key=candidate,
+            name=clean_name,
+            type=normalized_type,
+            is_default=False,
+            position=(int(max_position) + 1) if max_position is not None else 0,
+            schema_json=json.dumps(normalized_schema or {}, sort_keys=True),
+        )
+        self._session.add(value_type)
+        self._session.commit()
+        return self._field_schema_record(value_type)
+
+    def update_field_schema(
+        self,
+        field_key: str,
+        *,
+        name: str | None = None,
+        field_type: FieldTypeEnum | str | None = None,
+        schema: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Update a custom definition; built-in field contracts remain immutable."""
+        self.last_field_error = None
+        value_type = self._session.get(ValueType, field_key)
+        if not value_type:
+            self.last_field_error = "Field was not found"
+            return None
+        if value_type.is_default:
+            self.last_field_error = "Built-in fields cannot be changed"
+            return None
+        clean_name = value_type.name if name is None else str(name).strip()
+        if not clean_name:
+            self.last_field_error = "Field name is required"
+            return None
+        duplicate = self._session.execute(
+            select(ValueType).where(
+                func.lower(ValueType.name) == clean_name.casefold(),
+                ValueType.key != field_key,
             )
         ).scalar_one_or_none()
+        if duplicate:
+            self.last_field_error = "A field with that name already exists"
+            return None
+        normalized_type = normalize_field_type(field_type or value_type.type)
+        effective_schema = schema
+        if effective_schema is None:
+            effective_schema = self._schema_for_value_type(value_type)
+        normalized_schema, error = normalize_schema(normalized_type or "", effective_schema)
+        if error:
+            self.last_field_error = error
+            return None
+        old_type = normalize_field_type(value_type.type)
+        value_type.name = clean_name
+        value_type.type = normalized_type
+        value_type.schema_json = json.dumps(normalized_schema or {}, sort_keys=True)
+        if old_type is not normalized_type:
+            self._delete_entry_field_rows(self._session, None, field_key)
+        self._session.commit()
+        return self._field_schema_record(value_type)
 
-        if existing:
-            existing.value = value
-        else:
-            field = TextField(type_key=field_key, entry_id=entry_id,
-                              value=value, position=vt.position)
-            self._session.add(field)
-
+    def delete_field_schema(self, field_key: str) -> bool:
+        """Delete a custom definition and all values stored under it."""
+        self.last_field_error = None
+        value_type = self._session.get(ValueType, field_key)
+        if not value_type:
+            self.last_field_error = "Field was not found"
+            return False
+        if value_type.is_default:
+            self.last_field_error = "Built-in fields cannot be deleted"
+            return False
+        self._delete_entry_field_rows(self._session, None, field_key)
+        self._session.delete(value_type)
         self._session.commit()
         return True
 
+    remove_field_schema = delete_field_schema
+
+    def validate_field_value(
+        self, field_key: str, value: Any
+    ) -> tuple[str | None, str | None]:
+        """Validate one value using the schema stored for this library."""
+        self.last_field_error = None
+        value_type = self._session.get(ValueType, field_key)
+        if not value_type:
+            self.last_field_error = "Field was not found"
+            return None, self.last_field_error
+        normalized, error = validate_field_value(
+            value_type.type,
+            value,
+            self._schema_for_value_type(value_type),
+        )
+        self.last_field_error = error
+        return normalized, error
+
+    @staticmethod
+    def _delete_entry_field_rows(
+        session, entry_id: int | None, field_key: str
+    ) -> None:
+        for model in (TextField, DatetimeField, BooleanField):
+            conditions = [model.type_key == field_key]
+            if entry_id is not None:
+                conditions.append(model.entry_id == entry_id)
+            session.execute(delete(model).where(*conditions))
+
+    @classmethod
+    def _set_entry_field_in_session(
+        cls, session, entry_id: int, field_key: str, value: Any
+    ) -> tuple[bool, str | None]:
+        entry = session.get(Entry, entry_id)
+        value_type = session.get(ValueType, field_key)
+        if not entry or not value_type:
+            return False, "Entry or field was not found"
+        if value is None or (isinstance(value, str) and not value.strip()):
+            cls._delete_entry_field_rows(session, entry_id, field_key)
+            session.commit()
+            return True, None
+        normalized, error = validate_field_value(
+            value_type.type,
+            value,
+            cls._schema_for_value_type(value_type),
+        )
+        if error:
+            return False, error
+        assert normalized is not None
+        cls._delete_entry_field_rows(session, entry_id, field_key)
+        field_model = {
+            FieldTypeEnum.DATETIME: DatetimeField,
+            FieldTypeEnum.BOOLEAN: BooleanField,
+        }.get(normalize_field_type(value_type.type), TextField)
+        stored_value: Any = normalized
+        if field_model is BooleanField:
+            stored_value = normalized == "true"
+        session.add(field_model(
+            type_key=field_key,
+            entry_id=entry_id,
+            value=stored_value,
+            position=value_type.position,
+        ))
+        session.commit()
+        return True, None
+
+    def set_entry_field(self, entry_id: int, field_key: str, value: Any) -> bool:
+        """Set, validate, or clear a typed entry field."""
+        self.last_field_error = None
+        success, error = self._set_entry_field_in_session(
+            self._session, entry_id, field_key, value)
+        self.last_field_error = error
+        return success
+
     @staticmethod
     def set_entry_field_with_session(
-        session, entry_id: int, field_key: str, value: str
+        session, entry_id: int, field_key: str, value: Any
     ) -> bool:
         """Thread-safe variant: caller provides an explicit SQLAlchemy session."""
-        entry = session.get(Entry, entry_id)
-        vt = session.get(ValueType, field_key)
-        if not entry or not vt:
+        success, _ = TagLibrary._set_entry_field_in_session(
+            session, entry_id, field_key, value)
+        return success
+
+    def clear_entry_field(self, entry_id: int, field_key: str) -> bool:
+        """Remove all typed storage rows for an entry field."""
+        self.last_field_error = None
+        if not self._session.get(Entry, entry_id) or not self._session.get(ValueType, field_key):
+            self.last_field_error = "Entry or field was not found"
             return False
-        existing = session.execute(
-            select(TextField).where(
-                TextField.entry_id == entry_id,
-                TextField.type_key == field_key,
-            )
-        ).scalar_one_or_none()
-        if existing:
-            existing.value = value
-        else:
-            session.add(TextField(
-                type_key=field_key,
-                entry_id=entry_id,
-                value=value,
-                position=vt.position,
-            ))
-        session.commit()
+        self._delete_entry_field_rows(self._session, entry_id, field_key)
+        self._session.commit()
         return True
 
     def get_entry_fields(self, entry_id: int) -> dict[str, str]:
-        fields = {}
-        results = self._session.execute(
+        fields: dict[str, str] = {}
+        for field in self._session.execute(
             select(TextField).where(TextField.entry_id == entry_id)
-        ).scalars().all()
-        for f in results:
-            fields[f.type_key] = f.value or ""
+        ).scalars().all():
+            fields[field.type_key] = field.value or ""
+        for field in self._session.execute(
+            select(DatetimeField).where(DatetimeField.entry_id == entry_id)
+        ).scalars().all():
+            fields[field.type_key] = field.value or ""
+        for field in self._session.execute(
+            select(BooleanField).where(BooleanField.entry_id == entry_id)
+        ).scalars().all():
+            fields[field.type_key] = "true" if field.value else "false"
         return fields
 
     # ── Rating ────────────────────────────────────────────────────────────────
@@ -1239,16 +1455,32 @@ class TagLibrary:
                 key = key.strip()
                 val = val.strip().strip('"')
                 escaped_val = _escape_like(val)
-                matching = self._session.execute(
+                matching_ids = set(self._session.execute(
                     select(TextField.entry_id).where(
                         TextField.type_key == key,
                         TextField.value.ilike(f"%{escaped_val}%", escape='\\'),
                     )
-                ).scalars().all()
-                if not matching:
+                ).scalars().all())
+                matching_ids.update(self._session.execute(
+                    select(DatetimeField.entry_id).where(
+                        DatetimeField.type_key == key,
+                        DatetimeField.value.ilike(f"%{escaped_val}%", escape='\\'),
+                    )
+                ).scalars().all())
+                boolean_value = val.casefold() in {"true", "yes", "1", "on"}
+                if val.casefold() in {
+                    "true", "false", "yes", "no", "1", "0", "on", "off",
+                }:
+                    matching_ids.update(self._session.execute(
+                        select(BooleanField.entry_id).where(
+                            BooleanField.type_key == key,
+                            BooleanField.value.is_(boolean_value),
+                        )
+                    ).scalars().all())
+                if not matching_ids:
                     return []
                 return list(self._session.execute(
-                    select(Entry).where(Entry.id.in_(matching))
+                    select(Entry).where(Entry.id.in_(matching_ids))
                     .order_by(Entry.filename).limit(limit)
                 ).scalars().all())
 

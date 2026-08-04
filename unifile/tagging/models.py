@@ -23,6 +23,8 @@ class FieldTypeEnum(enum.Enum):
     TEXT_LINE = "Text Line"
     TEXT_BOX = "Text Box"
     DATETIME = "Datetime"
+    CURRENCY = "Currency"
+    ENUM = "Enum"
     BOOLEAN = "Checkbox"
 
 
@@ -81,6 +83,7 @@ class ValueType(Base):
     type: Mapped[FieldTypeEnum] = mapped_column(default=FieldTypeEnum.TEXT_LINE)
     is_default: Mapped[bool] = mapped_column(default=False)
     position: Mapped[int] = mapped_column(default=0)
+    schema_json: Mapped[str | None] = mapped_column(nullable=True)
 
 
 class TextField(Base):
@@ -253,6 +256,7 @@ class Entry(Base):
     # Back-references for fields
     TextField.entry = relationship("Entry", back_populates="text_fields", foreign_keys=[TextField.entry_id])
     DatetimeField.entry = relationship("Entry", back_populates="datetime_fields", foreign_keys=[DatetimeField.entry_id])
+    BooleanField.entry = relationship("Entry", foreign_keys=[BooleanField.entry_id])
 
     @property
     def tag_names(self) -> list[str]:

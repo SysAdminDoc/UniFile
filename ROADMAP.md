@@ -48,8 +48,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Library & Tags
 
-- **Custom field schemas per library** — define additional field types per library (Budget/currency, Deadline/date, Status/enum); validation rules enforced in the editor
-
 ---
 
 ## Media Metadata

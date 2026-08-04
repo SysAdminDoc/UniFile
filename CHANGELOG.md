@@ -29,6 +29,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Custom Field Schemas: define per-library text, date, currency, status/enum, and checkbox fields with validated entry editing in the Tag Library.
 - Color Palette Search: index dominant image colors in each Tag Library and search them with `color:<name>` or natural “predominant … tones” phrases, with a reindex action for existing images.
 - Multiple Libraries: switch registered Tag Libraries from the sidebar while keeping each library's Ollama settings, rules, and theme preference scoped to its own `.unifile` folder.
 - Natural Language Rules: compile one plain-language routing request into a validated local action DAG, preview exact file moves, and apply only after explicit approval with collision-safe destinations and undo operations.

@@ -138,6 +138,8 @@ class TagLibraryPanel(QWidget):
         self._lib.close()
         self.btn_manage_roots.setEnabled(False)
         self.btn_index_colors.setEnabled(False)
+        self.btn_field_schemas.setEnabled(False)
+        self.btn_edit_fields.setEnabled(False)
 
     def _build_ui(self):
         self.setAccessibleName("Tag Library")
@@ -195,6 +197,14 @@ class TagLibraryPanel(QWidget):
         self.btn_index_colors.setEnabled(False)
         self.btn_index_colors.clicked.connect(self._on_index_colors)
         h_lay.addWidget(self.btn_index_colors)
+        self.btn_field_schemas = QPushButton("Field Schemas")
+        self.btn_field_schemas.setProperty("class", "toolbar")
+        self.btn_field_schemas.setAccessibleName("Manage field schemas")
+        self.btn_field_schemas.setAccessibleDescription(
+            "Define and remove custom validated fields for this library")
+        self.btn_field_schemas.setEnabled(False)
+        self.btn_field_schemas.clicked.connect(self._open_field_schemas)
+        h_lay.addWidget(self.btn_field_schemas)
 
         lay.addWidget(self.header)
 
@@ -434,6 +444,14 @@ class TagLibraryPanel(QWidget):
         self.btn_remove_tag.setProperty("class", "danger")
         self.btn_remove_tag.clicked.connect(self._on_remove_tag_from_selected)
         db_lay.addWidget(self.btn_remove_tag)
+        self.btn_edit_fields = QPushButton("Edit Fields")
+        self.btn_edit_fields.setProperty("class", "toolbar")
+        self.btn_edit_fields.setAccessibleName("Edit selected entry fields")
+        self.btn_edit_fields.setAccessibleDescription(
+            "Edit validated custom and built-in fields for exactly one selected file")
+        self.btn_edit_fields.setEnabled(False)
+        self.btn_edit_fields.clicked.connect(self._open_entry_fields)
+        db_lay.addWidget(self.btn_edit_fields)
         db_lay.addStretch()
 
         # Rating stars
@@ -469,6 +487,7 @@ class TagLibraryPanel(QWidget):
             self.btn_open_library,
             self.btn_manage_roots,
             self.btn_index_colors,
+            self.btn_field_schemas,
             self.txt_tag_search,
             self.btn_add_tag,
             self.cmb_ns_filter,
@@ -489,6 +508,7 @@ class TagLibraryPanel(QWidget):
             self.cmb_assign_tag,
             self.btn_assign,
             self.btn_remove_tag,
+            self.btn_edit_fields,
             *self._rating_btns,
             self.btn_inbox,
         ]
@@ -589,6 +609,7 @@ class TagLibraryPanel(QWidget):
         archive_info = item.data(Qt.ItemDataRole.UserRole + 1)
         if isinstance(archive_info, dict):
             self._clear_preview()
+            self.btn_edit_fields.setEnabled(False)
             self._preview_filename.setText(archive_info.get("breadcrumb", item.text()))
             self._preview_meta.setText(
                 "Archive content  |  "
@@ -604,6 +625,7 @@ class TagLibraryPanel(QWidget):
         if not entry:
             self._clear_preview()
             return
+        self.btn_edit_fields.setEnabled(True)
 
         _t = get_active_theme()
 
@@ -725,6 +747,8 @@ class TagLibraryPanel(QWidget):
 
     def _clear_preview(self):
         _t = get_active_theme()
+        if hasattr(self, "btn_edit_fields"):
+            self.btn_edit_fields.setEnabled(False)
         self._preview_filename.setText("No file selected")
         self._preview_meta.setText("Select a single file to inspect its preview, tags, and saved fields.")
         self._preview_thumb.setPixmap(QPixmap())
@@ -809,6 +833,42 @@ class TagLibraryPanel(QWidget):
         self._refresh_entries()
         self._update_stats()
 
+    def _open_field_schemas(self):
+        if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before managing field schemas")
+            return
+        from unifile.dialogs.field_schemas import FieldSchemaDialog
+
+        dialog = FieldSchemaDialog(self._lib, self)
+        dialog.exec()
+        self._on_entry_selection_changed()
+
+    def _open_entry_fields(self):
+        if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before editing fields")
+            return
+        rows = set(index.row() for index in self.tbl_entries.selectedIndexes())
+        if len(rows) != 1:
+            self.lbl_selection_info.setText("Select exactly one file before editing fields")
+            return
+        row = next(iter(rows))
+        item = self.tbl_entries.item(row, 0)
+        entry_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if not isinstance(entry_id, int):
+            self.lbl_selection_info.setText("Archive index results do not have editable fields")
+            return
+        from unifile.dialogs.field_schemas import EntryFieldsDialog
+
+        dialog = EntryFieldsDialog(self._lib, entry_id, self)
+        if dialog.exec() == dialog.DialogCode.Accepted:
+            self._refresh_entries(tag_id=self._current_tag_id)
+            for refreshed_row in range(self.tbl_entries.rowCount()):
+                refreshed = self.tbl_entries.item(refreshed_row, 0)
+                if refreshed and refreshed.data(Qt.ItemDataRole.UserRole) == entry_id:
+                    self.tbl_entries.selectRow(refreshed_row)
+                    break
+            self.lbl_selection_info.setText("Entry fields saved")
+
     def _on_index_colors(self):
         if not self._lib.is_open:
             self.lbl_selection_info.setText("Open a library before indexing colors")
@@ -838,10 +898,12 @@ class TagLibraryPanel(QWidget):
         if not self._lib.is_open:
             self.btn_manage_roots.setEnabled(False)
             self.btn_index_colors.setEnabled(False)
+            self.btn_field_schemas.setEnabled(False)
             self.lbl_stats.setText("Open a library folder to browse tags and entries")
             return
         self.btn_manage_roots.setEnabled(True)
         self.btn_index_colors.setEnabled(True)
+        self.btn_field_schemas.setEnabled(True)
         stats = self._lib.get_stats()
         self.lbl_stats.setText(
             f"{stats['entries']} files  •  {stats['tags']} tags  •  "
