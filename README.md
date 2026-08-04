@@ -293,6 +293,11 @@ latency sparkline. **Probe Enabled Providers** runs reachability checks in the
 background; history is stored locally in `ai_provider_health.json` and errors
 are redacted before storage.
 
+The **AI Providers** settings also support native Anthropic Messages and
+Google Gemini `generateContent` adapters. They use the configured API key from
+the local keyring, send structured-output requests where supported, and keep
+the existing priority-based fallback chain.
+
 ### Confidence Tiers
 
 Classification results are labeled by confidence: **Auto-apply** (90% or higher), **Suggest** (70–89%), or **Skip** (below 70%). Scheduled `--auto-apply` jobs select only Auto-apply rows; interactive scans keep Suggest rows available for review. Open **Settings → All Settings → Confidence Tiers** to override the thresholds for each built-in scan profile.

@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from urllib.parse import quote as _url_quote
 
 from unifile.config import _APP_DATA_DIR
 
@@ -310,6 +311,32 @@ _DEFAULT_PROVIDERS = {
         'input_cost_per_1k': 0.0,
         'output_cost_per_1k': 0.0,
     },
+    'anthropic': {
+        'name': 'Anthropic Claude',
+        'type': 'anthropic',
+        'enabled': False,
+        'priority': 5,
+        'url': 'https://api.anthropic.com',
+        'model': 'claude-sonnet-4-5',
+        'vision_model': 'claude-sonnet-4-5',
+        'timeout': 30,
+        'api_key': '',
+        'input_cost_per_1k': 0.0,
+        'output_cost_per_1k': 0.0,
+    },
+    'gemini': {
+        'name': 'Google Gemini',
+        'type': 'gemini',
+        'enabled': False,
+        'priority': 6,
+        'url': 'https://generativelanguage.googleapis.com/v1beta',
+        'model': 'gemini-3.6-flash',
+        'vision_model': 'gemini-3.6-flash',
+        'timeout': 30,
+        'api_key': '',
+        'input_cost_per_1k': 0.0,
+        'output_cost_per_1k': 0.0,
+    },
 }
 
 
@@ -432,6 +459,15 @@ class AIProvider:
         if self.type == 'ollama':
             input_tokens = _nonnegative_int(response.get('prompt_eval_count'))
             output_tokens = _nonnegative_int(response.get('eval_count'))
+        elif self.type == 'anthropic':
+            input_tokens = _nonnegative_int(usage.get('input_tokens'))
+            output_tokens = _nonnegative_int(usage.get('output_tokens'))
+        elif self.type == 'gemini':
+            gemini_usage = response.get('usageMetadata')
+            if not isinstance(gemini_usage, dict):
+                gemini_usage = {}
+            input_tokens = _nonnegative_int(gemini_usage.get('promptTokenCount'))
+            output_tokens = _nonnegative_int(gemini_usage.get('candidatesTokenCount'))
         else:
             input_tokens = _nonnegative_int(usage.get('prompt_tokens'))
             output_tokens = _nonnegative_int(usage.get('completion_tokens'))
@@ -453,6 +489,46 @@ class AIProvider:
             operation=operation,
         )
 
+    def _openai_headers(self) -> dict:
+        headers = {}
+        if self.api_key:
+            headers['Authorization'] = f'Bearer {self.api_key}'
+        return headers
+
+    def _anthropic_base_url(self) -> str:
+        return self.url if self.url.endswith('/v1') else f"{self.url}/v1"
+
+    def _anthropic_headers(self) -> dict:
+        headers = {
+            'anthropic-version': str(self.config.get('anthropic_version', '2023-06-01')),
+        }
+        if self.api_key:
+            headers['x-api-key'] = self.api_key
+        return headers
+
+    def _gemini_base_url(self) -> str:
+        return self.url or 'https://generativelanguage.googleapis.com/v1beta'
+
+    def _gemini_headers(self) -> dict:
+        headers = {}
+        if self.api_key:
+            headers['x-goog-api-key'] = self.api_key
+        return headers
+
+    def _max_output_tokens(self, default: int = 1024) -> int:
+        return max(1, _nonnegative_int(self.config.get('max_tokens', default)) or default)
+
+    @staticmethod
+    def _image_payload(image_path: str) -> tuple[str, str]:
+        with open(image_path, 'rb') as f:
+            img_b64 = base64.b64encode(f.read()).decode()
+        ext = os.path.splitext(image_path)[1].lower().lstrip('.')
+        mime = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+            'gif': 'image/gif', 'webp': 'image/webp',
+        }.get(ext, 'image/jpeg')
+        return img_b64, mime
+
     def classify(self, prompt: str, model: str | None = None,
                  system: str = '', format: dict | None = None) -> str:
         """Send a text classification prompt and return the response.
@@ -465,6 +541,12 @@ class AIProvider:
         if self.type == 'ollama':
             return self._ollama_generate(prompt, model, system=system,
                                          format=format)
+        elif self.type == 'anthropic':
+            return self._anthropic_messages(prompt, model, system=system,
+                                            format=format)
+        elif self.type == 'gemini':
+            return self._gemini_generate_content(prompt, model, system=system,
+                                                 format=format)
         else:
             return self._openai_chat(prompt, model, system=system,
                                      format=format)
@@ -475,6 +557,10 @@ class AIProvider:
         model = model or self.config.get('vision_model', '')
         if self.type == 'ollama':
             return self._ollama_vision(prompt, image_path, model)
+        elif self.type == 'anthropic':
+            return self._anthropic_vision(prompt, image_path, model)
+        elif self.type == 'gemini':
+            return self._gemini_vision(prompt, image_path, model)
         else:
             return self._openai_vision(prompt, image_path, model)
 
@@ -484,11 +570,16 @@ class AIProvider:
         try:
             if self.type == 'ollama':
                 url = f"{self.url}/api/tags"
+                headers = {}
+            elif self.type == 'anthropic':
+                url = f"{self._anthropic_base_url()}/models"
+                headers = self._anthropic_headers()
+            elif self.type == 'gemini':
+                url = f"{self._gemini_base_url()}/models"
+                headers = self._gemini_headers()
             else:
                 url = f"{self.url}/models"
-            headers = {}
-            if self.api_key:
-                headers['Authorization'] = f'Bearer {self.api_key}'
+                headers = self._openai_headers()
             response = ai_request(url, method='GET', data=None, headers=headers,
                                   timeout=5, retries=0)
             self._record_request(started, success=True, response=response,
@@ -502,6 +593,162 @@ class AIProvider:
     @property
     def cost_stats(self) -> dict:
         return dict(self._cost_tracker)
+
+    def _anthropic_messages(self, prompt: str, model: str, system: str = '',
+                            format: dict | None = None) -> str:
+        """Call Anthropic's native Messages API without an SDK dependency."""
+        started = time.perf_counter()
+        system_text = (system or '').strip()
+        if format is not None:
+            schema_hint = (
+                "Return only valid JSON matching this schema; do not include markdown fences:\n"
+                f"{json.dumps(format, separators=(',', ':'))}"
+            )
+            system_text = f"{system_text}\n\n{schema_hint}".strip()
+        payload = {
+            'model': model,
+            'max_tokens': self._max_output_tokens(),
+            'messages': [{'role': 'user', 'content': prompt}],
+        }
+        if system_text:
+            payload['system'] = system_text
+        try:
+            data = ai_request(
+                f"{self._anthropic_base_url()}/messages",
+                data=json.dumps(payload).encode(),
+                headers=self._anthropic_headers(),
+                timeout=self.timeout,
+            )
+            self._record_request(started, success=True, response=data, operation='text')
+            content = data.get('content', [])
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                return ''.join(
+                    str(block.get('text', ''))
+                    for block in content
+                    if isinstance(block, dict) and block.get('type') == 'text'
+                ).strip()
+            return ''
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc, operation='text')
+            raise
+
+    def _anthropic_vision(self, prompt: str, image_path: str, model: str) -> str:
+        """Call Anthropic Messages with an inline base64 image block."""
+        started = time.perf_counter()
+        try:
+            image_data, mime = self._image_payload(image_path)
+            payload = {
+                'model': model,
+                'max_tokens': self._max_output_tokens(1024),
+                'messages': [{
+                    'role': 'user',
+                    'content': [
+                        {
+                            'type': 'image',
+                            'source': {
+                                'type': 'base64',
+                                'media_type': mime,
+                                'data': image_data,
+                            },
+                        },
+                        {'type': 'text', 'text': prompt},
+                    ],
+                }],
+            }
+            data = ai_request(
+                f"{self._anthropic_base_url()}/messages",
+                data=json.dumps(payload).encode(),
+                headers=self._anthropic_headers(),
+                timeout=self.timeout * 2,
+            )
+            self._record_request(started, success=True, response=data, operation='vision')
+            content = data.get('content', [])
+            return ''.join(
+                str(block.get('text', ''))
+                for block in content
+                if isinstance(block, dict) and block.get('type') == 'text'
+            ).strip()
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc, operation='vision')
+            raise
+
+    def _gemini_generate_content(self, prompt: str, model: str, system: str = '',
+                                 format: dict | None = None) -> str:
+        """Call Gemini's REST generateContent endpoint."""
+        started = time.perf_counter()
+        generation_config = {
+            'temperature': 0.3,
+            'maxOutputTokens': self._max_output_tokens(),
+        }
+        if format is not None:
+            generation_config['responseMimeType'] = 'application/json'
+            generation_config['responseSchema'] = format
+        payload = {
+            'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
+            'generationConfig': generation_config,
+        }
+        if system:
+            payload['systemInstruction'] = {'parts': [{'text': system}]}
+        try:
+            data = ai_request(
+                f"{self._gemini_base_url()}/models/{_url_quote(model, safe=':@-._')}:generateContent",
+                data=json.dumps(payload).encode(),
+                headers=self._gemini_headers(),
+                timeout=self.timeout,
+            )
+            self._record_request(started, success=True, response=data, operation='text')
+            candidates = data.get('candidates', [])
+            if not candidates:
+                return ''
+            parts = candidates[0].get('content', {}).get('parts', [])
+            return ''.join(
+                str(part.get('text', ''))
+                for part in parts
+                if isinstance(part, dict) and part.get('text') is not None
+            ).strip()
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc, operation='text')
+            raise
+
+    def _gemini_vision(self, prompt: str, image_path: str, model: str) -> str:
+        """Call Gemini generateContent with an inline image part."""
+        started = time.perf_counter()
+        try:
+            image_data, mime = self._image_payload(image_path)
+            payload = {
+                'contents': [{
+                    'role': 'user',
+                    'parts': [
+                        {'inline_data': {'mime_type': mime, 'data': image_data}},
+                        {'text': prompt},
+                    ],
+                }],
+                'generationConfig': {
+                    'temperature': 0.3,
+                    'maxOutputTokens': self._max_output_tokens(1024),
+                },
+            }
+            data = ai_request(
+                f"{self._gemini_base_url()}/models/{_url_quote(model, safe=':@-._')}:generateContent",
+                data=json.dumps(payload).encode(),
+                headers=self._gemini_headers(),
+                timeout=self.timeout * 2,
+            )
+            self._record_request(started, success=True, response=data, operation='vision')
+            candidates = data.get('candidates', [])
+            if not candidates:
+                return ''
+            parts = candidates[0].get('content', {}).get('parts', [])
+            return ''.join(
+                str(part.get('text', ''))
+                for part in parts
+                if isinstance(part, dict) and part.get('text') is not None
+            ).strip()
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc, operation='vision')
+            raise
 
     def _ollama_generate(self, prompt: str, model: str, system: str = '',
                          format: dict | None = None) -> str:
