@@ -59,6 +59,22 @@ def test_main_window_instantiates(unifile_window):
     assert unifile_window.windowTitle()  # has *some* title
 
 
+@pytest.mark.slow
+def test_primary_controls_expose_screen_reader_metadata(unifile_window):
+    """Core scan controls remain discoverable through Qt accessibility APIs."""
+    controls = (
+        unifile_window.txt_search,
+        unifile_window.sld_conf,
+        unifile_window.cmb_type_filter,
+        unifile_window.btn_scan,
+        unifile_window.btn_apply,
+        unifile_window.tbl,
+    )
+    for control in controls:
+        assert control.accessibleName(), type(control).__name__
+        assert control.accessibleDescription(), type(control).__name__
+
+
 # ── Mixins are wired into the MRO ─────────────────────────────────────────────
 
 @pytest.mark.slow
