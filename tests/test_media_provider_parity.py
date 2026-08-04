@@ -150,6 +150,8 @@ def test_media_lookup_panel_exposes_all_catalogs_and_builds_payload(qapp, monkey
     ]
     assert panel.txt_tvdb_key.accessibleName() == "TVDB API key"
     assert panel.txt_tvdb_pin.accessibleName() == "TVDB subscriber PIN"
+    assert panel.txt_opensubtitles_key.accessibleName() == "OpenSubtitles API key"
+    assert panel.btn_save_chapters.accessibleName() == "Save TMDb chapter sidecar"
 
     panel._set_media_type(providers.MediaType.AUDIOBOOK)
     book = providers.BookResult(
@@ -172,5 +174,25 @@ def test_media_lookup_panel_exposes_all_catalogs_and_builds_payload(qapp, monkey
     payload = panel._build_metadata_dict()
     assert payload["media_type"] == "audio"
     assert payload["artist"] == "The Beatles"
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_media_lookup_saves_tmdb_chapter_sidecar(qapp, monkeypatch, tmp_path):
+    monkeypatch.setattr(providers, "_MEDIA_KEYS_FILE", str(tmp_path / "media_api_keys.json"))
+    panel_module = __import__("unifile.dialogs.media_lookup", fromlist=["MediaLookupPanel"])
+    panel = panel_module.MediaLookupPanel()
+    source = tmp_path / "Show.S01E02.mkv"
+    source.write_bytes(b"media")
+    panel.txt_media_file.setText(str(source))
+    panel._current_detail = providers.EpisodeResult(
+        series="Show", season=1, episode=2, title="Pilot", id_tmdb="77"
+    )
+
+    panel._on_save_chapters()
+
+    sidecar = tmp_path / "Show.S01E02.chapters.json"
+    assert sidecar.exists()
+    assert "Pilot" in sidecar.read_text(encoding="utf-8")
     panel.deleteLater()
     qapp.processEvents()

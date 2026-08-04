@@ -21,8 +21,13 @@ _KEY_ENV_VARS = {
     "tmdb": "API_KEY_TMDB",
     "omdb": "API_KEY_OMDB",
     "tvdb": "API_KEY_TVDB",
+    "opensubtitles": "API_KEY_OPENSUBTITLES",
 }
-_OPTIONAL_KEY_ENV_VARS = {"tvdb_pin": "API_KEY_TVDB_PIN"}
+_OPTIONAL_KEY_ENV_VARS = {
+    "tvdb_pin": "API_KEY_TVDB_PIN",
+    "opensubtitles_username": "OPENSUBTITLES_USERNAME",
+    "opensubtitles_password": "OPENSUBTITLES_PASSWORD",
+}
 _ALL_KEY_ENV_VARS = {**_KEY_ENV_VARS, **_OPTIONAL_KEY_ENV_VARS}
 _PROVIDER_LABELS = {
     "tmdb": "TMDb",
@@ -32,6 +37,7 @@ _PROVIDER_LABELS = {
     "openlibrary": "OpenLibrary",
     "googlebooks": "Google Books",
     "musicbrainz": "MusicBrainz",
+    "opensubtitles": "OpenSubtitles",
 }
 _PROVIDER_ERRORS: dict[str, str] = {key: "" for key in _PROVIDER_LABELS}
 

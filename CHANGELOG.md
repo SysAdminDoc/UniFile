@@ -30,6 +30,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Subtitle and chapter sidecars: review OpenSubtitles `.srt`/`.ass` matches, download selected releases beside local media, and save atomic TMDb-derived `.chapters.json` metadata with explicit OpenSubtitles credential fields.
 - Custom Field Schemas: define per-library text, date, currency, status/enum, and checkbox fields with validated entry editing in the Tag Library.
 - Media Lookup parity: add TVDB → TMDb → TVMaze TV fallback, OpenLibrary → Google Books book/audiobook lookup, and MusicBrainz audio search with normalized detail cards, artwork, IDs, and Tag Library payloads.
 - Color Palette Search: index dominant image colors in each Tag Library and search them with `color:<name>` or natural “predominant … tones” phrases, with a reindex action for existing images.

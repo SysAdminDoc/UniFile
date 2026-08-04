@@ -99,7 +99,7 @@ python -m unifile projects audit /path/to/projects --library /path/to/unifile-li
 ### Media Lookup (NEW in v8.0)
 
 Unified movie, TV, book, audiobook, and audio metadata lookup powered by TMDb, TVDB, TVMaze, OMDb, OpenLibrary, Google Books, and MusicBrainz (adapted from mnamer):
-TMDb, TVDB, and OMDb use your own API keys via the Media Lookup panel or `API_KEY_TMDB`, `API_KEY_TVDB`, and `API_KEY_OMDB`; TVDB can also use `API_KEY_TVDB_PIN`. TVMaze, OpenLibrary, Google Books, and MusicBrainz work without a key.
+TMDb, TVDB, OMDb, and OpenSubtitles use your own API keys via the Media Lookup panel or `API_KEY_TMDB`, `API_KEY_TVDB`, `API_KEY_OMDB`, and `API_KEY_OPENSUBTITLES`; TVDB can also use `API_KEY_TVDB_PIN`. TVMaze, OpenLibrary, Google Books, and MusicBrainz work without a key. OpenSubtitles downloads additionally require the user account credentials accepted by its API.
 
 | Feature | Description |
 |---------|-------------|
@@ -111,6 +111,7 @@ TMDb, TVDB, and OMDb use your own API keys via the Media Lookup panel or `API_KE
 | Artwork Preview | Full poster or cover-art display with synopsis, genres, and external IDs |
 | Apply to Tags | Push normalized media metadata into matching Tag Library fields and genre tags |
 | Copy Metadata | One-click copy of all metadata fields to clipboard |
+| Subtitle + Chapter Sidecars | Review `.srt`/`.ass` OpenSubtitles matches and save TMDb-derived `.chapters.json` metadata beside a local video |
 | Cached Requests | API responses cached for 6 days to reduce API calls |
 
 ### Nexa SDK Backend (NEW in v8.0)

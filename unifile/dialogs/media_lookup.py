@@ -5,6 +5,7 @@ Parses media filenames with guessit and lets users search, browse results,
 and apply metadata to tag library entries.
 """
 import logging
+import os
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
@@ -52,6 +53,13 @@ from unifile.media.providers import (
     tvdb_show_episodes,
     tvmaze_show_details,
     tvmaze_show_episodes,
+)
+from unifile.media.subtitles import (
+    Chapter,
+    chapters_from_episodes,
+    download_opensubtitle,
+    search_opensubtitles,
+    write_chapter_sidecar,
 )
 
 logger = logging.getLogger(__name__)
@@ -172,6 +180,51 @@ class _DetailWorker(QThread):
             self.error.emit(str(e))
 
 
+class _SubtitleSearchWorker(QThread):
+    results_ready = pyqtSignal(list)
+    error = pyqtSignal(str)
+
+    def __init__(self, *, path: str, query: str, imdb_id: str = "",
+                 tmdb_id: str = "", season: int | None = None,
+                 episode: int | None = None, language: str = "en"):
+        super().__init__()
+        self.path = path
+        self.query = query
+        self.imdb_id = imdb_id
+        self.tmdb_id = tmdb_id
+        self.season = season
+        self.episode = episode
+        self.language = language
+
+    def run(self):
+        try:
+            results = search_opensubtitles(
+                query=self.query, media_path=self.path,
+                imdb_id=self.imdb_id, tmdb_id=self.tmdb_id,
+                season=self.season, episode=self.episode,
+                languages=self.language or "en",
+            )
+            self.results_ready.emit(results)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
+class _SubtitleDownloadWorker(QThread):
+    saved = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, result, media_path: str):
+        super().__init__()
+        self.result = result
+        self.media_path = media_path
+
+    def run(self):
+        try:
+            self.saved.emit(download_opensubtitle(self.result, self.media_path))
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 # ---------------------------------------------------------------------------
 # Media Lookup Panel
 # ---------------------------------------------------------------------------
@@ -188,6 +241,9 @@ class MediaLookupPanel(QWidget):
         self._current_detail = None
         self._worker = None
         self._detail_worker = None
+        self._subtitle_worker = None
+        self._subtitle_download_worker = None
+        self._subtitle_results = []
         self._build_ui()
 
     def _build_ui(self):
@@ -309,6 +365,29 @@ class MediaLookupPanel(QWidget):
         self.txt_tvdb_pin.setFixedWidth(115)
         key_lay.addWidget(self.txt_tvdb_pin)
 
+        self.txt_opensubtitles_key = QLineEdit()
+        self.txt_opensubtitles_key.setPlaceholderText("OpenSubtitles API key")
+        self.txt_opensubtitles_key.setAccessibleName("OpenSubtitles API key")
+        self.txt_opensubtitles_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_opensubtitles_key.setFixedHeight(28)
+        self.txt_opensubtitles_key.setFixedWidth(145)
+        key_lay.addWidget(self.txt_opensubtitles_key)
+
+        self.txt_opensubtitles_username = QLineEdit()
+        self.txt_opensubtitles_username.setPlaceholderText("OpenSubtitles user")
+        self.txt_opensubtitles_username.setAccessibleName("OpenSubtitles username")
+        self.txt_opensubtitles_username.setFixedHeight(28)
+        self.txt_opensubtitles_username.setFixedWidth(125)
+        key_lay.addWidget(self.txt_opensubtitles_username)
+
+        self.txt_opensubtitles_password = QLineEdit()
+        self.txt_opensubtitles_password.setPlaceholderText("OpenSubtitles password")
+        self.txt_opensubtitles_password.setAccessibleName("OpenSubtitles password")
+        self.txt_opensubtitles_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_opensubtitles_password.setFixedHeight(28)
+        self.txt_opensubtitles_password.setFixedWidth(125)
+        key_lay.addWidget(self.txt_opensubtitles_password)
+
         self.btn_save_keys = QPushButton("Save Keys")
         self.btn_save_keys.setProperty("class", "toolbar")
         self.btn_save_keys.clicked.connect(self._on_save_api_keys)
@@ -415,6 +494,65 @@ class MediaLookupPanel(QWidget):
         self.lbl_ids.setWordWrap(True)
         dp_lay.addWidget(self.lbl_ids)
 
+        # ── Subtitle and chapter sidecars ───────────────────────────────
+        self.media_tools = QFrame()
+        self.media_tools.setProperty("class", "subcard")
+        tools_lay = QVBoxLayout(self.media_tools)
+        tools_lay.setContentsMargins(10, 8, 10, 8)
+        tools_lay.setSpacing(6)
+        self.lbl_media_tools = QLabel("Subtitle + chapter sidecars")
+        tools_lay.addWidget(self.lbl_media_tools)
+
+        media_file_row = QHBoxLayout()
+        self.txt_media_file = QLineEdit()
+        self.txt_media_file.setReadOnly(True)
+        self.txt_media_file.setPlaceholderText("Choose a local video file")
+        self.txt_media_file.setAccessibleName("Local media file for subtitle tools")
+        media_file_row.addWidget(self.txt_media_file, 1)
+        self.btn_choose_media = QPushButton("Choose Video")
+        self.btn_choose_media.setAccessibleName("Choose local media file")
+        self.btn_choose_media.clicked.connect(self._on_choose_media_file)
+        media_file_row.addWidget(self.btn_choose_media)
+        tools_lay.addLayout(media_file_row)
+
+        subtitle_row = QHBoxLayout()
+        self.txt_subtitle_language = QLineEdit("en")
+        self.txt_subtitle_language.setPlaceholderText("Language, e.g. en")
+        self.txt_subtitle_language.setAccessibleName("Subtitle language")
+        self.txt_subtitle_language.setFixedWidth(110)
+        subtitle_row.addWidget(self.txt_subtitle_language)
+        self.btn_find_subtitles = QPushButton("Find Subtitles")
+        self.btn_find_subtitles.setProperty("class", "toolbar")
+        self.btn_find_subtitles.setAccessibleName("Find OpenSubtitles matches")
+        self.btn_find_subtitles.setEnabled(False)
+        self.btn_find_subtitles.clicked.connect(self._on_find_subtitles)
+        subtitle_row.addWidget(self.btn_find_subtitles)
+        self.cmb_subtitles = QComboBox()
+        self.cmb_subtitles.setAccessibleName("Subtitle matches")
+        self.cmb_subtitles.setEnabled(False)
+        subtitle_row.addWidget(self.cmb_subtitles, 1)
+        self.btn_download_subtitle = QPushButton("Download")
+        self.btn_download_subtitle.setProperty("class", "success")
+        self.btn_download_subtitle.setAccessibleName("Download selected subtitle")
+        self.btn_download_subtitle.setEnabled(False)
+        self.btn_download_subtitle.clicked.connect(self._on_download_subtitle)
+        subtitle_row.addWidget(self.btn_download_subtitle)
+        tools_lay.addLayout(subtitle_row)
+
+        chapter_row = QHBoxLayout()
+        self.lbl_media_tools_status = QLabel(
+            "Choose a video, then review subtitle matches before saving one alongside it.")
+        self.lbl_media_tools_status.setWordWrap(True)
+        chapter_row.addWidget(self.lbl_media_tools_status, 1)
+        self.btn_save_chapters = QPushButton("Save TMDb Chapters")
+        self.btn_save_chapters.setProperty("class", "toolbar")
+        self.btn_save_chapters.setAccessibleName("Save TMDb chapter sidecar")
+        self.btn_save_chapters.setEnabled(False)
+        self.btn_save_chapters.clicked.connect(self._on_save_chapters)
+        chapter_row.addWidget(self.btn_save_chapters)
+        tools_lay.addLayout(chapter_row)
+        dp_lay.addWidget(self.media_tools)
+
         dp_lay.addStretch()
 
         # Action buttons
@@ -452,6 +590,7 @@ class MediaLookupPanel(QWidget):
             "tmdb": self.txt_tmdb_key,
             "omdb": self.txt_omdb_key,
             "tvdb": self.txt_tvdb_key,
+            "opensubtitles": self.txt_opensubtitles_key,
         }
         for provider, field in fields.items():
             status = statuses.get(provider, {})
@@ -476,10 +615,32 @@ class MediaLookupPanel(QWidget):
             self.txt_tvdb_pin.setText(keys.get("tvdb_pin", ""))
             self.txt_tvdb_pin.setPlaceholderText("TVDB PIN (optional)")
 
+        optional_fields = {
+            "opensubtitles_username": self.txt_opensubtitles_username,
+            "opensubtitles_password": self.txt_opensubtitles_password,
+        }
+        for key, field in optional_fields.items():
+            # The provider status exposes the API-key environment variable;
+            # these two account fields use their own optional env variables.
+            env_var = {
+                "opensubtitles_username": "OPENSUBTITLES_USERNAME",
+                "opensubtitles_password": "OPENSUBTITLES_PASSWORD",
+            }[key]
+            if os.environ.get(env_var, "").strip():
+                field.clear()
+                field.setPlaceholderText(f"Using {env_var}")
+                field.setEnabled(False)
+            else:
+                field.setEnabled(True)
+                field.setText(keys.get(key, ""))
+
     def _refresh_provider_status(self) -> str:
         statuses = media_provider_statuses()
         parts = []
-        for provider in ("tmdb", "tvdb", "omdb", "tvmaze", "openlibrary", "googlebooks", "musicbrainz"):
+        for provider in (
+            "tmdb", "tvdb", "omdb", "tvmaze", "openlibrary", "googlebooks",
+            "musicbrainz", "opensubtitles",
+        ):
             status = statuses.get(provider, {})
             label = status.get("label", provider)
             last_error = status.get("last_error", "")
@@ -556,8 +717,14 @@ class MediaLookupPanel(QWidget):
             keys["omdb"] = self.txt_omdb_key.text().strip()
         if self.txt_tvdb_key.isEnabled():
             keys["tvdb"] = self.txt_tvdb_key.text().strip()
+        if self.txt_opensubtitles_key.isEnabled():
+            keys["opensubtitles"] = self.txt_opensubtitles_key.text().strip()
         if self.txt_tvdb_pin.isEnabled():
             keys["tvdb_pin"] = self.txt_tvdb_pin.text().strip()
+        if self.txt_opensubtitles_username.isEnabled():
+            keys["opensubtitles_username"] = self.txt_opensubtitles_username.text().strip()
+        if self.txt_opensubtitles_password.isEnabled():
+            keys["opensubtitles_password"] = self.txt_opensubtitles_password.text().strip()
         if save_media_api_keys(keys):
             clear_media_provider_errors()
             self.lbl_status.setText("Media provider keys saved")
@@ -628,6 +795,128 @@ class MediaLookupPanel(QWidget):
         self.txt_year.setText(parsed.get("year", "") or "")
         self._set_media_type(parsed.get("type", MediaType.MOVIE))
         self._on_search()
+
+    # ── Subtitle and chapter sidecars ────────────────────────────────────
+
+    def _on_choose_media_file(self):
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Choose Media File",
+            filter=("Video Files (*.mp4 *.mkv *.avi *.mov *.wmv *.webm *.m4v *.ts *.m2ts);;"
+                    "All Files (*)"),
+        )
+        if not files:
+            return
+        self.txt_media_file.setText(files[0])
+        self.btn_find_subtitles.setEnabled(True)
+        self.btn_save_chapters.setEnabled(bool(self._current_detail))
+        self.lbl_media_tools_status.setText(
+            "Ready to search. Review a match before downloading it beside the media file.")
+
+    def _subtitle_lookup_context(self) -> dict:
+        path = self.txt_media_file.text().strip()
+        parsed = parse_media_filename(Path(path).name) if path else {}
+        detail = self._current_detail
+        title = ""
+        if isinstance(detail, EpisodeResult):
+            title = detail.series or detail.title
+        elif isinstance(detail, MovieResult):
+            title = detail.title
+        title = title or parsed.get("title", "") or Path(path).stem
+        return {
+            "path": path,
+            "query": title,
+            "imdb_id": getattr(detail, "id_imdb", "") or parsed.get("imdb_id", ""),
+            "tmdb_id": getattr(detail, "id_tmdb", "") or parsed.get("tmdb_id", ""),
+            "season": getattr(detail, "season", None) or parsed.get("season"),
+            "episode": getattr(detail, "episode", None) or parsed.get("episode"),
+            "language": self.txt_subtitle_language.text().strip() or "en",
+        }
+
+    def _on_find_subtitles(self):
+        context = self._subtitle_lookup_context()
+        if not context["path"]:
+            self.lbl_media_tools_status.setText("Choose a local media file first.")
+            return
+        self._subtitle_results = []
+        self.cmb_subtitles.clear()
+        self.cmb_subtitles.setEnabled(False)
+        self.btn_download_subtitle.setEnabled(False)
+        self.btn_find_subtitles.setEnabled(False)
+        self.lbl_media_tools_status.setText("Searching OpenSubtitles…")
+        self._subtitle_worker = _SubtitleSearchWorker(**context)
+        self._subtitle_worker.results_ready.connect(self._on_subtitle_results)
+        self._subtitle_worker.error.connect(self._on_subtitle_error)
+        self._subtitle_worker.finished.connect(
+            lambda: self.btn_find_subtitles.setEnabled(bool(self.txt_media_file.text().strip())))
+        self._subtitle_worker.start()
+
+    @pyqtSlot(list)
+    def _on_subtitle_results(self, results):
+        self._subtitle_results = results
+        self.cmb_subtitles.clear()
+        for result in results:
+            self.cmb_subtitles.addItem(result.label, result)
+        has_results = bool(results)
+        self.cmb_subtitles.setEnabled(has_results)
+        self.btn_download_subtitle.setEnabled(has_results)
+        self.lbl_media_tools_status.setText(
+            f"{len(results)} subtitle match{'es' if len(results) != 1 else ''} found. "
+            "Review the selected release, then download it alongside the media file."
+            if has_results else
+            "No .srt or .ass matches found. Check the title, language, or OpenSubtitles credentials.")
+
+    @pyqtSlot(str)
+    def _on_subtitle_error(self, message):
+        self.btn_find_subtitles.setEnabled(bool(self.txt_media_file.text().strip()))
+        self.lbl_media_tools_status.setText(f"Subtitle search failed: {message}")
+
+    def _on_download_subtitle(self):
+        result = self.cmb_subtitles.currentData()
+        path = self.txt_media_file.text().strip()
+        if not result or not path:
+            return
+        self.btn_download_subtitle.setEnabled(False)
+        self.lbl_media_tools_status.setText("Downloading selected subtitle…")
+        self._subtitle_download_worker = _SubtitleDownloadWorker(result, path)
+        self._subtitle_download_worker.saved.connect(self._on_subtitle_saved)
+        self._subtitle_download_worker.error.connect(self._on_subtitle_error)
+        self._subtitle_download_worker.start()
+
+    @pyqtSlot(str)
+    def _on_subtitle_saved(self, path):
+        self.btn_download_subtitle.setEnabled(bool(self._subtitle_results))
+        self.lbl_media_tools_status.setText(f"Subtitle saved: {Path(path).name}")
+
+    def _chapter_records_for_detail(self) -> list[Chapter]:
+        detail = self._current_detail
+        if isinstance(detail, EpisodeResult):
+            # Selecting a specific episode should create a focused sidecar;
+            # a show-level detail can preserve the complete fetched episode list.
+            episodes = [detail] if detail.title and detail.season else self._episodes
+            return chapters_from_episodes(episodes)
+        if isinstance(detail, MovieResult):
+            return [Chapter(number=1, title=detail.title or "Untitled",
+                            air_date=detail.year, synopsis=detail.synopsis,
+                            tmdb_id=detail.id_tmdb)]
+        return []
+
+    def _on_save_chapters(self):
+        path = self.txt_media_file.text().strip()
+        if not path:
+            self.lbl_media_tools_status.setText("Choose a local media file first.")
+            return
+        chapters = self._chapter_records_for_detail()
+        if not chapters:
+            self.lbl_media_tools_status.setText(
+                "Load TMDb episode or movie details before saving a chapter sidecar.")
+            return
+        try:
+            sidecar = write_chapter_sidecar(path, chapters)
+        except (OSError, ValueError) as exc:
+            self.lbl_media_tools_status.setText(f"Chapter sidecar failed: {exc}")
+            return
+        self.lbl_media_tools_status.setText(f"TMDb chapters saved: {Path(sidecar).name}")
 
     @pyqtSlot(list)
     def _on_search_results(self, results):
@@ -791,6 +1080,7 @@ class MediaLookupPanel(QWidget):
         self.lbl_detail_hint.setText("Review the metadata, then send it to Tag Library or copy it out.")
         self.btn_apply_tags.setEnabled(True)
         self.btn_copy.setEnabled(True)
+        self.btn_save_chapters.setEnabled(bool(self.txt_media_file.text().strip()))
 
     @pyqtSlot(bytes)
     def _on_poster_ready(self, data):
@@ -845,6 +1135,7 @@ class MediaLookupPanel(QWidget):
         self.lbl_detail_hint.setText("Episode-level metadata is ready to review or send to Tag Library.")
         self.btn_apply_tags.setEnabled(True)
         self.btn_copy.setEnabled(True)
+        self.btn_save_chapters.setEnabled(bool(self.txt_media_file.text().strip()))
 
     def _clear_detail(self):
         self.lbl_detail_title.setText("No title selected")
@@ -857,6 +1148,11 @@ class MediaLookupPanel(QWidget):
         self._current_detail = None
         self.btn_apply_tags.setEnabled(False)
         self.btn_copy.setEnabled(False)
+        self._subtitle_results = []
+        self.cmb_subtitles.clear()
+        self.cmb_subtitles.setEnabled(False)
+        self.btn_download_subtitle.setEnabled(False)
+        self.btn_save_chapters.setEnabled(False)
 
     # ── Actions ────────────────────────────────────────────────────────────
 
@@ -966,6 +1262,13 @@ class MediaLookupPanel(QWidget):
             panel.setStyleSheet(
                 f"QFrame {{ background: {t['bg_alt']}; border: 1px solid {t['border']}; border-radius: 18px; }}"
             )
+        self.media_tools.setStyleSheet(
+            f"QFrame {{ background: {t['header_bg']}; border: 1px solid {t['border']}; border-radius: 12px; }}"
+        )
+        self.lbl_media_tools.setStyleSheet(
+            f"color: {t['fg_bright']}; font-size: 12px; font-weight: 700;"
+        )
+        self.lbl_media_tools_status.setStyleSheet(f"color: {t['muted']}; font-size: 10px;")
         self.lbl_key_status.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
         self.lbl_results_title.setStyleSheet(
             f"color: {t['fg_bright']}; font-size: 14px; font-weight: 700;"
