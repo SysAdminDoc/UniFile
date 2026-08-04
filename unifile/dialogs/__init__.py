@@ -48,6 +48,7 @@ from unifile.dialogs.tools import (
     UndoTimelineDialog,
     WatchHistoryDialog,
 )
+from unifile.dialogs.voice_control import VoiceControlDialog
 
 __all__ = [
     'OllamaSettingsDialog', 'PhotoSettingsDialog', 'FaceManagerDialog', 'ModelManagerDialog',
@@ -69,4 +70,5 @@ __all__ = [
     'LibraryRootsDialog',
     'CollectionBoardDialog',
     'FileHealthDialog',
+    'VoiceControlDialog',
 ]

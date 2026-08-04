@@ -139,6 +139,15 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | Rules Editor | Custom if/then rules with condition builder UI |
 | Rename Templates | Token-based rename templates with live preview |
 
+### Voice Control
+
+Open **Settings → Voice Control** or press `Ctrl+Shift+V` to type a command or
+transcribe an existing audio/video file with the configured offline Whisper
+model. Local grammar handles scan, tag, and search actions (including phrases
+such as `show me large video files`); an optional AI fallback is explicit and
+disabled by default. Every command is previewed before it runs, and tag writes
+require the dialog's review button.
+
 ### Organization Modes
 
 | Mode | Description |

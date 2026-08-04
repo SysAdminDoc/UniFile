@@ -22,6 +22,12 @@ from unifile.dialogs import (
     ScheduleDialog,
     ThemePickerDialog,
 )
+from unifile.voice import (
+    VoiceIntent,
+    VoiceIntentParser,
+    matches_voice_selector,
+    provider_voice_classifier,
+)
 
 
 class DialogsMixin:
@@ -37,6 +43,112 @@ class DialogsMixin:
     """
 
     # Config / model settings --------------------------------------------------
+
+    def _setup_voice_shortcut(self):
+        """Install the configurable application-wide voice control shortcut."""
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QKeySequence, QShortcut
+
+        shortcut = str(self.settings.value("voice/shortcut", "Ctrl+Shift+V") or "")
+        self._voice_shortcut = QShortcut(QKeySequence(shortcut), self)
+        self._voice_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self._voice_shortcut.activated.connect(self._open_voice_control)
+
+    def _set_voice_shortcut(self, shortcut: str):
+        """Persist and apply a voice activation shortcut from the dialog."""
+        from PyQt6.QtGui import QKeySequence
+
+        value = str(shortcut or "").strip()
+        self.settings.setValue("voice/shortcut", value)
+        if hasattr(self, "_voice_shortcut"):
+            self._voice_shortcut.setKey(QKeySequence(value))
+        self._log(f"Voice Control shortcut: {value or 'disabled'}")
+
+    def _open_voice_control(self):
+        """Open the offline-first voice command preview/execution dialog."""
+        from unifile.dialogs.voice_control import VoiceControlDialog
+
+        parser = VoiceIntentParser(llm_classifier=provider_voice_classifier)
+        dlg = VoiceControlDialog(
+            self,
+            parser=parser,
+            execute_callback=self._execute_voice_intent,
+            preview_callback=self._preview_voice_intent,
+            shortcut=str(self.settings.value("voice/shortcut", "Ctrl+Shift+V") or ""),
+        )
+        dlg.hotkey_changed.connect(self._set_voice_shortcut)
+        dlg.exec()
+
+    def _voice_library_matches(self, intent: VoiceIntent):
+        panel = getattr(self, "_tag_panel", None)
+        library = getattr(panel, "library", None)
+        if library is None or not getattr(library, "is_open", False):
+            return None
+        entries = library.get_all_entries(limit=100_000)
+        return [
+            entry for entry in entries
+            if matches_voice_selector(
+                f"{entry.filename} {entry.path}", intent.selector_terms,
+            )
+        ]
+
+    def _preview_voice_intent(self, intent: VoiceIntent) -> str:
+        """Describe the bounded effect of an intent before execution."""
+        if intent.action == "scan":
+            if os.path.isdir(intent.path):
+                return f"Ready to scan {intent.path}. Existing scan settings will be preserved."
+            return f"Folder not found: {intent.path}"
+        if intent.action == "search":
+            return f"Read-only filter; no files will be changed. Query: {intent.query}"
+        if intent.action == "tag":
+            matches = self._voice_library_matches(intent)
+            if matches is None:
+                return "Open a Tag Library before applying a voice tag."
+            tag_exists = bool(self._tag_panel.library.get_tag_by_name(intent.tag))
+            created = "existing" if tag_exists else "new"
+            count_word = "entry" if len(matches) == 1 else "entries"
+            return f"{len(matches):,} matching {count_word}; {created} tag “{intent.tag}” will be applied."
+        return intent.reason
+
+    def _execute_voice_intent(self, intent: VoiceIntent) -> str:
+        """Execute a parsed intent after the dialog's explicit review click."""
+        if intent.action == "scan":
+            if not os.path.isdir(intent.path):
+                return f"Scan not started; folder not found: {intent.path}"
+            if hasattr(self, "txt_src"):
+                self.txt_src.setText(intent.path)
+            self._on_scan()
+            self._log(f"Voice Control: scan started for {intent.path}")
+            return f"Scan started: {intent.path}"
+        if intent.action == "search":
+            if hasattr(self, "txt_search"):
+                self.txt_search.setText(intent.query)
+                self.txt_search.setFocus()
+            self._log(f"Voice Control: search filter applied: {intent.query}")
+            return f"Search filter applied: {intent.query}"
+        if intent.action == "tag":
+            matches = self._voice_library_matches(intent)
+            if matches is None:
+                return "Open a Tag Library before applying a voice tag."
+            if not matches:
+                return "No matching Tag Library entries; no changes were made."
+            if len(matches) > 10_000:
+                return "More than 10,000 entries matched; refine the voice selector first."
+            library = self._tag_panel.library
+            tag = library.get_tag_by_name(intent.tag) or library.add_tag(name=intent.tag)
+            if tag is None:
+                return f"Could not create or find tag: {intent.tag}"
+            applied = sum(
+                1 for entry in matches
+                if library.add_tags_to_entry(entry.id, [tag.id])
+            )
+            self._tag_panel._refresh_tags()
+            self._tag_panel._refresh_entries()
+            self._tag_panel._update_stats()
+            self._content_stack.setCurrentIndex(3)
+            self._log(f"Voice Control: applied tag “{intent.tag}” to {applied:,} entries")
+            return f"Applied “{intent.tag}” to {applied:,} entries."
+        return intent.reason or "Unsupported voice action."
 
     def _open_custom_cats(self):
         from unifile.categories import save_custom_categories

@@ -29,6 +29,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Voice Control: add an offline command grammar for tag, scan, and media-search actions, optional Whisper transcription for existing audio/video files, opt-in provider fallback, review-before-apply execution, and a configurable `Ctrl+Shift+V` activation shortcut.
 - Existing Tag Library capabilities are now reflected as complete roadmap work: cached Smart Views, XMP sidecars, post-scan category auto-tagging, and persistent 1–5 star/review flags are all available in the live UI and APIs.
 - Archive scans now best-effort populate the semantic embedding index with stable archive/member metadata, while semantic results remain read-only breadcrumbs; Extract + classify uses the configured AI provider chain before the local fallback and reports semantic-vector coverage.
 - Tag implication and sibling rules now persist in the tag library, propagate through tag application and query-time search expansion, round-trip through tag packs, and are manageable from the Tag Library context menu.

@@ -40,11 +40,6 @@ Larger features requiring non-trivial architecture or multi-week effort.
 
 Strategic / aspirational features. Some require significant architecture changes or external dependencies.
 
-### Voice Control Integration
-- Trigger common actions by voice: "tag all 2024 Florida photos as vacation", "scan Downloads folder", "show me large video files"
-- Implementation: Whisper (already integrated for transcription) as the STT engine; intent parsing via the existing LLM classification pipeline with a voice-action grammar
-- Activate with a configurable hotkey or "Hey UniFile" wake word via `pvporcupine` (offline)
-
 ---
 
 ## AI & Inference

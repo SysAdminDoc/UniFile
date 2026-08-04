@@ -190,6 +190,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self._build_ui()
         self._load_settings()
+        self._setup_voice_shortcut()
         self._inbox_sync_timer = QTimer(self)
         self._inbox_sync_timer.setInterval(5_000)
         self._inbox_sync_timer.timeout.connect(self._sync_inbox_library)
@@ -590,6 +591,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         # surface. Accelerator key so power users can Alt-S, Enter to reach it.
         menu_tools.addAction("&All Settings…", self._open_settings_hub)
         menu_tools.addAction("Command Palette\tCtrl+K", self._open_command_palette)
+        menu_tools.addAction("Voice Control…\tCtrl+Shift+V", self._open_voice_control)
         menu_tools.addSeparator()
         menu_tools.addAction("Edit Categories", self._open_custom_cats)
         menu_tools.addAction("Envato API Key", self._set_envato_key)
