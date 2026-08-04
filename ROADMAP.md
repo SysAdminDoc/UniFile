@@ -52,7 +52,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Media Metadata
 
-- **NFO file generator** — emit Kodi/Plex-compatible `.nfo` XML alongside media files; field mapping from tag library entry fields
 - **RAW photo family recognition** — CR2, NEF, ARW, ORF, DNG; treat RAW + JPEG pairs as a single logical item; EXIF-first tagging using RAW sidecar when JPEG lacks full EXIF
 
 ---

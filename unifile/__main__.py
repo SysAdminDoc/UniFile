@@ -21,6 +21,8 @@ Usage:
                                                    Scan and enrich ebook metadata.
     python -m unifile books export-opf LIBRARY
                                                    Export Calibre metadata.opf files.
+    python -m unifile nfo generate MEDIA [--metadata-json FILE]
+                                                   Write a Kodi/Plex NFO sidecar.
     python -m unifile projects audit SOURCE [--apply]
                                                    Audit project media references.
     python -m unifile mobile --library LIBRARY
@@ -525,6 +527,54 @@ def _cmd_books_export_opf(args) -> int:
     return 0 if not result.errors else 2
 
 
+def _cmd_nfo_generate(args) -> int:
+    """Generate a Kodi/Plex-compatible NFO sidecar without launching Qt."""
+    from unifile.media.nfo import NfoError, metadata_from_json, write_nfo_sidecar
+    from unifile.media.providers import MediaType, parse_media_filename
+
+    source = Path(args.path).expanduser().resolve()
+    if not source.is_file():
+        print(f"error: media file does not exist: {source}", file=sys.stderr)
+        return 2
+
+    try:
+        if args.metadata_json:
+            metadata = metadata_from_json(args.metadata_json)
+        else:
+            parsed = parse_media_filename(source.name)
+            parsed_type = parsed.get("type", MediaType.MOVIE)
+            media_type = parsed_type.value if isinstance(parsed_type, MediaType) else str(parsed_type)
+            metadata = {
+                "title": parsed.get("episode_title") or parsed.get("title") or source.stem,
+                "year": parsed.get("year", ""),
+                "season": parsed.get("season", ""),
+                "episode": parsed.get("episode", ""),
+                "media_type": media_type,
+            }
+            if parsed_type is MediaType.EPISODE:
+                metadata["series"] = parsed.get("title", "") or source.stem
+        kind = None if args.kind == "auto" else args.kind
+        result = write_nfo_sidecar(
+            source,
+            metadata,
+            kind=kind,
+            output_path=args.output,
+            overwrite=not args.no_overwrite,
+        )
+    except (NfoError, OSError, ValueError) as exc:
+        print(f"error: NFO generation failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
+    elif result.skipped:
+        print(f"NFO sidecar skipped: {result.path}")
+    else:
+        verb = "updated" if result.overwritten else "written"
+        print(f"NFO sidecar {verb}: {result.path}")
+    return 0
+
+
 def _cmd_projects_audit(args) -> int:
     """Audit project-file media references without changing source projects."""
     from unifile.project_awareness import apply_project_tags, build_project_audit
@@ -874,6 +924,32 @@ def main():
     p_books_export.add_argument("--no-overwrite", action="store_true", help="Keep existing generated OPF files")
     p_books_export.add_argument("--json", action="store_true", help="Emit a JSON result")
 
+    p_nfo = subparsers.add_parser(
+        "nfo",
+        help="Generate Kodi/Plex-compatible NFO sidecars",
+    )
+    nfo_subparsers = p_nfo.add_subparsers(dest="nfo_command")
+    p_nfo_generate = nfo_subparsers.add_parser(
+        "generate",
+        help="Write an NFO sidecar beside a media file",
+    )
+    p_nfo_generate.add_argument("path", help="Media file to describe")
+    p_nfo_generate.add_argument(
+        "--metadata-json",
+        help="JSON object containing normalized metadata or Tag Library fields",
+    )
+    p_nfo_generate.add_argument(
+        "--kind",
+        choices=("auto", "movie", "tvshow", "episode", "musicvideo", "book"),
+        default="auto",
+        help="NFO root kind (default: infer it from metadata or filename)",
+    )
+    p_nfo_generate.add_argument("--output", help="Explicit NFO output path")
+    p_nfo_generate.add_argument(
+        "--no-overwrite", action="store_true", help="Keep an existing NFO sidecar"
+    )
+    p_nfo_generate.add_argument("--json", action="store_true", help="Emit a JSON result")
+
     p_projects = subparsers.add_parser(
         "projects",
         help="Audit media references in video-project files",
@@ -997,6 +1073,11 @@ def main():
         if args.books_command == "export-opf":
             sys.exit(_cmd_books_export_opf(args))
         print("error: choose a books command (currently: scan or export-opf)", file=sys.stderr)
+        sys.exit(2)
+    if args.subcommand == "nfo":
+        if args.nfo_command == "generate":
+            sys.exit(_cmd_nfo_generate(args))
+        print("error: choose an nfo command (currently: generate)", file=sys.stderr)
         sys.exit(2)
     if args.subcommand == "projects":
         if args.projects_command == "audit":

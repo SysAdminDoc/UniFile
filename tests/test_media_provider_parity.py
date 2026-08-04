@@ -153,6 +153,7 @@ def test_media_lookup_panel_exposes_all_catalogs_and_builds_payload(qapp, monkey
     assert panel.txt_opensubtitles_key.accessibleName() == "OpenSubtitles API key"
     assert panel.btn_save_chapters.accessibleName() == "Save TMDb chapter sidecar"
     assert panel.btn_embed_cover.accessibleName() == "Fetch and embed cover artwork"
+    assert panel.btn_save_nfo.accessibleName() == "Save Kodi and Plex NFO sidecar"
 
     panel._set_media_type(providers.MediaType.AUDIOBOOK)
     book = providers.BookResult(
@@ -181,7 +182,11 @@ def test_media_lookup_panel_exposes_all_catalogs_and_builds_payload(qapp, monkey
     ID3().save(audio_path)
     panel.txt_media_file.setText(str(audio_path))
     panel._update_cover_art_action()
+    panel._update_nfo_action()
     assert panel.btn_embed_cover.isEnabled()
+    assert panel.btn_save_nfo.isEnabled()
+    panel._on_save_nfo()
+    assert (tmp_path / "track.nfo").exists()
     panel.deleteLater()
     qapp.processEvents()
 

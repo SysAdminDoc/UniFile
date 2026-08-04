@@ -30,6 +30,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Kodi/Plex NFO sidecars: save normalized movie, TV episode, music-video, and book metadata beside local media from the Media Lookup panel or the headless `nfo generate` command, with Tag Library field mapping and atomic writes.
 - Subtitle and chapter sidecars: review OpenSubtitles `.srt`/`.ass` matches, download selected releases beside local media, and save atomic TMDb-derived `.chapters.json` metadata with explicit OpenSubtitles credential fields.
 - Raw Metadata Inspector: enumerate EXIF, XMP, ID3, mutagen, and PDF fields, preview edits before writing, preserve source bytes with atomic format-specific updates, and restore the last write from a durable backup.
 - Cover art fetcher: validate and cache TMDb, MusicBrainz Cover Art Archive, and OpenLibrary images, then atomically embed missing artwork into MP3, FLAC/Ogg, MP4/M4A, and EPUB files with backup restore.

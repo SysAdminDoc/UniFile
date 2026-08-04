@@ -113,6 +113,7 @@ TMDb, TVDB, OMDb, and OpenSubtitles use your own API keys via the Media Lookup p
 | Apply to Tags | Push normalized media metadata into matching Tag Library fields and genre tags |
 | Copy Metadata | One-click copy of all metadata fields to clipboard |
 | Subtitle + Chapter Sidecars | Review `.srt`/`.ass` OpenSubtitles matches and save TMDb-derived `.chapters.json` metadata beside a local video |
+| NFO Sidecars | Save reviewed movie, TV, music, or book metadata as Kodi/Plex-compatible `.nfo` XML beside local media; the headless CLI also accepts Tag Library field JSON |
 | Cached Requests | API responses cached for 6 days to reduce API calls |
 
 For format-level metadata work, select a file, open **Tools → Batch Metadata Editor**, and choose **Inspect Raw Metadata**. The inspector enumerates EXIF, XMP sidecar, ID3, mutagen audio, and PDF fields, lets you edit writable values in a proposed-value column, and requires an explicit preview before applying. JPEG/TIFF EXIF, ID3, mutagen, and PDF writes are atomic and backed up for undo; XMP changes remain non-destructive adjacent `.xmp` sidecars.
@@ -375,6 +376,8 @@ python -m unifile --version                            # Print version
 python -m unifile classify path/to/file.pdf --json
 python -m unifile classify path/to/folder --json
 python -m unifile verify path/to/library --json --output health.json
+python -m unifile nfo generate path/to/movie.mkv --metadata-json metadata.json --json
+python -m unifile nfo generate path/to/episode.mkv --kind episode --no-overwrite
 
 # Inventory subcommands (no GUI)
 python -m unifile list-profiles --json

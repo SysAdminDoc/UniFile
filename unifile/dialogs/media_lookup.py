@@ -36,6 +36,7 @@ from unifile.media.cover_art import (
     fetch_and_embed_cover_art,
     undo_cover_art_write,
 )
+from unifile.media.nfo import NfoError, write_nfo_sidecar
 from unifile.media.providers import (
     AudioResult,
     BookResult,
@@ -590,6 +591,19 @@ class MediaLookupPanel(QWidget):
         self.btn_undo_cover.clicked.connect(self._on_undo_cover_art)
         chapter_row.addWidget(self.btn_undo_cover)
         tools_lay.addLayout(chapter_row)
+
+        nfo_row = QHBoxLayout()
+        self.btn_save_nfo = QPushButton("Save NFO")
+        self.btn_save_nfo.setProperty("class", "toolbar")
+        self.btn_save_nfo.setAccessibleName("Save Kodi and Plex NFO sidecar")
+        self.btn_save_nfo.setAccessibleDescription(
+            "Write the reviewed metadata as a Kodi and Plex compatible NFO file beside the selected media"
+        )
+        self.btn_save_nfo.setEnabled(False)
+        self.btn_save_nfo.clicked.connect(self._on_save_nfo)
+        nfo_row.addWidget(self.btn_save_nfo)
+        nfo_row.addStretch()
+        tools_lay.addLayout(nfo_row)
         dp_lay.addWidget(self.media_tools)
 
         dp_lay.addStretch()
@@ -855,6 +869,7 @@ class MediaLookupPanel(QWidget):
         self._last_cover_art_result = None
         self.btn_undo_cover.setEnabled(False)
         self._update_cover_art_action()
+        self._update_nfo_action()
 
     def _subtitle_lookup_context(self) -> dict:
         path = self.txt_media_file.text().strip()
@@ -1042,6 +1057,26 @@ class MediaLookupPanel(QWidget):
         else:
             self.lbl_media_tools_status.setText("Could not restore the cover-art backup.")
 
+    def _update_nfo_action(self):
+        path = self.txt_media_file.text().strip()
+        self.btn_save_nfo.setEnabled(bool(path and os.path.isfile(path) and self._current_detail))
+
+    def _on_save_nfo(self):
+        path = self.txt_media_file.text().strip()
+        metadata = self._build_metadata_dict()
+        if not path or not metadata:
+            self.lbl_media_tools_status.setText(
+                "Choose a local media file and load metadata before saving an NFO sidecar."
+            )
+            return
+        try:
+            result = write_nfo_sidecar(path, metadata)
+        except (NfoError, OSError, ValueError) as exc:
+            self.lbl_media_tools_status.setText(f"NFO sidecar failed: {exc}")
+            return
+        action = "updated" if result.overwritten else "saved"
+        self.lbl_media_tools_status.setText(f"NFO sidecar {action}: {Path(result.path).name}")
+
     @pyqtSlot(list)
     def _on_search_results(self, results):
         self._results = results
@@ -1206,6 +1241,7 @@ class MediaLookupPanel(QWidget):
         self.btn_copy.setEnabled(True)
         self.btn_save_chapters.setEnabled(bool(self.txt_media_file.text().strip()))
         self._update_cover_art_action()
+        self._update_nfo_action()
 
     @pyqtSlot(bytes)
     def _on_poster_ready(self, data):
@@ -1262,6 +1298,7 @@ class MediaLookupPanel(QWidget):
         self.btn_copy.setEnabled(True)
         self.btn_save_chapters.setEnabled(bool(self.txt_media_file.text().strip()))
         self._update_cover_art_action()
+        self._update_nfo_action()
 
     def _clear_detail(self):
         self.lbl_detail_title.setText("No title selected")
@@ -1282,6 +1319,7 @@ class MediaLookupPanel(QWidget):
         self._last_cover_art_result = None
         self.btn_undo_cover.setEnabled(False)
         self._update_cover_art_action()
+        self._update_nfo_action()
 
     # ── Actions ────────────────────────────────────────────────────────────
 
@@ -1299,6 +1337,7 @@ class MediaLookupPanel(QWidget):
             meta["genres"] = detail.genres
             meta["id_imdb"] = detail.id_imdb
             meta["id_tmdb"] = detail.id_tmdb
+            meta["cover_url"] = detail.poster_url
             meta["media_type"] = "movie"
         elif isinstance(detail, EpisodeResult):
             meta["title"] = detail.title
@@ -1312,6 +1351,7 @@ class MediaLookupPanel(QWidget):
             meta["id_tvdb"] = detail.id_tvdb
             meta["id_tmdb"] = detail.id_tmdb
             meta["id_imdb"] = detail.id_imdb
+            meta["cover_url"] = detail.poster_url
             meta["media_type"] = "episode"
         elif isinstance(detail, BookResult):
             meta["title"] = detail.title
