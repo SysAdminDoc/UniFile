@@ -19,6 +19,7 @@ from unifile.models import CategorizeItem, FileItem, RenameItem
 from unifile.naming import _beautify_name, _extract_name_hints, _smart_name
 from unifile.photos import _PHOTO_FOLDER_PRESETS, load_photo_settings
 from unifile.plugins import PluginManager, apply_workflow_commands
+from unifile.profiles import get_active_profile
 from unifile.script import WorkflowBatchWorker
 from unifile.workers import (
     ScanAepWorker,
@@ -546,6 +547,9 @@ class ScanMixin:
 
     def _scan_files(self, src):
         self._disconnect_worker()
+        self._book_scan_source = src
+        active_profile = get_active_profile()
+        is_book_mode = bool(active_profile.get("book_mode"))
         self._log(f"PC File Scan: {src}")
         # Log classification capabilities
         signals = ['extension']
@@ -583,7 +587,11 @@ class ScanMixin:
             self._log("  Enable at least Files or Folders."); self._reset_scan_ui(); return
 
         # Resolve file type filter
-        filter_name = self.cmb_type_filter.currentText()
+        filter_name = active_profile.get("file_type_filter", self.cmb_type_filter.currentText())
+        if filter_name != self.cmb_type_filter.currentText():
+            profile_filter_index = self.cmb_type_filter.findText(filter_name)
+            if profile_filter_index >= 0:
+                self.cmb_type_filter.setCurrentIndex(profile_filter_index)
         ext_filter = _SCAN_FILTERS.get(filter_name)
         if ext_filter:
             self._log(f"  File type filter: {filter_name} ({len(ext_filter)} extensions)")
@@ -604,6 +612,9 @@ class ScanMixin:
                 ext_filter=ext_filter, force_rescan=self.chk_force_rescan.isChecked())
             self.lbl_prog_phase.setText("Scanning")
             self.lbl_prog_method.setText("Multi-signal classification…")
+
+        if is_book_mode:
+            self._log("  Book mode: local ebook metadata will be added to the open Tag Library after scanning.")
 
         self.pbar.setValue(0); self.prog_panel.setVisible(True)
         self.worker.log.connect(self._log)
@@ -744,6 +755,8 @@ class ScanMixin:
                 pass
             # Auto-tag entries in tag library if open
             self._auto_tag_scan_results()
+            if get_active_profile().get("book_mode"):
+                self._apply_book_scan_metadata()
             # Restricted workflow hooks run asynchronously after classification.
             self._start_workflow_scan_hooks()
             # Category balancing — suggest merges/splits for imbalanced categories
@@ -795,6 +808,30 @@ class ScanMixin:
             self._tag_panel._refresh_tags()
             self._tag_panel._refresh_entries()
             self._tag_panel._update_stats()
+
+    def _apply_book_scan_metadata(self):
+        """Enrich the open tag library with local book metadata after a scan."""
+        if not hasattr(self, '_tag_panel') or not self._tag_panel.library.is_open:
+            return
+        source = getattr(self, "_book_scan_source", "")
+        if not source:
+            return
+        try:
+            from unifile.books import scan_book_library
+
+            result = scan_book_library(
+                source,
+                target_library=self._tag_panel.library.library_dir,
+            )
+            if result.applied:
+                self._log(f"  Book Library: enriched {result.applied} ebook entries with local metadata")
+                self._tag_panel._refresh_tags()
+                self._tag_panel._refresh_entries()
+                self._tag_panel._update_stats()
+            for error in result.errors:
+                self._log(f"  Book Library: {error}")
+        except Exception as exc:
+            self._log(f"  Book Library metadata enrichment failed: {exc}")
 
     def _start_workflow_scan_hooks(self):
         """Run trusted on_scan_item scripts off the GUI thread."""

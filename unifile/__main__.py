@@ -13,6 +13,10 @@ Usage:
                                                    Import a TagStudio SQLite library.
     python -m unifile export-tagstudio LIBRARY OUTPUT
                                                    Export a TagStudio SQLite library.
+    python -m unifile books scan SOURCE --lookup
+                                                   Scan and enrich ebook metadata.
+    python -m unifile books export-opf LIBRARY
+                                                   Export Calibre metadata.opf files.
     python -m unifile validate-rules <dir> [--json]
                                                    Verify a directory's
                                                    .unifile_rules.json and
@@ -306,6 +310,54 @@ def _cmd_export_tagstudio(args) -> int:
     return 0
 
 
+def _print_books_result(result, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        return
+    if hasattr(result, "books"):
+        print(f"Book scan: {result.source}")
+        print(f"  books:             {len(result.books)}")
+        print(f"  looked up:         {result.looked_up}")
+        print(f"  applied:           {result.applied}")
+        print(f"  covers downloaded: {result.covers_downloaded}")
+    else:
+        print(f"Calibre OPF export: {result.output}")
+        print(f"  exported:      {result.exported}")
+        print(f"  skipped:       {result.skipped}")
+        print(f"  covers copied: {result.covers_copied}")
+    for error in result.errors:
+        print(f"  error: {error}")
+
+
+def _cmd_books_scan(args) -> int:
+    """Scan ebooks and optionally enrich an open UniFile library."""
+    from unifile.books import BookMetadataClient, scan_book_library
+
+    providers = tuple(args.provider) if args.provider else ("openlibrary", "googlebooks")
+    client = None
+    if args.lookup and (args.cache or args.min_interval != 1.0):
+        client = BookMetadataClient(args.cache or None, min_interval=args.min_interval)
+    result = scan_book_library(
+        args.source,
+        target_library=args.library,
+        lookup=args.lookup,
+        download_covers=args.download_covers,
+        providers=providers,
+        client=client,
+    )
+    _print_books_result(result, args.json)
+    return 0 if result.books or not result.errors else 2
+
+
+def _cmd_books_export_opf(args) -> int:
+    """Export book entries as non-destructive Calibre metadata sidecars."""
+    from unifile.books import export_calibre_opf
+
+    result = export_calibre_opf(args.library, args.output, overwrite=not args.no_overwrite)
+    _print_books_result(result, args.json)
+    return 0 if not result.errors else 2
+
+
 def _write_scan_json(window, output_path: str) -> None:
     """Serialize the current scan results to a JSON plan file.
 
@@ -501,6 +553,38 @@ def main():
     )
     p_export_tagstudio.add_argument("--json", action="store_true", help="Emit a JSON result")
 
+    p_books = subparsers.add_parser(
+        "books",
+        help="Scan ebooks and export Calibre metadata",
+    )
+    books_subparsers = p_books.add_subparsers(dest="books_command")
+    p_books_scan = books_subparsers.add_parser(
+        "scan",
+        help="Scan EPUB, PDF, MOBI, and AZW3 files for book metadata",
+    )
+    p_books_scan.add_argument("source", help="Ebook file or directory to scan")
+    p_books_scan.add_argument("--library", help="Optional UniFile library to enrich with fields and tags")
+    p_books_scan.add_argument("--lookup", action="store_true", help="Query OpenLibrary, then Google Books")
+    p_books_scan.add_argument("--download-covers", action="store_true", help="Cache covers returned by lookup")
+    p_books_scan.add_argument("--cache", help="JSON cache path for remote responses")
+    p_books_scan.add_argument(
+        "--provider",
+        action="append",
+        choices=("openlibrary", "googlebooks"),
+        help="Restrict lookup providers; may be repeated",
+    )
+    p_books_scan.add_argument("--min-interval", type=float, default=1.0, help="Minimum seconds between remote requests")
+    p_books_scan.add_argument("--json", action="store_true", help="Emit a JSON result")
+
+    p_books_export = books_subparsers.add_parser(
+        "export-opf",
+        help="Export book entries as Calibre-compatible metadata.opf files",
+    )
+    p_books_export.add_argument("library", help="Source UniFile library root")
+    p_books_export.add_argument("--output", help="Output directory (default: .unifile/calibre-opf)")
+    p_books_export.add_argument("--no-overwrite", action="store_true", help="Keep existing generated OPF files")
+    p_books_export.add_argument("--json", action="store_true", help="Emit a JSON result")
+
     p_shell = subparsers.add_parser(
         "install-shell",
         help="Install Windows Explorer shell integration (context menu + Send To)",
@@ -556,6 +640,13 @@ def main():
         sys.exit(_cmd_import_tagstudio(args))
     if args.subcommand == "export-tagstudio":
         sys.exit(_cmd_export_tagstudio(args))
+    if args.subcommand == "books":
+        if args.books_command == "scan":
+            sys.exit(_cmd_books_scan(args))
+        if args.books_command == "export-opf":
+            sys.exit(_cmd_books_export_opf(args))
+        print("error: choose a books command (currently: scan or export-opf)", file=sys.stderr)
+        sys.exit(2)
 
     if args.subcommand == "install-shell":
         from unifile import shell_integration as si

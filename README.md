@@ -71,6 +71,19 @@ python -m unifile export-tagstudio /path/to/unifile-library /path/to/tagstudio-e
 
 Use `--dry-run` with `import-tagstudio` to inspect counts without creating a UniFile database, or `--no-thumbnails` to omit cached thumbnail transfer.
 
+### Book Library
+
+The built-in **Book Library** profile narrows scans to `.epub`, `.pdf`, `.mobi`, and `.azw3` files. EPUB and PDF metadata is extracted locally; ISBNs are normalized with the optional `isbnlib2` package, while MOBI/AZW3 files fall back safely to filename metadata. When a Tag Library is open, a Book Library scan adds title, author, ISBN, language, genre, series, publisher, synopsis, and reading-status fields plus deterministic `book`, `genre:*`, `language:*`, `series:*`, and `reading:*` tags.
+
+Remote enrichment is explicit and cached. OpenLibrary is queried first and Google Books fills missing values; covers are downloaded only when `--download-covers` is requested. The API client uses a one-request-per-second default interval and an identifying User-Agent. Use the headless commands for repeatable workflows:
+
+```bash
+python -m unifile books scan /path/to/ebooks --library /path/to/unifile-library --lookup --download-covers --json
+python -m unifile books export-opf /path/to/unifile-library --output /path/to/calibre-metadata --json
+```
+
+OPF export is non-destructive: each book gets a deterministic folder containing a Calibre-compatible `metadata.opf`, and cached cover art is copied when available. Generated metadata defaults to `.unifile/calibre-opf` when `--output` is omitted.
+
 ### Media Lookup (NEW in v8.0)
 
 Movie and TV metadata lookup powered by TMDb, OMDb, and TVMaze APIs (adapted from mnamer):
@@ -111,7 +124,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | Explicit Ollama Setup | Checks local Ollama/model readiness and points to Settings/manual setup when missing |
 | 384+ Built-in Categories | Covers design, video, audio, print, web, 3D, photography |
 | 7-Level Pipeline | Extension > Keyword > Fuzzy > Metadata > Composition > Context > LLM |
-| Multiple Profiles | Design Assets, PC Files, Photo Library, and custom profiles |
+| Multiple Profiles | Design Assets, Book Library, PC Files, Photo Library, and custom profiles |
 | Rules Editor | Custom if/then rules with condition builder UI |
 | Rename Templates | Token-based rename templates with live preview |
 

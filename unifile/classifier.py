@@ -217,12 +217,14 @@ _FILTER_DOCUMENT_EXTS = {
     '.odt', '.ods', '.odp', '.rtf', '.txt', '.csv', '.tsv',
     '.epub', '.mobi', '.djvu', '.pages', '.numbers', '.key',
 }
+_FILTER_BOOK_EXTS = {'.epub', '.pdf', '.mobi', '.azw3'}
 _SCAN_FILTERS = {
     'All Files': None,
     'Images Only': _FILTER_IMAGE_EXTS,
     'Videos Only': _FILTER_VIDEO_EXTS,
     'Audio Only': _FILTER_AUDIO_EXTS,
     'Documents Only': _FILTER_DOCUMENT_EXTS,
+    'Books Only': _FILTER_BOOK_EXTS,
 }
 
 

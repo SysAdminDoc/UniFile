@@ -67,6 +67,7 @@ def _bootstrap():
         'pymupdf': 'fitz',
         'pdfminer.six': 'pdfminer',
         'tomli-w': 'tomli_w',
+        'isbnlib2': 'isbnlib',
     }
     required = ['PyQt6>=6.5', 'SQLAlchemy>=2.0']
     optional = [
@@ -83,6 +84,7 @@ def _bootstrap():
         'pyacoustid>=1.3.1', 'musicbrainzngs>=0.7.1', 'pytesseract>=0.3.13',
         'easyocr>=1.7.2', 'pdfminer.six>=20260107', 'pymupdf>=1.28.0',
         'pdf2image>=1.17.0', 'cmake', 'dlib', 'face_recognition', 'nexaai',
+        'isbnlib2>=3.11.7',
     ]
 
     # Cache failed optional installs so we don't retry pip every launch (7-day TTL)

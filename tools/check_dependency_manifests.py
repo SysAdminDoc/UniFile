@@ -48,6 +48,7 @@ PARSER_MINIMUMS = {
     "pdfminer-six": "20260107",
     "pymupdf": "1.28.0",
     "pdf2image": "1.17.0",
+    "isbnlib2": "3.11.7",
 }
 REQUIRED_EXTRA_PACKAGES = {
     "full": set(PARSER_MINIMUMS),

@@ -2426,6 +2426,15 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         depth = profile.get("scan_depth")
         if depth is not None:
             self.spn_depth.setValue(depth)
+        profile_filter = profile.get("file_type_filter")
+        if profile_filter:
+            filter_index = self.cmb_type_filter.findText(profile_filter)
+            if filter_index >= 0:
+                self.cmb_type_filter.setCurrentIndex(filter_index)
+        if profile.get("book_mode"):
+            self.chk_llm.setChecked(False)
+            self.chk_inc_files.setChecked(True)
+            self.chk_inc_folders.setChecked(False)
         # Apply smart source path preset if defined
         default_src = profile.get("default_source")
         if default_src:

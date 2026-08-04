@@ -293,6 +293,14 @@ DEFAULT_FIELDS = [
     {"key": "genre", "name": "Genre", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 42},
     {"key": "imdb_id", "name": "IMDb ID", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 43},
     {"key": "tmdb_id", "name": "TMDb ID", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 44},
+    # Book-library metadata
+    {"key": "isbn", "name": "ISBN", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 45},
+    {"key": "language", "name": "Language", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 46},
+    {"key": "reading_status", "name": "Reading Status", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 47},
+    {"key": "series_index", "name": "Series Index", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 48},
+    {"key": "cover_url", "name": "Cover URL", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 49},
+    {"key": "published", "name": "Published", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 50},
+    {"key": "cover_path", "name": "Cover Path", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 51},
     # AI-generated (from Local-File-Organizer integration)
     {"key": "ai_summary", "name": "AI Summary", "type": FieldTypeEnum.TEXT_BOX, "is_default": False, "position": 50},
     {"key": "ai_category", "name": "AI Category", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 51},

@@ -40,11 +40,6 @@ Larger features requiring non-trivial architecture or multi-week effort.
 
 Strategic / aspirational features. Some require significant architecture changes or external dependencies.
 
-### Calibre / OpenLibrary Ebook Mode
-- Dedicated "Book Library" profile: scan ebooks (`.epub`, `.pdf`, `.mobi`, `.azw3`), extract metadata (title, author, ISBN via `isbnlib`), fetch cover art + synopsis from OpenLibrary/Google Books
-- Auto-tag by genre, language, series, reading status
-- Export virtual library to Calibre-compatible `metadata.opf` sidecars for round-trip compatibility
-
 ### Video Project Awareness (AE, Premiere, DaVinci, FCPX)
 - Parse `.aep`, `.prproj`, `.drp`, `.fcpbundle` project files to discover all referenced media assets
 - Tag referenced files with the parent project name and last-modified date

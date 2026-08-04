@@ -189,6 +189,31 @@ BUILTIN_PROFILES = {
         },
         "default_source": "~/Downloads",
     },
+
+    # ── Book Library ─────────────────────────────────────────────────────────
+    "Book Library": {
+        "id": "book_library",
+        "archive_mode": ARCHIVE_MODE_INDEX,
+        "icon": "📚",
+        "description": "Index ebooks by title, author, ISBN, genre, language, series, and reading status; export Calibre metadata.",
+        "category_filter": "books",
+        "llm_persona": "book_library",
+        "rename_strategy": "none",
+        "scan_depth": 99,
+        "show_aep_mode": False,
+        "show_cat_mode": False,
+        "show_smart_mode": False,
+        "show_files_mode": True,
+        "default_mode": 3,
+        "file_type_filter": "Books Only",
+        "book_mode": True,
+        "file_rename_templates": {},
+        "organization_rules": {
+            "group_by": "metadata",
+            "flatten": False,
+            "extensions": [".epub", ".pdf", ".mobi", ".azw3"],
+        },
+    },
 }
 
 
@@ -198,6 +223,13 @@ BUILTIN_PROFILES = {
 # in the LLM prompt and keyword matching.
 
 PROFILE_CATEGORIES = {
+
+    "books": [
+        ("Books & Reading", ["book", "ebook", "epub", "mobi", "azw3", "kindle", "novel", "textbook", "reading"]),
+        ("Books - Fiction", ["fiction", "novel", "short story", "literary fiction", "fantasy", "science fiction", "mystery", "romance"]),
+        ("Books - Nonfiction", ["nonfiction", "biography", "memoir", "history book", "essay collection", "reference book"]),
+        ("Books - Academic", ["textbook", "monograph", "research book", "academic book", "study guide"]),
+    ],
 
     "general": [
         ("Documents - Personal", ["personal document", "personal letter", "diary", "journal", "notes", "personal notes", "memo"]),
@@ -371,6 +403,14 @@ LLM_PERSONAS = {
         "2. CATEGORIZE into the best business category from the list below.\n\n"
         "Respond ONLY with valid JSON, no other text:\n"
         '{\"name\": \"Clean Name\", \"category\": \"Exact Category Name\", \"confidence\": 85}\n\n'
+        "VALID CATEGORIES (pick exactly one):\n"
+    ),
+    "book_library": (
+        "You are a book-library metadata assistant. Preserve the title and author "
+        "from the file when no stronger metadata is available, and classify books "
+        "as fiction, nonfiction, academic, reference, or other reading material.\n\n"
+        "Respond ONLY with valid JSON, no other text:\n"
+        '{"name": "Clean Name", "category": "Books & Reading", "confidence": 90}\n\n'
         "VALID CATEGORIES (pick exactly one):\n"
     ),
 }

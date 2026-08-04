@@ -69,6 +69,7 @@ full = [
     "pdfminer.six>=20260107",
     "pymupdf>=1.28.0",
     "pdf2image>=1.17.0",
+    "isbnlib2>=3.11.7",
 ]
 face = ["cmake", "dlib", "face_recognition"]
 nexa = ["nexaai"]
