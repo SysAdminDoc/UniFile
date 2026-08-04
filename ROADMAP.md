@@ -72,7 +72,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## UX & Accessibility
 
-- **High-contrast theme** — WCAG AA compliant; pure black bg, pure white text, bright accent; seventh theme slot
 - **Configurable font size** — Settings → Accessibility → Base font size (8–20 pt); proportional scaling
 - **Screen reader support** — `setAccessibleName()` and `setAccessibleDescription()` on all major widgets; tested against NVDA on Windows
 - **Right-to-left language support** — `QApplication.setLayoutDirection(Qt.RightToLeft)` toggle; Arabic and Hebrew character rendering via Qt's built-in BiDi support
