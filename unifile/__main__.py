@@ -9,6 +9,9 @@ Usage:
     python -m unifile list-models [--json]         List installed Ollama models.
     python -m unifile plugin create --name <name>  Generate a plugin scaffold.
     python -m unifile serve [--host HOST]          Run the Qt-free headless API.
+    python -m unifile collab init --library DIR    Initialize LAN collaboration.
+    python -m unifile collab search URL --user ID --token TOKEN
+                                                   Search a shared library.
     python -m unifile import-tagstudio SOURCE LIBRARY
                                                    Import a TagStudio SQLite library.
     python -m unifile export-tagstudio LIBRARY OUTPUT
@@ -257,8 +260,128 @@ def _cmd_serve(args) -> int:
     """Run the optional Flask API without importing any Qt modules."""
     from unifile.headless import create_app
 
-    app = create_app({"START_SCHEDULER": True})
+    config = {
+        "START_SCHEDULER": True,
+        "LIBRARY_ROOT": args.library,
+        "COLLABORATIVE_MODE": bool(args.collaborative),
+    }
+    if args.collaborative:
+        from unifile.collaboration import CollaborationStore
+
+        if not CollaborationStore(args.library).has_users:
+            print(
+                "error: collaborative mode has no users; run `unifile collab init --library DIR` first",
+                file=sys.stderr,
+            )
+            return 2
+    app = create_app(config)
     app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
+    return 0
+
+
+def _cmd_collab_init(args) -> int:
+    """Create the first administrator and print its one-time token."""
+    from unifile.collaboration import CollaborationError, CollaborationStore
+
+    store = CollaborationStore(args.library)
+    if store.has_users:
+        print("error: collaboration is already initialized", file=sys.stderr)
+        return 2
+    try:
+        user = store.create_user(args.user_id, args.display_name, "admin", token=args.token)
+    except (CollaborationError, OSError, ValueError) as exc:
+        print(f"error: could not initialize collaboration: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(user, indent=2, ensure_ascii=False))
+    else:
+        print(f"Collaboration initialized for {args.library}")
+        print(f"  user:  {user['user_id']} ({user['display_name']})")
+        print(f"  role:  {user['role']}")
+        print(f"  token: {user['token']}")
+        print("Store this token securely; it is not written to the library.")
+    return 0
+
+
+def _cmd_collab_add_user(args) -> int:
+    """Add a collaboration user locally, without exposing a server endpoint."""
+    from unifile.collaboration import CollaborationError, CollaborationStore
+
+    store = CollaborationStore(args.library)
+    if not store.has_users:
+        print("error: initialize collaboration first", file=sys.stderr)
+        return 2
+    try:
+        user = store.create_user(
+            args.user_id, args.display_name, args.role, token=args.token
+        )
+    except (CollaborationError, OSError, ValueError) as exc:
+        print(f"error: could not add collaboration user: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(user, indent=2, ensure_ascii=False))
+    else:
+        print(f"Added {user['role']} user {user['user_id']} ({user['display_name']})")
+        print(f"  token: {user['token']}")
+        print("Store this token securely; it is not written to the library.")
+    return 0
+
+
+def _cmd_collab_list_users(args) -> int:
+    from unifile.collaboration import CollaborationStore
+
+    users = CollaborationStore(args.library).list_users()
+    if args.json:
+        print(json.dumps(users, indent=2, ensure_ascii=False))
+    elif not users:
+        print("(no collaboration users)")
+    else:
+        for user in users:
+            print(f"{user['user_id']}\t{user['role']}\t{user['display_name']}")
+    return 0
+
+
+def _cmd_collab_search(args) -> int:
+    from unifile.collaboration import CollaborationClient, CollaborationError
+
+    try:
+        result = CollaborationClient(args.url, args.user, args.token).search(
+            args.query, limit=args.limit
+        )
+    except CollaborationError as exc:
+        print(f"error: collaboration search failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Search results: {len(result.get('entries', []))}")
+        for entry in result.get("entries", []):
+            tags = ", ".join(entry.get("tags", [])) or "(untagged)"
+            print(f"{entry.get('id')}\t{entry.get('path', entry.get('name', ''))}\t{tags}")
+    return 0
+
+
+def _cmd_collab_tag(args) -> int:
+    from unifile.collaboration import CollaborationClient, CollaborationError
+
+    try:
+        result = CollaborationClient(args.url, args.user, args.token).apply_tag(
+            entry_id=args.entry_id,
+            path=args.path,
+            tag=args.tag,
+            action=args.action,
+            field_timestamp=args.field_timestamp,
+        )
+    except CollaborationError as exc:
+        print(f"error: collaboration tag operation failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        entry = result.get("entry", {})
+        print(f"{result.get('action', args.action)} tag {result.get('tag', args.tag)}")
+        print(f"  entry: {entry.get('id', args.entry_id)} ({entry.get('path', entry.get('name', ''))})")
+        print(f"  field version: {result.get('field_version', {}).get('timestamp', '')}")
     return 0
 
 
@@ -573,6 +696,68 @@ def main():
         default=int(os.environ.get("UNIFILE_API_PORT", "8787")),
         help="Bind port (default: 8787)",
     )
+    p_serve.add_argument(
+        "--library",
+        default=os.environ.get(
+            "UNIFILE_LIBRARY_DIR", os.path.join(os.path.expanduser("~"), "UniFileLibrary")
+        ),
+        help="Library root (default: UNIFILE_LIBRARY_DIR or ~/UniFileLibrary)",
+    )
+    p_serve.add_argument(
+        "--collaborative",
+        action="store_true",
+        help="Require library-scoped collaboration users and role permissions",
+    )
+
+    p_collab = subparsers.add_parser(
+        "collab",
+        help="Initialize and use the collaborative LAN tag API",
+    )
+    collab_subparsers = p_collab.add_subparsers(dest="collab_command")
+    p_collab_init = collab_subparsers.add_parser(
+        "init", help="Create the first administrator and token"
+    )
+    p_collab_init.add_argument("--library", required=True, help="Shared library root")
+    p_collab_init.add_argument("--user-id", default="admin", help="Administrator user id")
+    p_collab_init.add_argument("--display-name", default=None, help="Administrator display name")
+    p_collab_init.add_argument("--token", default=None, help="Optional token (16+ characters)")
+    p_collab_init.add_argument("--json", action="store_true", help="Emit JSON")
+
+    p_collab_add = collab_subparsers.add_parser("add-user", help="Add a local collaboration user")
+    p_collab_add.add_argument("--library", required=True, help="Shared library root")
+    p_collab_add.add_argument("--user-id", required=True, help="User id")
+    p_collab_add.add_argument("--display-name", default=None, help="Display name")
+    p_collab_add.add_argument("--role", choices=("viewer", "editor", "admin"), default="viewer")
+    p_collab_add.add_argument("--token", default=None, help="Optional token (16+ characters)")
+    p_collab_add.add_argument("--json", action="store_true", help="Emit JSON")
+
+    p_collab_users = collab_subparsers.add_parser("list-users", help="List users without tokens")
+    p_collab_users.add_argument("--library", required=True, help="Shared library root")
+    p_collab_users.add_argument("--json", action="store_true", help="Emit JSON")
+
+    p_collab_search = collab_subparsers.add_parser("search", help="Search a shared library")
+    p_collab_search.add_argument("url", help="Collaborative server URL")
+    p_collab_search.add_argument("--user", required=True, help="Collaboration user id")
+    p_collab_search.add_argument(
+        "--token", default=os.environ.get("UNIFILE_COLLAB_TOKEN", ""), help="User token"
+    )
+    p_collab_search.add_argument("--query", default="", help="Search query")
+    p_collab_search.add_argument("--limit", type=int, default=100, help="Maximum results")
+    p_collab_search.add_argument("--json", action="store_true", help="Emit JSON")
+
+    p_collab_tag = collab_subparsers.add_parser("tag", help="Apply or remove a shared tag")
+    p_collab_tag.add_argument("url", help="Collaborative server URL")
+    p_collab_tag.add_argument("--user", required=True, help="Collaboration user id")
+    p_collab_tag.add_argument(
+        "--token", default=os.environ.get("UNIFILE_COLLAB_TOKEN", ""), help="User token"
+    )
+    entry_selector = p_collab_tag.add_mutually_exclusive_group(required=True)
+    entry_selector.add_argument("--entry-id", type=int, help="Server-side entry id")
+    entry_selector.add_argument("--path", help="Path on the server, relative to its library root")
+    p_collab_tag.add_argument("--tag", required=True, help="Tag name")
+    p_collab_tag.add_argument("--action", choices=("add", "remove"), default="add")
+    p_collab_tag.add_argument("--field-timestamp", default=None, help="Client field timestamp for conflict checks")
+    p_collab_tag.add_argument("--json", action="store_true", help="Emit JSON")
 
     p_import_tagstudio = subparsers.add_parser(
         "import-tagstudio",
@@ -729,6 +914,19 @@ def main():
         sys.exit(2)
     if args.subcommand == "serve":
         sys.exit(_cmd_serve(args))
+    if args.subcommand == "collab":
+        if args.collab_command == "init":
+            sys.exit(_cmd_collab_init(args))
+        if args.collab_command == "add-user":
+            sys.exit(_cmd_collab_add_user(args))
+        if args.collab_command == "list-users":
+            sys.exit(_cmd_collab_list_users(args))
+        if args.collab_command == "search":
+            sys.exit(_cmd_collab_search(args))
+        if args.collab_command == "tag":
+            sys.exit(_cmd_collab_tag(args))
+        print("error: choose a collab command (init, add-user, list-users, search, or tag)", file=sys.stderr)
+        sys.exit(2)
     if args.subcommand == "import-tagstudio":
         sys.exit(_cmd_import_tagstudio(args))
     if args.subcommand == "export-tagstudio":

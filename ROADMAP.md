@@ -40,12 +40,6 @@ Larger features requiring non-trivial architecture or multi-week effort.
 
 Strategic / aspirational features. Some require significant architecture changes or external dependencies.
 
-### Collaborative LAN Tagging
-- Multi-user mode: UniFile exposes tag library over LAN; other instances connect as clients
-- Role-based permissions: Admin (edit tags + rules), Editor (apply tags), Viewer (search only)
-- Conflict resolution: last-write-wins with per-field timestamp; audit log of all tag changes by user
-- Per-tag access control: `tag:confidential` visible only to Admin role
-
 ### File Health Monitor / Bit-Rot Detection
 - Compute and store SHA-256 checksums on first scan; re-verify on subsequent scans
 - Alert on checksum mismatch (file modified without expected change) — indicator of storage corruption

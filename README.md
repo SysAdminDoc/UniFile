@@ -344,6 +344,21 @@ python -m unifile mobile --library /path/to/unifile-library
 
 The companion browses entries, tags, fields, search results, and image previews. Mobile mode rejects every non-GET request, does not expose tag/scan/job writes, keeps paths relative to the configured library, and generates thumbnails in memory when Pillow is available. Use `--host 127.0.0.1` for local-only access or set `UNIFILE_MOBILE_HOST` / `UNIFILE_MOBILE_PORT` for a different bind address and port.
 
+### Collaborative LAN Tagging
+
+For a shared library, initialize a library-scoped administrator and create role-limited tokens locally:
+
+```bash
+python -m unifile collab init --library /path/to/unifile-library --user-id admin
+python -m unifile collab add-user --library /path/to/unifile-library --user-id editor --role editor
+python -m unifile collab add-user --library /path/to/unifile-library --user-id viewer --role viewer
+python -m unifile serve --library /path/to/unifile-library --collaborative --host 0.0.0.0 --port 8787
+python -m unifile collab search http://server:8787 --user viewer --token TOKEN --query "tag:important"
+python -m unifile collab tag http://server:8787 --user editor --token TOKEN --entry-id 42 --tag important
+```
+
+The server stores only SHA-256 token hashes in `.unifile/collaboration.json`. Viewers can search, editors can apply existing tags, and administrators can manage tags, per-tag role ACLs, rules, users, and the audit log. `tag:confidential` is administrator-only by default. Tag writes use per-field timestamps and return a `409` conflict with the current version when a stale client write loses.
+
 ### JSON scan plan format
 
 `--output-json <path>` writes a plan file after the scan completes. Use it
