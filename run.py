@@ -16,7 +16,9 @@ import sys
 
 def _prepare_runtime() -> None:
     # Portable mode must be set before importing unifile; config.py reads it at import.
-    if "--portable" in sys.argv:
+    # A frozen portable ZIP carries a marker beside the executable so users do not
+    # need to remember a special command-line switch.
+    if _portable_mode_requested():
         os.environ["UNIFILE_PORTABLE"] = "1"
     if "--install-deps" in sys.argv:
         os.environ["UNIFILE_INSTALL_DEPS"] = "1"
@@ -24,6 +26,20 @@ def _prepare_runtime() -> None:
     root = os.path.dirname(os.path.abspath(__file__))
     if root not in sys.path:
         sys.path.insert(0, root)
+
+
+def _portable_marker_path() -> str:
+    """Return the portable marker path for source and frozen launches."""
+    if getattr(sys, "frozen", False):
+        root = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        root = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(root, "portable.flag")
+
+
+def _portable_mode_requested() -> bool:
+    """Return whether an explicit switch or adjacent marker requests portable mode."""
+    return "--portable" in sys.argv or os.path.isfile(_portable_marker_path())
 
 
 def main() -> None:

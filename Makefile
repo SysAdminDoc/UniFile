@@ -3,7 +3,7 @@
 
 PY ?= python
 
-.PHONY: help install dev deps-check test cov lint audit format build build-smoke release-audit clean run
+.PHONY: help install dev deps-check test cov lint audit format build build-smoke portable release-audit clean run
 
 help:
 	@echo "UniFile developer targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  format      Auto-fix ruff issues"
 	@echo "  build       Clean, build, smoke-test, and checksum the PyInstaller exe"
 	@echo "  build-smoke Smoke-test dist/UniFile/UniFile.exe and write SHA-256 sidecar"
+	@echo "  portable    Build the self-contained portable ZIP from dist/UniFile"
 	@echo "  run         Launch the GUI"
 	@echo "  clean       Remove build artefacts and caches"
 
@@ -51,6 +52,9 @@ build: clean
 
 build-smoke:
 	$(PY) tools/smoke_pyinstaller_build.py
+
+portable:
+	$(PY) tools/build_portable_zip.py
 
 release-audit:
 	$(PY) tools/release_audit.py

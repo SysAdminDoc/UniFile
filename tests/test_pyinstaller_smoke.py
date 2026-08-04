@@ -56,3 +56,12 @@ def test_gui_smoke_exit_env_is_wired():
     main_text = (ROOT / "unifile" / "__main__.py").read_text(encoding="utf-8")
     assert "UNIFILE_GUI_SMOKE_EXIT_MS" in main_text
     assert "QTimer.singleShot" in main_text
+
+
+def test_smoke_json_parser_tolerates_optional_dependency_preamble():
+    module = _load_module(ROOT / "tools" / "smoke_pyinstaller_build.py", "smoke_json_parser_test")
+    payload = module._extract_json_object(
+        'OpenCV bindings requires "numpy" package.\n'
+        '{"kind": "file", "category": "Documents"}\n'
+    )
+    assert payload == {"kind": "file", "category": "Documents"}

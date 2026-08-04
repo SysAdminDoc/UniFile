@@ -59,11 +59,26 @@ def smoke_classify(exe: Path, *, timeout: int) -> None:
         result = _run([str(exe), "classify", str(sample), "--json"], timeout=timeout)
     _assert_ok("classify smoke", result)
     try:
-        payload = json.loads(result.stdout)
+        payload = _extract_json_object(result.stdout)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"classify smoke returned invalid JSON: {result.stdout!r}") from exc
     if payload.get("kind") != "file" or not payload.get("category"):
         raise RuntimeError(f"classify smoke returned incomplete payload: {payload!r}")
+
+
+def _extract_json_object(text: str) -> dict:
+    """Extract a JSON object after optional dependency diagnostics on stdout."""
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(text):
+        if character != "{":
+            continue
+        try:
+            payload, _end = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    raise json.JSONDecodeError("no JSON object found", text, 0)
 
 
 def smoke_gui(exe: Path, *, timeout: int) -> None:

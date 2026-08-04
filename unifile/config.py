@@ -91,7 +91,14 @@ def save_json_safe(path: str, data, *, indent: int = 2) -> bool:
             pass
         return False
 
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else os.getcwd()
+def _runtime_script_dir() -> str:
+    """Return the directory next to the launcher, including frozen builds."""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else os.getcwd()
+
+
+_SCRIPT_DIR = _runtime_script_dir()
 
 # ── App Data Directory ────────────────────────────────────────────────────────
 # Portable mode: set UNIFILE_PORTABLE=1 env var (or pass --portable to run.py)
