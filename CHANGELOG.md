@@ -30,6 +30,8 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- A per-module pytest-cov gate and targeted regression coverage keep the
+  classifier, engine, adaptive learner, and tag-library modules above 60%.
 - Expanded the strict PEP 484/mypy gate to the public classifier, adaptive
   learning, semantic-index, tag-library, and PyQt-free SDK contracts.
 - Sphinx API reference and custom-classifier/S3 integration tutorials for the

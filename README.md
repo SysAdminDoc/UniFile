@@ -545,6 +545,7 @@ Developer checks:
 make dev         # install runtime + dev extras
 make deps-check  # verify pyproject/requirements/bootstrap alignment
 make test        # deps-check + full pytest, including pytest-qt smoke tests
+make cov         # pytest-cov gate: >=60% in classifier, engine, learning, and tag library
 make lint        # Ruff
 make typecheck   # strict mypy check for public SDK/core engine contracts
 make docs        # build SDK API and tutorial docs under build/docs

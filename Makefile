@@ -11,9 +11,9 @@ help:
 	@echo "  dev         Install with runtime + dev extras"
 	@echo "  deps-check  Validate dependency manifest alignment"
 	@echo "  test        Validate dependency manifests and run pytest"
-	@echo "  cov         Run pytest with coverage report"
+	@echo "  cov         Run the 60% core-module coverage gate"
 	@echo "  lint        Run ruff"
-	@echo "  typecheck   Run strict mypy for the public SDK contract"
+	@echo "  typecheck   Run strict mypy for public SDK/core engine contracts"
 	@echo "  docs        Build the SDK API and tutorial docs"
 	@echo "  audit       Run pip-audit against the local environment"
 	@echo "  format      Auto-fix ruff issues"
@@ -37,7 +37,8 @@ test: deps-check
 	$(PY) -m pytest
 
 cov:
-	$(PY) -m pytest --cov=unifile --cov-report=term-missing --cov-report=html
+	$(PY) -m pytest --cov=unifile.classifier --cov=unifile.engine --cov=unifile.learning --cov=unifile.tagging.library --cov-fail-under=60 --cov-report=term-missing --cov-report=html --cov-report=json:build/core-coverage.json
+	$(PY) tools/check_core_coverage.py build/core-coverage.json
 
 lint:
 	$(PY) -m ruff check unifile tests

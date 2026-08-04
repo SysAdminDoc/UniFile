@@ -5,6 +5,8 @@ __pycache__/
 CLAUDE.md
 build/
 dist/
+htmlcov/
+.coverage
 *.spec
 !UniFile.spec
 .venv/
