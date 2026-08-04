@@ -40,12 +40,6 @@ Larger features requiring non-trivial architecture or multi-week effort.
 
 Strategic / aspirational features. Some require significant architecture changes or external dependencies.
 
-### File Health Monitor / Bit-Rot Detection
-- Compute and store SHA-256 checksums on first scan; re-verify on subsequent scans
-- Alert on checksum mismatch (file modified without expected change) — indicator of storage corruption
-- Dashboard widget: "X files verified, Y changed unexpectedly" with diff view
-- Optional scheduled verification (nightly, weekly) with log export
-
 ### Voice Control Integration
 - Trigger common actions by voice: "tag all 2024 Florida photos as vacation", "scan Downloads folder", "show me large video files"
 - Implementation: Whisper (already integrated for transcription) as the STT engine; intent parsing via the existing LLM classification pipeline with a voice-action grammar

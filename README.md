@@ -300,6 +300,7 @@ python -m unifile --version                            # Print version
 # Headless classification (no GUI, no Qt)
 python -m unifile classify path/to/file.pdf --json
 python -m unifile classify path/to/folder --json
+python -m unifile verify path/to/library --json --output health.json
 
 # Inventory subcommands (no GUI)
 python -m unifile list-profiles --json
@@ -333,6 +334,13 @@ scheduled-job routes plus a small `/admin` status page. It is review-first:
 scans return the same versioned JSON plan shape used by `--output-json`, while
 tag writes are explicit. Leave `UNIFILE_ALLOW_UNAUTHENTICATED=0` in shared
 deployments.
+
+`unifile verify` and the authenticated `/verify` endpoint maintain a
+library-local `.unifile/file_health.json` ledger. The first verification
+establishes SHA-256 baselines; later runs report changed, missing, and unstable
+files without modifying the source tree. Export a JSON, CSV, or text diff with
+`--output`, or schedule a `verify` job through `/jobs` (for example `0 3 * * 0`
+for weekly checks) and set its `health_log` path for persistent log export.
 
 ### Mobile Companion
 

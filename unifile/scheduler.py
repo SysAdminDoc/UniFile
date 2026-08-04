@@ -118,8 +118,8 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
     schedule = str(job.get("schedule", "")).strip()
     CronExpression(schedule)
     action = str(job.get("action", "scan")).strip().lower()
-    if action not in {"scan", "tag"}:
-        raise ValueError("job action must be scan or tag")
+    if action not in {"scan", "tag", "verify"}:
+        raise ValueError("job action must be scan, tag, or verify")
     path = str(job.get("path", "")).strip()
     if not path or "\x00" in path:
         raise ValueError("job path is required")
@@ -131,6 +131,8 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
         "path": path,
         "enabled": bool(job.get("enabled", True)),
         "tag": str(job.get("tag", "")).strip(),
+        "health_log": str(job.get("health_log", "")).strip(),
+        "log_format": str(job.get("log_format", "")).strip().lower(),
         "email": dict(job.get("email", {})) if isinstance(job.get("email"), dict) else {},
         "last_run": str(job.get("last_run", "")),
         "last_status": str(job.get("last_status", "")),
@@ -138,6 +140,8 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
     }
     if action == "tag" and not normalized["tag"]:
         raise ValueError("tag jobs require a tag value")
+    if action == "verify" and normalized["log_format"] not in {"", "json", "csv", "txt", "text"}:
+        raise ValueError("verify log format must be json, csv, or text")
     return normalized
 
 

@@ -12,6 +12,7 @@ Usage:
     python -m unifile collab init --library DIR    Initialize LAN collaboration.
     python -m unifile collab search URL --user ID --token TOKEN
                                                    Search a shared library.
+    python -m unifile verify <path> [--json]       Verify stored SHA-256 checksums.
     python -m unifile import-tagstudio SOURCE LIBRARY
                                                    Import a TagStudio SQLite library.
     python -m unifile export-tagstudio LIBRARY OUTPUT
@@ -385,6 +386,45 @@ def _cmd_collab_tag(args) -> int:
     return 0
 
 
+def _cmd_verify(args) -> int:
+    """Verify or establish a persistent SHA-256 ledger for a file tree."""
+    from unifile.file_health import FileHealthError, FileHealthMonitor, export_health_log
+
+    target = Path(args.path).expanduser().resolve()
+    if not target.exists() or not (target.is_file() or target.is_dir()):
+        print(f"error: path does not exist or is not a file/directory: {target}", file=sys.stderr)
+        return 2
+    try:
+        monitor = FileHealthMonitor(target)
+        for expected in args.expect:
+            candidate = Path(expected)
+            if not candidate.is_absolute():
+                candidate = monitor.library_root / candidate
+            monitor.expect_change(candidate, args.reason)
+        report = monitor.verify(str(target))
+        if args.output:
+            report["log_path"] = export_health_log(report, args.output, fmt=args.format)
+    except (FileHealthError, OSError, ValueError) as exc:
+        print(f"error: file health verification failed: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+    else:
+        print(f"File health: {report.get('status', 'unknown')} — {report.get('scope', target)}")
+        print(f"  verified:              {report.get('files_verified', 0)}")
+        print(f"  unchanged:             {report.get('unchanged', 0)}")
+        print(f"  baselined:             {report.get('baselined', 0)}")
+        print(f"  changed unexpectedly:  {report.get('changed_unexpectedly', 0)}")
+        print(f"  expected changes:      {report.get('expected_changes', 0)}")
+        print(f"  missing:               {report.get('missing', 0)}")
+        print(f"  errors:                {report.get('errors', 0)}")
+        for item in report.get("diff", []):
+            print(f"  {item.get('change', 'change')}: {item.get('path', '')}")
+        if report.get("log_path"):
+            print(f"  log:                   {report['log_path']}")
+    return 1 if report.get("changed_unexpectedly") or report.get("missing") or report.get("errors") else 0
+
+
 def _print_tagstudio_result(result, as_json: bool) -> None:
     if as_json:
         print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
@@ -709,6 +749,23 @@ def main():
         help="Require library-scoped collaboration users and role permissions",
     )
 
+    p_verify = subparsers.add_parser(
+        "verify",
+        help="Verify stored SHA-256 checksums for a file or directory",
+    )
+    p_verify.add_argument("path", help="File or directory to verify")
+    p_verify.add_argument("--json", action="store_true", help="Emit a JSON report")
+    p_verify.add_argument("--output", help="Export the verification diff to a JSON, CSV, or text log")
+    p_verify.add_argument(
+        "--format", choices=("json", "csv", "txt", "text"), default="",
+        help="Override the output log format (otherwise inferred from --output)",
+    )
+    p_verify.add_argument(
+        "--expect", action="append", default=[],
+        help="Relative path whose next digest change is intentional; may be repeated",
+    )
+    p_verify.add_argument("--reason", default="", help="Reason recorded with expected changes")
+
     p_collab = subparsers.add_parser(
         "collab",
         help="Initialize and use the collaborative LAN tag API",
@@ -914,6 +971,8 @@ def main():
         sys.exit(2)
     if args.subcommand == "serve":
         sys.exit(_cmd_serve(args))
+    if args.subcommand == "verify":
+        sys.exit(_cmd_verify(args))
     if args.subcommand == "collab":
         if args.collab_command == "init":
             sys.exit(_cmd_collab_init(args))

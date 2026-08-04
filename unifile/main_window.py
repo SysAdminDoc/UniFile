@@ -616,6 +616,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         menu_tools.addAction("OCR Indexer...", self._open_ocr_indexer)
         menu_tools.addSeparator()
         menu_tools.addAction("Protected Paths...", self._open_protected_paths)
+        menu_tools.addAction("File Health Monitor...", self._open_file_health)
         menu_tools.addAction("Color Theme...", self._open_theme_picker)
         menu_tools.addSeparator()
         menu_ai = menu_tools.addMenu("AI & Intelligence")
@@ -1233,6 +1234,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.lbl_dash_summary = QLabel("")
         self.lbl_dash_summary.setStyleSheet(f"color: {_t['fg_bright']}; font-size: 13px; font-weight: 700;")
         dash_copy.addWidget(self.lbl_dash_summary)
+        self.lbl_dash_health = QLabel("Integrity: not verified")
+        self.lbl_dash_health.setAccessibleName("Dashboard file integrity summary")
+        self.lbl_dash_health.setAccessibleDescription(
+            "Number of files with verified SHA-256 digests and unexpected changes"
+        )
+        self.lbl_dash_health.setStyleSheet(f"color: {_t['muted']}; font-size: 10px;")
+        dash_copy.addWidget(self.lbl_dash_health)
         dash_top.addLayout(dash_copy)
         dash_top.addStretch()
         self.btn_dash_inbox = QPushButton("Inbox: 0")
@@ -1242,6 +1250,14 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             "Open the Tag Library filtered to inbox files")
         self.btn_dash_inbox.clicked.connect(self._open_inbox_filter)
         dash_top.addWidget(self.btn_dash_inbox)
+        self.btn_dash_health = QPushButton("Verify integrity")
+        self.btn_dash_health.setProperty("class", "toolbar")
+        self.btn_dash_health.setAccessibleName("Verify file integrity")
+        self.btn_dash_health.setAccessibleDescription(
+            "Compute SHA-256 digests and show unexpected file changes"
+        )
+        self.btn_dash_health.clicked.connect(self._open_file_health)
+        dash_top.addWidget(self.btn_dash_health)
         btn_hide_dash = QPushButton("Hide overview")
         self._themed_btn_hide_dash = btn_hide_dash
         btn_hide_dash.setFixedHeight(28)
@@ -2635,6 +2651,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             f"{len(items):,} items ready  •  {len(cat_counts):,} categories  •  {size_str} in scope")
         self.bar_chart.set_data(segments)
         self.dashboard_panel.show()
+        self._refresh_dashboard_health()
 
     def _filter_by_category(self, name: str):
         """Set search filter to show only a specific category."""

@@ -119,6 +119,46 @@ class DialogsMixin:
         dlg = ProjectAuditDialog(source=source, library=library, parent=self)
         dlg.exec()
 
+    def _open_file_health(self):
+        """Verify the active source/library and show its digest diff."""
+        from unifile.dialogs.file_health import FileHealthDialog
+
+        source = self.txt_src.text().strip() if hasattr(self, "txt_src") else ""
+        if not source or not os.path.exists(source):
+            panel = getattr(self, "_tag_panel", None)
+            library = getattr(panel, "library", None)
+            source = str(getattr(library, "library_dir", "") or "")
+        if not source or not os.path.exists(source):
+            self._log("File health: choose an existing source folder or open a Tag Library first")
+            return
+        dlg = FileHealthDialog(source, self)
+        dlg.verification_complete.connect(lambda _report: self._refresh_dashboard_health(source))
+        dlg.exec()
+        self._refresh_dashboard_health(source)
+
+    def _refresh_dashboard_health(self, source: str | None = None):
+        """Refresh the compact integrity count shown on the scan dashboard."""
+        label = getattr(self, "lbl_dash_health", None)
+        if label is None:
+            return
+        try:
+            from unifile.file_health import FileHealthMonitor
+
+            root = source or (self.txt_src.text().strip() if hasattr(self, "txt_src") else "")
+            if not root or not os.path.exists(root):
+                label.setText("Integrity: not verified")
+                return
+            report = FileHealthMonitor(root).latest_report()
+            if report.get("status") == "not-verified":
+                label.setText("Integrity: not verified")
+            else:
+                label.setText(
+                    f"Integrity: {report.get('files_verified', 0):,} verified · "
+                    f"{report.get('changed_unexpectedly', 0):,} changed unexpectedly"
+                )
+        except Exception as exc:
+            label.setText(f"Integrity unavailable: {exc}")
+
     def _open_learning_stats(self):
         from unifile.dialogs.advanced_settings import LearningStatsDialog
         dlg = LearningStatsDialog(self)

@@ -54,6 +54,7 @@ class HeadlessService:
         self._lock = threading.RLock()
         self._scan_signatures: dict[str, str] = {}
         self._collaboration_store = None
+        self._file_health_monitor = None
 
     def _allowed_directory(self, value: str | None) -> Path:
         path = Path(value or self.library_root).expanduser().resolve()
@@ -93,6 +94,34 @@ class HeadlessService:
                 if self._collaboration_store is None:
                     self._collaboration_store = CollaborationStore(self.library_root)
         return self._collaboration_store
+
+    def file_health_monitor(self):
+        """Return the persistent integrity monitor for this library."""
+        if self._file_health_monitor is None:
+            from unifile.file_health import FileHealthMonitor
+
+            with self._lock:
+                if self._file_health_monitor is None:
+                    self._file_health_monitor = FileHealthMonitor(self.library_root)
+        return self._file_health_monitor
+
+    def verify(self, path: str | None = None, *, output: str | None = None,
+               fmt: str = "") -> dict[str, Any]:
+        """Hash a library scope and optionally export the verification log."""
+        from unifile.file_health import export_health_log
+
+        candidate = Path(path).expanduser() if path else self.library_root
+        if not candidate.is_absolute():
+            candidate = self.library_root / candidate
+        if candidate.is_file():
+            target = self._allowed_file(str(candidate))
+        else:
+            target = self._allowed_directory(str(candidate))
+        with self._lock:
+            report = self.file_health_monitor().verify(str(target))
+            if output:
+                report["log_path"] = export_health_log(report, output, fmt=fmt)
+            return report
 
     def scan(self, path: str | None = None, *, limit: int = MAX_SCAN_ITEMS) -> dict[str, Any]:
         """Return a reviewable rule-based scan plan without changing files."""
@@ -147,6 +176,11 @@ class HeadlessService:
         key = str(source)
         changed = self._scan_signatures.get(key) != signature
         self._scan_signatures[key] = signature
+        try:
+            health = self.verify(str(source))
+        except (OSError, RuntimeError, ValueError) as exc:
+            health = {"status": "error", "error": str(exc), "files_verified": 0,
+                      "changed_unexpectedly": 0, "missing": 0, "diff": []}
         return {
             "version": API_SCHEMA_VERSION,
             "timestamp": datetime.now().isoformat(),
@@ -155,6 +189,7 @@ class HeadlessService:
             "items": items,
             "count": len(items),
             "changed": changed,
+            "file_health": health,
         }
 
     @staticmethod
@@ -564,10 +599,25 @@ class HeadlessService:
                     {"name": tag.name, "entry_count": counts.get(tag.id, 0)}
                     for tag in tags
                 ],
+                "file_health": self.file_health_monitor().latest_report(),
             }
 
     def run_job(self, job: dict[str, Any]) -> dict[str, Any]:
         action = job.get("action", "scan")
+        if action == "verify":
+            report = self.verify(
+                job.get("path"),
+                output=job.get("health_log") or None,
+                fmt=job.get("log_format", ""),
+            )
+            return {
+                "changed": bool(report.get("changed_unexpectedly") or report.get("missing") or report.get("errors")),
+                "files_verified": report.get("files_verified", 0),
+                "changed_unexpectedly": report.get("changed_unexpectedly", 0),
+                "missing": report.get("missing", 0),
+                "errors": report.get("errors", 0),
+                "log_path": report.get("log_path", ""),
+            }
         if action == "scan":
             plan = self.scan(job.get("path"))
             return {
@@ -785,6 +835,26 @@ def create_app(config: dict[str, Any] | None = None, *, service: HeadlessService
             return jsonify(service.report())
         except (OSError, RuntimeError) as exc:
             return jsonify({"error": str(exc)}), 500
+
+    @app.get("/file-health")
+    def file_health():
+        try:
+            return jsonify(service.file_health_monitor().latest_report())
+        except (OSError, RuntimeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.post("/verify")
+    def verify():
+        payload = request.get_json(silent=True) or {}
+        path = payload.get("path", "")
+        output = payload.get("output", "")
+        fmt = payload.get("format", "")
+        try:
+            return jsonify(service.verify(path or None, output=output or None, fmt=fmt or ""))
+        except PermissionError as exc:
+            return jsonify({"error": str(exc)}), 403
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
 
     if app.config.get("COLLABORATIVE_MODE"):
         def _principal():
