@@ -174,6 +174,13 @@ rebuild the index for existing images, then search with `color:blue` or phrases
 such as `show me files with predominant blue tones`. Searches remain local and
 read-only; unsupported or unreadable images are simply left without palette rows.
 
+### Timeline Filtering
+
+The PC File Organizer shows a date histogram above scan results. Choose file
+creation or modification dates, then adjust the From/To range handles to narrow
+the results without changing the scan or hiding files whose dates are unknown.
+Use **Reset** to restore the full result set.
+
 ### Custom Field Schemas
 
 Open **Field Schemas** in the Tag Library header to add fields scoped to the

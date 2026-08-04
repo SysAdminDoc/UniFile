@@ -586,6 +586,9 @@ class ScanMixin:
         if tmpl_cats:
             self._log(f"  Rename templates active: {', '.join(tmpl_cats)}")
         self.file_items.clear(); self.tbl.setRowCount(0)
+        if hasattr(self, 'timeline_view'):
+            self.timeline_view.clear()
+            self.timeline_view.hide()
         if getattr(self, '_virtual_files_active', False):
             self.virtual_tbl.set_items(
                 self.file_items,
@@ -787,6 +790,10 @@ class ScanMixin:
         self._stats_files()
         self._log(f"Scan complete: {total} items found")
         if total > 0:
+            if hasattr(self, 'timeline_view'):
+                self.timeline_view.set_items(self.file_items)
+                self.timeline_view.show()
+                self._apply_filter()
             cats = len(set(it.category for it in self.file_items if it.category))
             dups = sum(1 for it in self.file_items if it.is_duplicate)
             parts = [f"{total} files", f"{cats} categories"]
@@ -818,6 +825,9 @@ class ScanMixin:
             # Category balancing — suggest merges/splits for imbalanced categories
             self._run_category_balancer('files')
         if total == 0:
+            if hasattr(self, 'timeline_view'):
+                self.timeline_view.clear()
+                self.timeline_view.hide()
             action_label = None
             action_cb = None
             # If the user narrowed the file-type filter, offer a one-click reset.

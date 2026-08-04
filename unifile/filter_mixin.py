@@ -45,6 +45,12 @@ class FilterMixin:
         face = self.cmb_face_filter.currentText() if self.cmb_face_filter.isVisible() else "All Persons"
         spec = parse_query(raw)
         all_items = self._items()
+        timeline = getattr(self, "timeline_view", None)
+        timeline_active = bool(
+            timeline is not None
+            and self.cmb_op.currentIndex() == self.OP_FILES
+            and timeline.has_active_range()
+        )
 
         # The large-library PC surface is model-backed.  Filter the item
         # indices in the model so the view keeps constant widget memory; the
@@ -63,9 +69,15 @@ class FilterMixin:
                         show = spec.text in model.search_text(item_index)
                 if show and face != "All Persons":
                     show = face in item.metadata.get('_photo_face_persons', [])
+                if show and timeline_active:
+                    show = timeline.matches(item)
                 return show
 
-            model.set_filter(_matches if raw.strip() or face != "All Persons" else None)
+            model.set_filter(
+                _matches
+                if raw.strip() or face != "All Persons" or timeline_active
+                else None
+            )
             return
 
         for row in range(self.tbl.rowCount()):
@@ -101,6 +113,11 @@ class FilterMixin:
                     persons = self.file_items[idx].metadata.get('_photo_face_persons', [])
                     if face not in persons:
                         show = False
+
+            if show and timeline_active:
+                idx = self._item_idx_from_row(row)
+                if idx is not None and 0 <= idx < len(self.file_items):
+                    show = timeline.matches(self.file_items[idx])
 
             self.tbl.setRowHidden(row, not show)
 

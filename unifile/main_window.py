@@ -116,6 +116,7 @@ from unifile.ratings import clear_rating, get_rating, set_rating
 from unifile.scan_mixin import ScanMixin
 from unifile.theme_mixin import ThemeMixin
 from unifile.thumbnail_cache import load_thumbnail_pixmap
+from unifile.timeline import TimelineView
 from unifile.tray_mixin import TrayMixin
 from unifile.undo_mixin import UndoMixin
 from unifile.virtualized_view import VirtualizedResultsView, VirtualizedThumbnailView
@@ -1325,6 +1326,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.bar_chart.category_drop.connect(self._on_category_drop)
         dash_lay.addWidget(self.bar_chart)
         main.addWidget(self.dashboard_panel)
+
+        # ── Date timeline filter ────────────────────────────────────────
+        self.timeline_view = TimelineView()
+        self.timeline_view.range_changed.connect(self._on_timeline_range_changed)
+        self.timeline_view.hide()
+        main.addWidget(self.timeline_view)
 
         # ── Results Table ────────────────────────────────────────────────
         self.tbl = QTableWidget()
@@ -2583,6 +2590,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_preview_toggle.setChecked(False)
         self.btn_before_after.setVisible(False)
         self.btn_events.setVisible(False)
+        if hasattr(self, 'timeline_view'):
+            self.timeline_view.clear()
+            self.timeline_view.hide()
         # PC files use the lazy model/view surface; the other modes retain
         # the legacy QTableWidget helpers used by their editing workflows.
         self._virtual_files_active = is_files
@@ -2617,6 +2627,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             self._setup_aep_tbl()
         self._refresh_workspace_copy()
         self._show_empty_state(copy["empty_title"], copy["empty_detail"])
+
+    def _on_timeline_range_changed(self, start: int, end: int) -> None:
+        """Reapply text, face, and date filters after timeline scrubbing."""
+        del start, end
+        if hasattr(self, '_apply_filter'):
+            self._apply_filter()
 
     def _on_profile_changed(self, name):
         """Handle profile selector change."""
