@@ -234,4 +234,3 @@ class VoiceControlDialog(QDialog):
             self.lbl_feedback.setText(str(result or "Command completed."))
         except Exception as exc:
             self.lbl_feedback.setText(f"Command failed: {exc}")
-
