@@ -13,11 +13,13 @@ import os
 import sqlite3
 
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -235,6 +237,9 @@ class SettingsHubDialog(QDialog):
                 ("Language…",
                  "Choose the UI language. Place .qm translation files in the translations folder.",
                  self._open_language),
+                ("Layout Direction…",
+                 "Use automatic language direction, left-to-right, or right-to-left BiDi layout.",
+                 self._open_layout_direction),
                 ("Protected Paths…",
                  "Folders and filenames that UniFile will never move or delete.",
                  self._open_protected),
@@ -357,6 +362,36 @@ class SettingsHubDialog(QDialog):
             set_language(chosen)
             QMessageBox.information(self, "Language Changed",
                                    f"Language set to '{chosen}'. Restart UniFile to apply.")
+
+    def _open_layout_direction(self):
+        from unifile.i18n import (
+            apply_layout_direction,
+            get_layout_direction_preference,
+            set_layout_direction_preference,
+        )
+
+        labels = {
+            'auto': "Automatic (follow language)",
+            'ltr': "Left to right",
+            'rtl': "Right to left",
+        }
+        values = list(labels)
+        current = get_layout_direction_preference()
+        chosen, ok = QInputDialog.getItem(
+            self,
+            "Layout Direction",
+            "Choose how UniFile lays out text and controls:",
+            [labels[value] for value in values],
+            values.index(current),
+            False,
+        )
+        if not ok:
+            return
+        preference = values[[labels[value] for value in values].index(chosen)]
+        set_layout_direction_preference(preference)
+        app = QApplication.instance()
+        if app is not None:
+            apply_layout_direction(app)
 
     # Tools tab
     def _open_archive_indexer(self):  self._call('_open_archive_indexer')

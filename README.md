@@ -263,6 +263,7 @@ require the dialog's review button.
 | 7 Color Themes | Steam Dark, Catppuccin Mocha, OLED Black, GitHub Dark, Nord, Dracula, and WCAG AA High Contrast |
 | Accessibility Font Size | Settings → Accessibility adjusts the base UI size from 8–20 px with a live preview |
 | Screen Reader Support | Major controls expose Qt accessible names and descriptions for NVDA, JAWS, and Windows Narrator |
+| RTL Layout Support | Settings → Layout Direction supports automatic locale detection plus explicit left-to-right and right-to-left Qt BiDi layouts |
 | Review-First Workspace | Stronger hierarchy, calmer action layout, richer empty states, and clearer trust/status messaging across the main shell |
 | Premium Secondary Panels | Tag Library, Media Lookup, and Virtual Library now use clearer section hierarchy, calmer states, and theme-aware premium surfaces |
 | Refined Editor Workflows | Category and rule editors now use better summaries, calmer action emphasis, and clearer preview-oriented guidance for power users |

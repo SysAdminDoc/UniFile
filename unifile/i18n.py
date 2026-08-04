@@ -16,10 +16,14 @@ import os
 from unifile.config import _APP_DATA_DIR, load_json_safe, save_json_safe
 
 _LANG_FILE = os.path.join(_APP_DATA_DIR, 'language.json')
+_LAYOUT_DIRECTION_FILE = os.path.join(_APP_DATA_DIR, 'layout-direction.json')
 _TRANSLATIONS_DIR = os.path.join(os.path.dirname(__file__), 'translations')
 os.makedirs(_TRANSLATIONS_DIR, exist_ok=True)
 
 _current_translator = None
+
+RTL_LANGUAGE_CODES = frozenset({'ar', 'fa', 'he', 'iw', 'ku', 'ps', 'sd', 'ug', 'ur', 'yi'})
+LAYOUT_DIRECTION_PREFERENCES = ('auto', 'ltr', 'rtl')
 
 
 def get_available_languages() -> list[str]:
@@ -46,6 +50,54 @@ def get_current_language() -> str:
 def set_language(lang_code: str) -> None:
     """Save the language preference."""
     save_json_safe(_LANG_FILE, {'language': lang_code})
+
+
+def is_rtl_language(lang_code: str | None) -> bool:
+    """Return whether a BCP-47 language code normally uses right-to-left text."""
+    code = str(lang_code or '').strip().lower().replace('_', '-')
+    return code.split('-', 1)[0] in RTL_LANGUAGE_CODES
+
+
+def get_layout_direction_preference() -> str:
+    """Return ``auto``, ``ltr``, or ``rtl`` for the application layout."""
+    env_value = os.environ.get('UNIFILE_LAYOUT_DIRECTION', '').strip().lower()
+    if env_value in LAYOUT_DIRECTION_PREFERENCES:
+        return env_value
+    data = load_json_safe(_LAYOUT_DIRECTION_FILE, {}, expected_type=dict)
+    value = str(data.get('direction', 'auto')).strip().lower()
+    return value if value in LAYOUT_DIRECTION_PREFERENCES else 'auto'
+
+
+def set_layout_direction_preference(direction: str) -> None:
+    """Persist a layout direction preference, falling back to automatic mode."""
+    value = str(direction or '').strip().lower()
+    if value not in LAYOUT_DIRECTION_PREFERENCES:
+        value = 'auto'
+    save_json_safe(_LAYOUT_DIRECTION_FILE, {'direction': value})
+
+
+def effective_layout_direction(
+    lang_code: str | None = None,
+    preference: str | None = None,
+) -> str:
+    """Resolve the effective direction without requiring a QApplication."""
+    value = str(preference or get_layout_direction_preference()).strip().lower()
+    if value == 'auto':
+        value = 'rtl' if is_rtl_language(lang_code or get_current_language()) else 'ltr'
+    return value if value in ('ltr', 'rtl') else 'ltr'
+
+
+def apply_layout_direction(app, lang_code: str | None = None) -> str:
+    """Apply the configured BiDi direction to a QApplication and return it."""
+    from PyQt6.QtCore import Qt
+
+    direction = effective_layout_direction(lang_code)
+    app.setLayoutDirection(
+        Qt.LayoutDirection.RightToLeft
+        if direction == 'rtl'
+        else Qt.LayoutDirection.LeftToRight
+    )
+    return direction
 
 
 def install_translator(app) -> bool:

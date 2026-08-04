@@ -103,6 +103,7 @@ All notable changes to UniFile will be documented in this file.
 - TagSpaces sidecar import/export wired into the Tag Library GUI with dry-run preview.
 - Windows Shell properties (title, author, keywords, rating) merged into file scan metadata.
 - Qt translator installed at startup; language picker in Settings Hub System tab.
+- RTL layout direction: Settings → Layout Direction now supports automatic Arabic/Hebrew-family locale detection plus explicit left-to-right or right-to-left Qt BiDi layout overrides, persisted across restarts.
 - Accessible names and descriptions on major widgets for NVDA/JAWS screen readers.
 - Async debounced Tag Library search (300ms settle, QThread worker, stale-query cancellation).
 - Bad-extension cleanup analyzer (content/extension mismatch detection via magic bytes).
