@@ -546,6 +546,7 @@ make dev         # install runtime + dev extras
 make deps-check  # verify pyproject/requirements/bootstrap alignment
 make test        # deps-check + full pytest, including pytest-qt smoke tests
 make lint        # Ruff
+make typecheck   # strict mypy check for the public SDK contract
 make audit       # pip-audit --local
 make build       # clean PyInstaller build + frozen --version/classify/GUI smoke + SHA-256
 make build-smoke # rerun frozen smoke/checksum against an existing dist/UniFile/UniFile.exe

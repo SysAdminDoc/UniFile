@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any, cast
 
 from unifile import __version__
 from unifile.classifier import tiered_classify
@@ -20,9 +21,9 @@ class Classifier:
     def __init__(self, *, log_callback: Callable[[str], None] | None = None):
         self.log_callback = log_callback
 
-    def classify(self, folder_name: str, folder_path: str | None = None) -> dict:
+    def classify(self, folder_name: str, folder_path: str | None = None) -> dict[str, Any]:
         """Classify a folder name and optional local folder contents."""
-        return tiered_classify(folder_name, folder_path, self.log_callback)
+        return cast(dict[str, Any], tiered_classify(folder_name, folder_path, self.log_callback))
 
     __call__ = classify
 
