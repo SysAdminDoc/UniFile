@@ -261,6 +261,7 @@ require the dialog's review button.
 | Feature | Description |
 |---------|-------------|
 | 7 Color Themes | Steam Dark, Catppuccin Mocha, OLED Black, GitHub Dark, Nord, Dracula, and WCAG AA High Contrast |
+| Accessibility Font Size | Settings → Accessibility adjusts the base UI size from 8–20 px with a live preview |
 | Review-First Workspace | Stronger hierarchy, calmer action layout, richer empty states, and clearer trust/status messaging across the main shell |
 | Premium Secondary Panels | Tag Library, Media Lookup, and Virtual Library now use clearer section hierarchy, calmer states, and theme-aware premium surfaces |
 | Refined Editor Workflows | Category and rule editors now use better summaries, calmer action emphasis, and clearer preview-oriented guidance for power users |

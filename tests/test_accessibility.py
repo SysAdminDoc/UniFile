@@ -24,3 +24,15 @@ def test_high_contrast_theme_is_registered_with_strong_primary_tokens():
     stylesheet = config._build_theme_qss(theme)
     assert "background-color: #000000;" in stylesheet
     assert "color: #ffffff;" in stylesheet
+
+
+def test_accessibility_dialog_exposes_the_supported_font_range(qtbot):
+    from unifile.dialogs.accessibility import AccessibilityDialog
+
+    dialog = AccessibilityDialog()
+    qtbot.addWidget(dialog)
+
+    assert dialog.sld.minimum() == 8
+    assert dialog.sld.maximum() == 20
+    dialog.sld.setValue(20)
+    assert dialog.lbl_value.text() == "20 px"

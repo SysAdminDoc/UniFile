@@ -227,7 +227,7 @@ class SettingsHubDialog(QDialog):
                  "Switch between Steam Dark, Catppuccin, OLED Black, High Contrast, and more.",
                  self._open_theme),
                 ("Accessibility…",
-                 "Adjust the base UI font size (8–24 px) with a live preview.",
+                 "Adjust the base UI font size (8–20 px) with a live preview.",
                  self._open_accessibility),
                 ("Keyboard Shortcuts…",
                  "Review every binding and reassign shortcuts without Windows conflicts.",
