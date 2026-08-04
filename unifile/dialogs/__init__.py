@@ -43,6 +43,7 @@ from unifile.dialogs.settings import (
     PhotoSettingsDialog,
 )
 from unifile.dialogs.settings_hub import SettingsHubDialog
+from unifile.dialogs.shortcuts import KeyboardShortcutsDialog
 from unifile.dialogs.theme import ProtectedPathsDialog, ThemePickerDialog
 from unifile.dialogs.tools import (
     BeforeAfterDialog,
@@ -73,6 +74,7 @@ __all__ = [
     'SemanticSearchSettingsDialog', 'SemanticSearchDialog',
     'EmbeddingSettingsDialog', 'LearningStatsDialog',
     'SettingsHubDialog',
+    'KeyboardShortcutsDialog',
     'CloudRemotesDialog',
     'BatchMetadataEditorDialog',
     'NaturalLanguageRulesDialog',

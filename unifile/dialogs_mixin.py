@@ -17,6 +17,7 @@ from unifile.dialogs import (
     ConfidenceTiersDialog,
     CsvRulesDialog,
     CustomCategoriesDialog,
+    KeyboardShortcutsDialog,
     NaturalLanguageRulesDialog,
     OllamaSettingsDialog,
     PluginManagerDialog,
@@ -52,7 +53,13 @@ class DialogsMixin:
         from PyQt6.QtCore import Qt
         from PyQt6.QtGui import QKeySequence, QShortcut
 
-        shortcut = str(self.settings.value("voice/shortcut", "Ctrl+Shift+V") or "")
+        previous = getattr(self, "_voice_shortcut", None)
+        if previous is not None:
+            previous.deleteLater()
+        if hasattr(self, "shortcuts"):
+            shortcut = self.shortcuts.sequence("voice_control")
+        else:
+            shortcut = str(self.settings.value("voice/shortcut", "Ctrl+Shift+V") or "")
         self._voice_shortcut = QShortcut(QKeySequence(shortcut), self)
         self._voice_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._voice_shortcut.activated.connect(self._open_voice_control)
@@ -62,10 +69,23 @@ class DialogsMixin:
         from PyQt6.QtGui import QKeySequence
 
         value = str(shortcut or "").strip()
-        self.settings.setValue("voice/shortcut", value)
-        if hasattr(self, "_voice_shortcut"):
-            self._voice_shortcut.setKey(QKeySequence(value))
+        if hasattr(self, "shortcuts"):
+            ok, error = self.shortcuts.set_sequence("voice_control", value)
+            if not ok:
+                self._log(f"Voice Control shortcut was not saved: {error}")
+                return
+            self._setup_voice_shortcut()
+        else:
+            self.settings.setValue("voice/shortcut", value)
+            if hasattr(self, "_voice_shortcut"):
+                self._voice_shortcut.setKey(QKeySequence(value))
         self._log(f"Voice Control shortcut: {value or 'disabled'}")
+
+    def _open_shortcuts_dialog(self):
+        """Open the complete application keyboard shortcut editor."""
+        dialog = KeyboardShortcutsDialog(self, manager=self.shortcuts)
+        dialog.saved.connect(self._on_shortcuts_saved)
+        dialog.exec()
 
     def _open_voice_control(self):
         """Open the offline-first voice command preview/execution dialog."""
@@ -77,7 +97,11 @@ class DialogsMixin:
             parser=parser,
             execute_callback=self._execute_voice_intent,
             preview_callback=self._preview_voice_intent,
-            shortcut=str(self.settings.value("voice/shortcut", "Ctrl+Shift+V") or ""),
+            shortcut=(
+                self.shortcuts.sequence("voice_control")
+                if hasattr(self, "shortcuts")
+                else str(self.settings.value("voice/shortcut", "Ctrl+Shift+V") or "")
+            ),
         )
         dlg.hotkey_changed.connect(self._set_voice_shortcut)
         dlg.exec()

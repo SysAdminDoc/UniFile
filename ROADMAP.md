@@ -72,7 +72,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## UX & Accessibility
 
-- **Keyboard shortcuts dialog** — Settings → Shortcuts; all bindings shown; click any to rebind; no defaults that conflict with OS shortcuts
 - **High-contrast theme** — WCAG AA compliant; pure black bg, pure white text, bright accent; seventh theme slot
 - **Configurable font size** — Settings → Accessibility → Base font size (8–20 pt); proportional scaling
 - **Screen reader support** — `setAccessibleName()` and `setAccessibleDescription()` on all major widgets; tested against NVDA on Windows

@@ -182,6 +182,14 @@ creation or modification dates, then adjust the From/To range handles to narrow
 the results without changing the scan or hiding files whose dates are unknown.
 Use **Reset** to restore the full result set.
 
+### Keyboard Shortcuts
+
+Open **Settings → Keyboard Shortcuts…** to review every application binding and
+replace any shortcut in place. Duplicate bindings and Windows shell shortcuts
+are rejected before saving; clear a field to disable a binding, or use **Reset
+defaults** to restore the shipped set. The Tools menu shows the active bindings
+for the command palette and voice control.
+
 ### Custom Field Schemas
 
 Open **Field Schemas** in the Tag Library header to add fields scoped to the

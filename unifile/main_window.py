@@ -9,7 +9,15 @@ import time
 from collections import Counter
 
 from PyQt6.QtCore import QSettings, QStringListModel, Qt, QThread, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QPixmap, QTextCursor
+from PyQt6.QtGui import (
+    QColor,
+    QDragEnterEvent,
+    QDropEvent,
+    QKeySequence,
+    QPixmap,
+    QShortcut,
+    QTextCursor,
+)
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -114,6 +122,7 @@ from unifile.query_history import add_to_history, load_history
 from unifile.ratings import bulk_load as ratings_bulk_load
 from unifile.ratings import clear_rating, get_rating, set_rating
 from unifile.scan_mixin import ScanMixin
+from unifile.shortcuts import ShortcutManager
 from unifile.theme_mixin import ThemeMixin
 from unifile.thumbnail_cache import load_thumbnail_pixmap
 from unifile.timeline import TimelineView
@@ -188,6 +197,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._cat_unmatched = 0
         self.undo_ops = []
         self.settings = QSettings("UniFile", "UniFile")
+        self.shortcuts = ShortcutManager(self.settings)
         self._ollama_ready = False
         self._command_palette = None
         self._library_store = LibraryProfileStore()
@@ -205,6 +215,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._build_ui()
         self._load_settings()
         self._setup_voice_shortcut()
+        self._setup_shortcuts()
         self._inbox_sync_timer = QTimer(self)
         self._inbox_sync_timer.setInterval(5_000)
         self._inbox_sync_timer.timeout.connect(self._sync_inbox_library)
@@ -639,8 +650,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         # Unified Settings Hub — one-click entry point for every configurable
         # surface. Accelerator key so power users can Alt-S, Enter to reach it.
         menu_tools.addAction("&All Settings…", self._open_settings_hub)
-        menu_tools.addAction("Command Palette\tCtrl+K", self._open_command_palette)
-        menu_tools.addAction("Voice Control…\tCtrl+Shift+V", self._open_voice_control)
+        self._command_palette_action = menu_tools.addAction(
+            "Command Palette", self._open_command_palette)
+        self._voice_control_action = menu_tools.addAction(
+            "Voice Control…", self._open_voice_control)
+        menu_tools.addAction("Keyboard Shortcuts…", self._open_shortcuts_dialog)
         menu_tools.addSeparator()
         menu_tools.addAction("Edit Categories", self._open_custom_cats)
         menu_tools.addAction("Envato API Key", self._set_envato_key)
@@ -3891,46 +3905,88 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         """Reset history cycling position when the user edits the search bar manually."""
         self._history_pos = -1
 
-    def keyPressEvent(self, event):
-        """Keyboard navigation for the main table."""
-        key = event.key()
-        if key == Qt.Key.Key_Escape:
-            self.tbl.clearSelection()
-        elif key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-            self._toggle_selected_result_rows()
-        elif key == Qt.Key.Key_Space:
-            self._open_selected_result_location()
-        elif key == Qt.Key.Key_Delete:
-            # Uncheck selected rows
-            if getattr(self, '_virtual_files_active', False):
-                self._set_highlighted_check(False)
-                return
-            sel_rows = sorted(set(idx.row() for idx in self.tbl.selectionModel().selectedRows()))
-            for r in sel_rows:
-                w = self.tbl.cellWidget(r, 0)
-                if isinstance(w, QCheckBox):
-                    w.setChecked(False)
-        elif (event.modifiers() == Qt.KeyboardModifier.ControlModifier
-              and event.key() == Qt.Key.Key_K):
-            self._open_command_palette()
-        elif (event.modifiers() == Qt.KeyboardModifier.ControlModifier
-              and event.key() == Qt.Key.Key_S):
-            if self.btn_scan.isEnabled():
-                self._on_scan()
-        elif (event.modifiers() == Qt.KeyboardModifier.ControlModifier
-              and event.key() == Qt.Key.Key_T):
-            self.txt_search.setFocus()
-            self.txt_search.selectAll()
-        elif event.modifiers() == Qt.KeyboardModifier.AltModifier:
-            key = event.key()
-            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
-                n = key - Qt.Key.Key_1  # 0-indexed
-                if n < self.cmb_profile.count():
-                    self.cmb_profile.setCurrentIndex(n)
-            else:
-                super().keyPressEvent(event)
-        else:
-            super().keyPressEvent(event)
+    def _setup_shortcuts(self) -> None:
+        """Install all non-voice bindings from the persisted shortcut set."""
+        self._active_shortcuts = {}
+        callbacks = {
+            "command_palette": self._open_command_palette,
+            "start_scan": lambda: self._on_scan() if self.btn_scan.isEnabled() else None,
+            "focus_search": self._focus_result_search,
+            "clear_selection": lambda: self._run_results_shortcut(self.tbl.clearSelection),
+            "toggle_selected": lambda: self._run_results_shortcut(self._toggle_selected_result_rows),
+            "open_selected_location": lambda: self._run_results_shortcut(
+                self._open_selected_result_location),
+            "uncheck_selected": lambda: self._run_results_shortcut(
+                self._uncheck_selected_result_rows),
+        }
+        for index in range(1, 10):
+            callbacks[f"profile_{index}"] = lambda i=index: self._switch_profile_shortcut(i)
+
+        for definition in self.shortcuts.definitions():
+            if definition.key == "voice_control":
+                continue
+            callback = callbacks.get(definition.key)
+            if callback is None:
+                continue
+            sequence = self.shortcuts.sequence(definition.key)
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(callback)
+            self._active_shortcuts[definition.key] = shortcut
+        self._update_shortcut_menu_labels()
+
+    def _refresh_shortcuts(self) -> None:
+        for shortcut in getattr(self, "_active_shortcuts", {}).values():
+            shortcut.deleteLater()
+        self._setup_voice_shortcut()
+        self._setup_shortcuts()
+
+    def _on_shortcuts_saved(self, values: dict) -> None:
+        del values
+        self._refresh_shortcuts()
+        self._log("Keyboard shortcuts updated")
+
+    def _update_shortcut_menu_labels(self) -> None:
+        if hasattr(self, "_command_palette_action"):
+            palette = self.shortcuts.sequence("command_palette") or "Disabled"
+            voice = self.shortcuts.sequence("voice_control") or "Disabled"
+            self._command_palette_action.setText(f"Command Palette\t{palette}")
+            self._voice_control_action.setText(f"Voice Control…\t{voice}")
+
+    def _focus_result_search(self) -> None:
+        self.txt_search.setFocus()
+        self.txt_search.selectAll()
+
+    def _switch_profile_shortcut(self, index: int) -> None:
+        if 0 <= index < self.cmb_profile.count():
+            self.cmb_profile.setCurrentIndex(index)
+
+    def _results_shortcut_is_active(self) -> bool:
+        focus = QApplication.focusWidget()
+        if focus is None:
+            return False
+        for table in {
+            getattr(self, "tbl", None),
+            getattr(self, "_legacy_tbl", None),
+            getattr(self, "virtual_tbl", None),
+        }:
+            if table is not None and (focus is table or table.isAncestorOf(focus)):
+                return True
+        return False
+
+    def _run_results_shortcut(self, callback) -> None:
+        if self._results_shortcut_is_active():
+            callback()
+
+    def _uncheck_selected_result_rows(self) -> None:
+        """Uncheck selected result rows for the configurable Delete binding."""
+        if getattr(self, "_virtual_files_active", False):
+            self._set_highlighted_check(False)
+            return
+        for row in sorted(set(index.row() for index in self.tbl.selectionModel().selectedRows())):
+            widget = self.tbl.cellWidget(row, 0)
+            if isinstance(widget, QCheckBox):
+                widget.setChecked(False)
 
     # ═══ COMMAND PALETTE ══════════════════════════════════════════════════════
 

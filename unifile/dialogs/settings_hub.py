@@ -229,6 +229,9 @@ class SettingsHubDialog(QDialog):
                 ("Accessibility…",
                  "Adjust the base UI font size (8–24 px) with a live preview.",
                  self._open_accessibility),
+                ("Keyboard Shortcuts…",
+                 "Review every binding and reassign shortcuts without Windows conflicts.",
+                 self._open_shortcuts),
                 ("Language…",
                  "Choose the UI language. Place .qm translation files in the translations folder.",
                  self._open_language),
@@ -334,6 +337,7 @@ class SettingsHubDialog(QDialog):
     # System tab
     def _open_theme(self):            self._call('_open_theme_picker')
     def _open_accessibility(self):    self._call('_open_accessibility')
+    def _open_shortcuts(self):        self._call('_open_shortcuts_dialog')
     def _open_protected(self):        self._call('_open_protected_paths')
     def _open_disk_space(self):       self._call('_open_disk_space_settings')
     def _open_scan_throttle(self):     self._call('_open_scan_throttle_settings')
