@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT / "sdk"))
 project = "UniFile SDK"
 copyright = "2026, SysAdminDoc"
 author = "SysAdminDoc"
-release = "9.3.32"
+release = "9.3.33"
 
 extensions = [
     "sphinx.ext.autodoc",

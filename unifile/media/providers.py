@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from unifile import __version__
 from unifile.config import _APP_DATA_DIR, load_json_safe, save_json_safe
 
 logger = logging.getLogger(__name__)
@@ -919,7 +920,7 @@ def googlebooks_book_details(volume_id: str) -> BookResult | None:
 # ---------------------------------------------------------------------------
 
 MUSICBRAINZ_BASE = "https://musicbrainz.org/ws/2"
-MUSICBRAINZ_USER_AGENT = "UniFile/9.3.32 (https://github.com/SysAdminDoc/UniFile)"
+MUSICBRAINZ_USER_AGENT = f"UniFile/{__version__} (https://github.com/SysAdminDoc/UniFile)"
 COVER_ART_BASE = "https://coverartarchive.org/release"
 _MUSICBRAINZ_LOCK = threading.Lock()
 _MUSICBRAINZ_LAST_REQUEST = 0.0

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
+from unifile import __version__
 from unifile.config import _APP_DATA_DIR
 
 MAX_COVER_BYTES = 10 * 1024 * 1024
@@ -198,7 +199,7 @@ def download_cover_art(url: str, *, cache_dir: str | os.PathLike[str] | None = N
         session = requests.Session()
     response = session.get(
         source_url,
-        headers={'User-Agent': 'UniFile/9.3.32 (cover art)', 'Accept': 'image/*'},
+        headers={'User-Agent': f'UniFile/{__version__} (cover art)', 'Accept': 'image/*'},
         timeout=15,
         stream=True,
     )

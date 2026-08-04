@@ -26,13 +26,14 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from unifile import __version__
 from unifile.tagging.library import TagLibrary
 
 BOOK_EXTENSIONS = frozenset({".epub", ".pdf", ".mobi", ".azw3"})
 BOOK_TAG = "book"
 BOOK_CACHE_NAME = "book-metadata-cache.json"
 BOOK_COVER_DIR = "book-covers"
-DEFAULT_USER_AGENT = "UniFile/9.3.32 (https://github.com/SysAdminDoc/UniFile)"
+DEFAULT_USER_AGENT = f"UniFile/{__version__} (https://github.com/SysAdminDoc/UniFile)"
 OPENLIBRARY_SEARCH_URL = "https://openlibrary.org/search.json"
 GOOGLE_BOOKS_URL = "https://www.googleapis.com/books/v1/volumes"
 _OPENLIBRARY_FIELDS = ",".join(

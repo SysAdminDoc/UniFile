@@ -2,7 +2,7 @@
 
 All notable changes to UniFile will be documented in this file.
 
-## [v9.3.32] - Research-Driven Hardening
+## [v9.3.33] - Action Plan & Ecosystem Drain
 
 ### Security
 - Tag Library search: FTS5 MATCH queries strip operator characters (*, OR, AND, NOT, NEAR); LIKE queries escape `%` and `_` wildcards.

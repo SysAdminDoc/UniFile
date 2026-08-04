@@ -28,22 +28,22 @@ def test_wix_source_declares_required_windows_integration():
 
 def test_build_command_binds_frozen_payload_and_version(tmp_path):
     module = _load_module()
-    output = tmp_path / "UniFile-v9.3.32.msi"
+    output = tmp_path / "UniFile-v9.3.33.msi"
     command = module.build_command(
         ROOT / "dist" / "UniFile",
         output,
-        "9.3.32",
+        "9.3.33",
         wix_executable="wix-test",
     )
     assert command[:4] == ["wix-test", "build", "-arch", "x64"]
-    assert "ProductVersion=9.3.32" in command
+    assert "ProductVersion=9.3.33" in command
     assert f"BuildOutput={ROOT / 'dist' / 'UniFile'}" in command
     assert command[-1] == str(output)
 
 
 def test_msi_version_validation_rejects_four_part_and_prerelease_versions():
     module = _load_module()
-    for value in ("9.3.32.1", "9.3.32-beta", "v9.3.32"):
+    for value in ("9.3.33.1", "9.3.33-beta", "v9.3.33"):
         try:
             module.validate_version(value)
         except ValueError:

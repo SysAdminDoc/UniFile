@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unifile-sdk"
-version = "9.3.32"
+version = "9.3.33"
 description = "PyQt-free UniFile classification, tagging, semantic search, and learning engine"
 readme = { text = "PyQt-free UniFile classification, tagging, semantic search, and learning engine.", content-type = "text/plain" }
 requires-python = ">=3.10"
