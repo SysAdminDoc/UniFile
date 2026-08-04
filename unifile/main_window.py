@@ -454,6 +454,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             ("Broken Files",      'cleanup', 3),
             ("Big Files",         'cleanup', 4),
             ("Old Downloads",     'cleanup', 5),
+            ("Cleanup Sweep",     'cleanup', 7),
         ]
         for label, tool_type, tab_idx in _nav_items_tools:
             btn = QPushButton(f"  {label}")
@@ -698,6 +699,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         menu_cleanup.addAction("Find Broken Files", lambda: self._open_cleanup_tab(3))
         menu_cleanup.addAction("Find Big Files", lambda: self._open_cleanup_tab(4))
         menu_cleanup.addAction("Find Old Downloads", lambda: self._open_cleanup_tab(5))
+        menu_cleanup.addAction("Run Cleanup Sweep", lambda: self._open_cleanup_tab(7))
         menu_cleanup.addSeparator()
         menu_cleanup.addAction("Watch History...", self._open_watch_history)
         menu_cleanup.addSeparator()
@@ -1562,6 +1564,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         # ── Page 1: Cleanup Tools (inline) ───────────────────────────
         self._cleanup_panel = CleanupPanel()
+        self._cleanup_panel.undo_available.connect(
+            lambda: self.btn_undo.setEnabled(True)
+        )
         self._content_stack.addWidget(self._cleanup_panel)  # index 1
 
         # ── Page 2: Duplicate Finder (inline) ────────────────────────

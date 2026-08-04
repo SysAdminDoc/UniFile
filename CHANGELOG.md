@@ -30,6 +30,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Cleanup Sweep: review empty folders, zero-byte files, and broken shortcuts in one pass, then move selected candidates into the existing Undo Timeline-backed UniFile Recovery quarantine.
 - RAW photo families: recognize camera RAW formats, collapse same-stem RAW+JPEG captures into one logical scan item, move both members together with undo records, and use RAW EXIF first with JPEG fallback fields.
 - Kodi/Plex NFO sidecars: save normalized movie, TV episode, music-video, and book metadata beside local media from the Media Lookup panel or the headless `nfo generate` command, with Tag Library field mapping and atomic writes.
 - Subtitle and chapter sidecars: review OpenSubtitles `.srt`/`.ass` matches, download selected releases beside local media, and save atomic TMDb-derived `.chapters.json` metadata with explicit OpenSubtitles credential fields.

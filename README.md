@@ -207,6 +207,7 @@ require the dialog's review button.
 |------|-------------|
 | Empty Folders | Find and delete empty directories |
 | Empty Files | Find zero-byte files |
+| Sweep | Review empty folders, zero-byte files, and broken shortcuts in one pass; move selected results to undoable UniFile Recovery |
 | Temp / Junk Files | Find `.tmp`, `.bak`, `Thumbs.db`, etc. |
 | Broken Files | Detect corrupt/truncated files |
 | Big Files | Find files above a configurable size threshold |

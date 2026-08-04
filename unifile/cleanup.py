@@ -5,13 +5,22 @@ Inspired by Czkawka, DropIt, File Juggler, and Duplicate Cleaner Pro."""
 
 import os
 import re
+import shutil
 import tarfile
 import time
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+from uuid import uuid4
 
-from unifile.config import is_protected
+from unifile.config import _APP_DATA_DIR, is_protected
+
+_SWEEP_SYSTEM_DIRS = frozenset({
+    ".git", ".svn", ".hg", "__pycache__", "node_modules",
+    ".Spotlight-V100", ".Trashes", ".fseventsd", "System Volume Information",
+    "$RECYCLE.BIN", "Recovery",
+})
 
 # ── Data classes for scan results ────────────────────────────────────────────
 
@@ -591,7 +600,8 @@ def scan_duplicate_folders(root: str, *, depth: int = 3,
 # ── Orphaned Shortcut Scanner (Windows) ──────────────────────────────────────
 
 def scan_orphaned_shortcuts(root: str, *, depth: int = 99,
-                            progress_cb: Callable = None) -> list[CleanupItem]:
+                            progress_cb: Callable = None,
+                            item_cb: Callable = None) -> list[CleanupItem]:
     """Find .lnk shortcuts pointing to non-existent targets (Windows only)."""
     import sys
     if sys.platform != 'win32':
@@ -622,16 +632,77 @@ def scan_orphaned_shortcuts(root: str, *, depth: int = 99,
                 target = shortcut.TargetPath
                 if target and not os.path.exists(target):
                     st = os.stat(fpath)
-                    results.append(CleanupItem(
+                    item = CleanupItem(
                         path=fpath, size=st.st_size,
                         reason=f"Target missing: {target}",
                         category="orphaned_shortcut", modified=st.st_mtime
-                    ))
+                    )
+                    results.append(item)
                     if progress_cb:
                         progress_cb(f"Orphaned: {fpath}")
+                    if item_cb:
+                        item_cb(item)
             except Exception:
                 continue
 
+    return results
+
+
+# ── Combined cleanup sweep ───────────────────────────────────────────────────
+
+def scan_sweep(root: str, *, ignore_hidden: bool = True,
+               ignore_system: bool = True, depth: int = 99,
+               progress_cb: Callable = None,
+               item_cb: Callable = None) -> list[CleanupItem]:
+    """Find empty folders, zero-byte files, and orphaned shortcuts together.
+
+    The three scanners intentionally share the same root and return one
+    reviewable result set.  A path can only appear once; an orphaned shortcut
+    wins over a zero-byte classification when a malformed ``.lnk`` matches
+    both checks.
+    """
+    scanned = []
+    scanned.extend(scan_empty_folders(
+        root,
+        ignore_hidden=ignore_hidden,
+        ignore_system=ignore_system,
+        progress_cb=progress_cb,
+    ))
+    scanned.extend(scan_empty_files(
+        root,
+        depth=depth,
+        progress_cb=progress_cb,
+    ))
+    scanned.extend(scan_orphaned_shortcuts(
+        root,
+        depth=depth,
+        progress_cb=progress_cb,
+    ))
+
+    root_norm = os.path.normcase(os.path.normpath(root))
+    by_path: dict[str, CleanupItem] = {}
+    for item in scanned:
+        try:
+            relative = os.path.relpath(item.path, root_norm)
+            parts = tuple(part for part in relative.split(os.sep) if part not in ("", "."))
+        except (TypeError, ValueError):
+            parts = ()
+        if ignore_hidden and any(part.startswith(".") for part in parts):
+            continue
+        if ignore_system and any(part in _SWEEP_SYSTEM_DIRS for part in parts):
+            continue
+        key = os.path.normcase(os.path.normpath(item.path))
+        previous = by_path.get(key)
+        if previous is None:
+            by_path[key] = item
+            continue
+        if item.category == "orphaned_shortcut":
+            by_path[key] = item
+
+    results = list(by_path.values())
+    if item_cb:
+        for item in results:
+            item_cb(item)
     return results
 
 
@@ -746,3 +817,79 @@ def delete_items(items: list[CleanupItem], *, use_trash: bool = True,
                 progress_cb(f"Failed: {item.path} ({e})")
 
     return success, failed, freed
+
+
+def quarantine_items(items: list[CleanupItem], *, recovery_dir: str = None,
+                     progress_cb: Callable = None) -> tuple:
+    """Move selected Sweep candidates into a private, undoable quarantine.
+
+    Sweep candidates are deliberately moved instead of permanently deleted or
+    sent to the OS recycle bin.  Each successful move is returned as a normal
+    ``move`` undo operation (quarantine path -> original path), so the existing
+    Undo Timeline can restore a complete sweep, including nested empty folders.
+
+    Returns ``(success_count, fail_count, freed_bytes, undo_operations)``.
+    """
+    selected = [
+        item for item in items
+        if item.selected and not is_protected(item.path)
+    ]
+    if not selected:
+        return 0, 0, 0, []
+
+    selected.sort(
+        key=lambda item: (
+            0 if item.category == "empty_folder" else 1,
+            -os.path.normpath(item.path).count(os.sep),
+        )
+    )
+    recovery_root = recovery_dir or os.path.join(_APP_DATA_DIR, "cleanup-recovery")
+    batch_id = f"sweep-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid4().hex[:10]}"
+    batch_dir = os.path.join(recovery_root, batch_id)
+    os.makedirs(batch_dir, exist_ok=True)
+
+    success = 0
+    failed = 0
+    freed = 0
+    undo_ops = []
+    timestamp = datetime.now().isoformat(timespec="seconds")
+
+    for index, item in enumerate(selected, start=1):
+        source = os.path.abspath(item.path)
+        if not os.path.exists(source):
+            failed += 1
+            if progress_cb:
+                progress_cb(f"Skipped (not found): {source}")
+            continue
+        destination = os.path.join(
+            batch_dir,
+            f"{index:04d}_{os.path.basename(os.path.normpath(source))}",
+        )
+        try:
+            shutil.move(source, destination)
+            undo_ops.append({
+                "type": "move",
+                "src": destination,
+                "dst": source,
+                "timestamp": timestamp,
+                "category": item.category,
+                "confidence": "",
+                "status": "Done",
+                "cleanup_recovery": True,
+                "reason": item.reason,
+            })
+            success += 1
+            freed += item.size
+            if progress_cb:
+                progress_cb(f"Moved to Recovery: {source}")
+        except Exception as exc:
+            failed += 1
+            if progress_cb:
+                progress_cb(f"Failed: {source} ({exc})")
+
+    if not undo_ops:
+        try:
+            os.rmdir(batch_dir)
+        except OSError:
+            pass
+    return success, failed, freed, undo_ops

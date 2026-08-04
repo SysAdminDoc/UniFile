@@ -57,7 +57,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Cleanup & Safety
 
-- **Empty-folder / zero-byte / broken-shortcut sweeper** — all three combined in one pass with preview + undo journal (already partially implemented; unify into a single "Sweep" action)
 - **Disk space protection** — abort scan-apply if free space drops below a configurable threshold (default 500 MB); show warning before any bulk operation
 - **Checkpointed scans** — write scan progress to SQLite every 500 items; crash-resume picks up where it left off without re-scanning completed items
 - **Transaction log replay** — SQLite WAL with a reverse-iterator to undo the last N apply operations; exposed in the Undo Timeline panel

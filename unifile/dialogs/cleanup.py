@@ -24,6 +24,20 @@ from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 
 
+def _record_cleanup_undo(undo_ops: list, source_dir: str) -> bool:
+    """Persist a cleanup batch in the shared operation and CSV journals."""
+    if not undo_ops:
+        return False
+    from unifile.cache import append_csv_log, save_undo_log
+
+    save_undo_log(undo_ops, source_dir=source_dir, mode="cleanup-sweep")
+    try:
+        append_csv_log(undo_ops)
+    except OSError:
+        pass
+    return True
+
+
 class _CleanupScanWorker(QThread):
     """Background worker for cleanup scans."""
     progress = pyqtSignal(str)
@@ -48,6 +62,9 @@ class _CleanupScanWorker(QThread):
 class CleanupToolsDialog(QDialog):
     """Multi-tab cleanup scanner dialog with Empty Folders, Temp Files,
     Broken Files, Big Files, and Old Downloads scanners."""
+
+    undo_available = pyqtSignal()
+    _SWEEP_TAB_INDEX = 7
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -235,6 +252,36 @@ class CleanupToolsDialog(QDialog):
         vb7.addLayout(fb7)
         self.tabs.addTab(tab_mismatch, "Bad Extensions")
 
+        # ── Unified Sweep tab ────────────────────────────────────────────
+        tab_sweep = QWidget()
+        vb8 = QVBoxLayout(tab_sweep)
+        vb8.addWidget(QLabel(
+            "Find empty folders, zero-byte files, and broken shortcuts in one review."
+        ))
+        fb8 = QHBoxLayout()
+        fb8.addWidget(QLabel("Folder:"))
+        self.txt_sweep_path = QLineEdit()
+        self.txt_sweep_path.setPlaceholderText(
+            "Select a folder for the unified cleanup sweep..."
+        )
+        fb8.addWidget(self.txt_sweep_path, 1)
+        btn_sweep_browse = QPushButton("Browse")
+        btn_sweep_browse.clicked.connect(lambda: self._browse(self.txt_sweep_path))
+        fb8.addWidget(btn_sweep_browse)
+        vb8.addLayout(fb8)
+        sweep_opts = QHBoxLayout()
+        self.chk_sweep_hidden = QCheckBox("Ignore hidden folders")
+        self.chk_sweep_hidden.setChecked(True)
+        sweep_opts.addWidget(self.chk_sweep_hidden)
+        self.chk_sweep_system = QCheckBox(
+            "Ignore system folders (.git, node_modules, etc)"
+        )
+        self.chk_sweep_system.setChecked(True)
+        sweep_opts.addWidget(self.chk_sweep_system)
+        sweep_opts.addStretch()
+        vb8.addLayout(sweep_opts)
+        self.tabs.addTab(tab_sweep, "Sweep")
+
         layout.addWidget(self.tabs)
 
         # ── Scan button + progress ────────────────────────────────────────
@@ -292,6 +339,16 @@ class CleanupToolsDialog(QDialog):
         self.btn_delete.clicked.connect(self._delete_selected)
         action_row.addWidget(self.btn_delete)
         layout.addLayout(action_row)
+        self.tabs.currentChanged.connect(self._update_action_labels)
+        self._update_action_labels(self.tabs.currentIndex())
+
+    def _update_action_labels(self, tab_idx: int):
+        if hasattr(self, "btn_delete"):
+            self.btn_delete.setText(
+                "Move Selected to Recovery"
+                if tab_idx == self._SWEEP_TAB_INDEX
+                else "Delete Selected"
+            )
 
     def _browse(self, target: QLineEdit):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder")
@@ -306,6 +363,7 @@ class CleanupToolsDialog(QDialog):
             scan_empty_folders,
             scan_mismatched_extensions,
             scan_old_downloads,
+            scan_sweep,
             scan_temp_files,
         )
 
@@ -338,6 +396,11 @@ class CleanupToolsDialog(QDialog):
             }),
             6: (scan_mismatched_extensions, self.txt_mismatch_path, lambda: {
                 'root': self.txt_mismatch_path.text(),
+            }),
+            7: (scan_sweep, self.txt_sweep_path, lambda: {
+                'root': self.txt_sweep_path.text(),
+                'ignore_hidden': self.chk_sweep_hidden.isChecked(),
+                'ignore_system': self.chk_sweep_system.isChecked(),
             }),
         }
 
@@ -421,23 +484,38 @@ class CleanupToolsDialog(QDialog):
         if not selected:
             return
 
-        from unifile.cleanup import _fmt_size, delete_items
+        from unifile.cleanup import _fmt_size, delete_items, quarantine_items
         total = sum(i.size for i in selected)
+        is_sweep = self.tabs.currentIndex() == self._SWEEP_TAB_INDEX
+        action = "move" if is_sweep else "delete"
         confirm = QMessageBox.question(
             self, "Confirm Deletion",
-            f"Delete {len(selected)} items ({_fmt_size(total)})?\n\n"
-            f"Items will be sent to Trash if possible.",
+            (
+                f"Move {len(selected)} items ({_fmt_size(total)}) to UniFile Recovery?\n\n"
+                "The selected sweep candidates will remain undoable from Undo Timeline."
+                if is_sweep else
+                f"Delete {len(selected)} items ({_fmt_size(total)})?\n\n"
+                "Items will be sent to Trash if possible."
+            ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
         self.btn_delete.setEnabled(False)
-        success, failed, freed = delete_items(
-            selected, use_trash=True,
-            progress_cb=lambda msg: self.lbl_progress.setText(msg))
+        if is_sweep:
+            success, failed, freed, undo_ops = quarantine_items(
+                selected,
+                progress_cb=lambda msg: self.lbl_progress.setText(msg),
+            )
+            if _record_cleanup_undo(undo_ops, self.txt_sweep_path.text()):
+                self.undo_available.emit()
+        else:
+            success, failed, freed = delete_items(
+                selected, use_trash=True,
+                progress_cb=lambda msg: self.lbl_progress.setText(msg))
 
         self.lbl_progress.setText(
-            f"Deleted {success} items, freed {_fmt_size(freed)}"
+            f"{'Moved' if action == 'move' else 'Deleted'} {success} items, freed {_fmt_size(freed)}"
             + (f", {failed} failed" if failed else ""))
 
         # Remove deleted items from results and refresh table
@@ -452,6 +530,9 @@ class CleanupToolsDialog(QDialog):
 class CleanupPanel(QWidget):
     """Embeddable cleanup scanner panel — same functionality as CleanupToolsDialog
     but renders inline inside the main window content area."""
+
+    undo_available = pyqtSignal()
+    _SWEEP_TAB_INDEX = 7
 
     def __init__(self, parent=None, initial_tab: int = 0):
         super().__init__(parent)
@@ -643,6 +724,36 @@ class CleanupPanel(QWidget):
         vb7.addLayout(fb7)
         self.tabs.addTab(tab_mismatch, "Bad Extensions")
 
+        # ── Unified Sweep tab ────────────────────────────────────────────
+        tab_sweep = QWidget()
+        vb8 = QVBoxLayout(tab_sweep)
+        vb8.addWidget(QLabel(
+            "Find empty folders, zero-byte files, and broken shortcuts in one review."
+        ))
+        fb8 = QHBoxLayout()
+        fb8.addWidget(QLabel("Folder:"))
+        self.txt_sweep_path = QLineEdit()
+        self.txt_sweep_path.setPlaceholderText(
+            "Select a folder for the unified cleanup sweep…"
+        )
+        fb8.addWidget(self.txt_sweep_path, 1)
+        btn_sweep_browse = QPushButton("Browse")
+        btn_sweep_browse.clicked.connect(lambda: self._browse(self.txt_sweep_path))
+        fb8.addWidget(btn_sweep_browse)
+        vb8.addLayout(fb8)
+        sweep_opts = QHBoxLayout()
+        self.chk_sweep_hidden = QCheckBox("Ignore hidden folders")
+        self.chk_sweep_hidden.setChecked(True)
+        sweep_opts.addWidget(self.chk_sweep_hidden)
+        self.chk_sweep_system = QCheckBox(
+            "Ignore system folders (.git, node_modules, etc)"
+        )
+        self.chk_sweep_system.setChecked(True)
+        sweep_opts.addWidget(self.chk_sweep_system)
+        sweep_opts.addStretch()
+        vb8.addLayout(sweep_opts)
+        self.tabs.addTab(tab_sweep, "Sweep")
+
         layout.addWidget(self.tabs)
 
         # ── Scan button + progress ────────────────────────────────────────
@@ -704,6 +815,16 @@ class CleanupPanel(QWidget):
         self.btn_delete.clicked.connect(self._delete_selected)
         action_row.addWidget(self.btn_delete)
         layout.addLayout(action_row)
+        self.tabs.currentChanged.connect(self._update_action_labels)
+        self._update_action_labels(self.tabs.currentIndex())
+
+    def _update_action_labels(self, tab_idx: int):
+        if hasattr(self, "btn_delete"):
+            self.btn_delete.setText(
+                "Move Selected to Recovery"
+                if tab_idx == self._SWEEP_TAB_INDEX
+                else "Remove Selected"
+            )
 
     def _browse(self, target: QLineEdit):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder")
@@ -718,6 +839,7 @@ class CleanupPanel(QWidget):
             scan_empty_folders,
             scan_mismatched_extensions,
             scan_old_downloads,
+            scan_sweep,
             scan_temp_files,
         )
         tab_idx = self.tabs.currentIndex()
@@ -749,6 +871,11 @@ class CleanupPanel(QWidget):
             }),
             6: (scan_mismatched_extensions, self.txt_mismatch_path, lambda: {
                 'root': self.txt_mismatch_path.text(),
+            }),
+            7: (scan_sweep, self.txt_sweep_path, lambda: {
+                'root': self.txt_sweep_path.text(),
+                'ignore_hidden': self.chk_sweep_hidden.isChecked(),
+                'ignore_system': self.chk_sweep_system.isChecked(),
             }),
         }
         scanner_fn, path_field, kwargs_fn = tab_map[tab_idx]
@@ -805,6 +932,8 @@ class CleanupPanel(QWidget):
         3: "broken or corrupt files",
         4: "large files",
         5: "old downloads",
+        6: "bad-extension files",
+        7: "empty folders, zero-byte files, or broken shortcuts",
     }
 
     def _on_scan_done(self, results):
@@ -845,21 +974,36 @@ class CleanupPanel(QWidget):
         selected = [item for item in self._results if item.selected]
         if not selected:
             return
-        from unifile.cleanup import _fmt_size, delete_items
+        from unifile.cleanup import _fmt_size, delete_items, quarantine_items
         total = sum(i.size for i in selected)
+        is_sweep = self.tabs.currentIndex() == self._SWEEP_TAB_INDEX
+        action = "move" if is_sweep else "delete"
         confirm = QMessageBox.question(
             self, "Confirm Deletion",
-            f"Delete {len(selected)} items ({_fmt_size(total)})?\n\n"
-            f"Items will be sent to Trash when possible.",
+            (
+                f"Move {len(selected)} items ({_fmt_size(total)}) to UniFile Recovery?\n\n"
+                "The selected sweep candidates will remain undoable from Undo Timeline."
+                if is_sweep else
+                f"Delete {len(selected)} items ({_fmt_size(total)})?\n\n"
+                "Items will be sent to Trash when possible."
+            ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if confirm != QMessageBox.StandardButton.Yes:
             return
         self.btn_delete.setEnabled(False)
-        success, failed, freed = delete_items(
-            selected, use_trash=True,
-            progress_cb=lambda msg: self.lbl_progress.setText(msg))
+        if is_sweep:
+            success, failed, freed, undo_ops = quarantine_items(
+                selected,
+                progress_cb=lambda msg: self.lbl_progress.setText(msg),
+            )
+            if _record_cleanup_undo(undo_ops, self.txt_sweep_path.text()):
+                self.undo_available.emit()
+        else:
+            success, failed, freed = delete_items(
+                selected, use_trash=True,
+                progress_cb=lambda msg: self.lbl_progress.setText(msg))
         self.lbl_progress.setText(
-            f"Deleted {success} items, freed {_fmt_size(freed)}"
+            f"{'Moved' if action == 'move' else 'Deleted'} {success} items, freed {_fmt_size(freed)}"
             + (f", {failed} failed" if failed else ""))
         remaining = [item for item in self._results if os.path.exists(item.path)]
         self._results = []
