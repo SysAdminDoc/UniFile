@@ -30,6 +30,8 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Background GitHub release checking with a persisted opt-out setting and a
+  Download/Dismiss banner that never auto-installs updates.
 - Portable ZIP release packaging with an adjacent marker that makes frozen
   builds keep configuration, caches, and databases beside `UniFile.exe`.
 - WiX 5 Windows MSI packaging for the frozen build, including a per-machine

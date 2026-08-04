@@ -8,9 +8,10 @@ import sys
 import time
 from collections import Counter
 
-from PyQt6.QtCore import QSettings, QStringListModel, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QSettings, QStringListModel, Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
+    QDesktopServices,
     QDragEnterEvent,
     QDropEvent,
     QKeySequence,
@@ -135,6 +136,12 @@ from unifile.thumbnail_cache import load_thumbnail_pixmap
 from unifile.timeline import TimelineView
 from unifile.tray_mixin import TrayMixin
 from unifile.undo_mixin import UndoMixin
+from unifile.update_checker import (
+    DISABLE_UPDATE_CHECK_KEY,
+    UpdateBanner,
+    UpdateCheckWorker,
+    update_check_disabled,
+)
 from unifile.virtualized_view import VirtualizedResultsView, VirtualizedThumbnailView
 from unifile.watch_mixin import WatchMixin
 from unifile.widgets import (
@@ -205,6 +212,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.undo_ops = []
         self.settings = QSettings("UniFile", "UniFile")
         self.shortcuts = ShortcutManager(self.settings)
+        self._update_check_worker = None
+        self._update_banner = None
+        self._right_col = None
         self._ollama_ready = False
         self._command_palette = None
         self._library_store = LibraryProfileStore()
@@ -299,6 +309,51 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         # Initialise PC source panel to Desktop (index 0)
         self.cmb_pc_src.setCurrentIndex(0)
         self._on_pc_src_changed(0)
+
+    def _set_update_checks_enabled(self, enabled: bool) -> None:
+        """Persist whether the background GitHub release check is enabled."""
+        self.settings.setValue(DISABLE_UPDATE_CHECK_KEY, not enabled)
+        self.settings.sync()
+
+    def start_update_check(self) -> None:
+        """Start the opt-out release check after the GUI has become visible."""
+        if os.environ.get("UNIFILE_GUI_SMOKE_EXIT_MS"):
+            return
+        if update_check_disabled(self.settings):
+            return
+        if self._update_check_worker is not None and self._update_check_worker.isRunning():
+            return
+        self._update_check_worker = UpdateCheckWorker(__version__, parent=self)
+        self._update_check_worker.result_ready.connect(self._on_update_available)
+        self._update_check_worker.error.connect(self._on_update_check_error)
+        self._update_check_worker.start()
+
+    def _on_update_check_error(self, _message: str) -> None:
+        """Ignore transient release-check failures so startup remains quiet."""
+
+    def _on_update_available(self, info) -> None:
+        """Show one dismissible banner when a newer stable release is found."""
+        if info is None or self._update_banner is not None or self._right_col is None:
+            return
+        banner = UpdateBanner(info, get_active_theme(), self)
+        banner.download_requested.connect(self._open_update_download)
+        banner.dismissed.connect(self._dismiss_update_banner)
+        self._update_banner = banner
+        self._right_col.insertWidget(0, banner)
+
+    def _open_update_download(self, url: str) -> None:
+        """Open the trusted release page without downloading or installing it."""
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _dismiss_update_banner(self) -> None:
+        """Remove the current update notice from the right-hand content column."""
+        banner = self._update_banner
+        if banner is None:
+            return
+        self._update_banner = None
+        if self._right_col is not None:
+            self._right_col.removeWidget(banner)
+        banner.deleteLater()
 
     def _save_settings(self):
         self.settings.setValue("last_source", self.txt_src.text())
@@ -661,6 +716,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         right_col = QVBoxLayout(right_panel)
         right_col.setSpacing(0)
         right_col.setContentsMargins(0, 0, 0, 0)
+        self._right_col = right_col
 
         # ── Menu bar ─────────────────────────────────────────────────────
         mbar = self.menuBar()
@@ -668,6 +724,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         # Unified Settings Hub — one-click entry point for every configurable
         # surface. Accelerator key so power users can Alt-S, Enter to reach it.
         menu_tools.addAction("&All Settings…", self._open_settings_hub)
+        self._update_check_action = menu_tools.addAction("Check for Updates on Startup")
+        self._update_check_action.setCheckable(True)
+        self._update_check_action.setChecked(not update_check_disabled(self.settings))
+        self._update_check_action.setToolTip(
+            "Poll GitHub Releases for a newer UniFile version after startup"
+        )
+        self._update_check_action.toggled.connect(self._set_update_checks_enabled)
         self._command_palette_action = menu_tools.addAction(
             "Command Palette", self._open_command_palette)
         self._voice_control_action = menu_tools.addAction(
@@ -4833,6 +4896,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                                        QSystemTrayIcon.MessageIcon.Information, 2000)
                 event.ignore()
                 return
+        if self._update_check_worker is not None and self._update_check_worker.isRunning():
+            self._update_check_worker.requestInterruption()
+            self._update_check_worker.wait(5000)
         self._save_settings()
         if self._watch_manager and self._watch_manager.is_active:
             self._watch_manager.stop()

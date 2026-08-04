@@ -77,7 +77,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Distribution & Packaging
 
-- **Auto-update checker** — on startup, poll the GitHub Releases API for a newer version; show unobtrusive banner with "Download" link; no auto-install; respects a `disable_update_check` config flag
 - **`unifile-sdk` package on PyPI** — core engine only (no PyQt6); `pip install unifile-sdk`; provides `Classifier`, `TagLibrary`, `SemanticIndex`, `PatternLearner` for embedding in third-party tools
 
 ---

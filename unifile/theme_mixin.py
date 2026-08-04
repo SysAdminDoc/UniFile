@@ -340,3 +340,5 @@ class ThemeMixin:
                 panel.apply_theme(t)
         if hasattr(self, '_refresh_workspace_copy'):
             self._refresh_workspace_copy()
+        if hasattr(self, '_update_banner') and self._update_banner is not None:
+            self._update_banner.apply_theme(t)

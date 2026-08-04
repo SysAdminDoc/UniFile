@@ -1479,6 +1479,7 @@ def main():
         except Exception as e:
             window._log(f"Failed to load profile '{args.profile}': {e}")
     window.show()
+    QTimer.singleShot(1200, window.start_update_check)
 
     if args.source and os.path.isdir(args.source):
         window.cmb_op.setCurrentIndex(UniFile.OP_FILES)

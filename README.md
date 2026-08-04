@@ -564,6 +564,12 @@ The portable ZIP is self-contained and does not install anything. Extract it
 and launch `UniFile.exe`; its adjacent `portable.flag` makes the app store
 configuration, caches, and databases in `unifile-data` beside the executable.
 
+When enabled, UniFile checks the GitHub Releases API in a background thread
+after startup. A newer stable release appears as a Download/Dismiss banner;
+UniFile never installs updates automatically. Toggle **Settings → Check for
+Updates on Startup** to disable the check; the `disable_update_check` setting
+is persisted with the rest of the application configuration.
+
 ## Related Tools
 
 | Tool | Best For |
