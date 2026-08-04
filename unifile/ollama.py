@@ -45,7 +45,7 @@ _OLLAMA_DEFAULTS = {
     'temperature': 0.1,
     'num_predict': 4096,
     'think': False,
-    'batch_size': 3,
+    'batch_size': 10,
     'vision_enabled': True,
     'vision_max_file_mb': 20,
     'vision_max_pixels': 1024,
@@ -81,7 +81,7 @@ _MODEL_CATALOG = [
         'name': 'qwen3.5:9b',
         'label': 'Qwen3.5 9B  ·  Best balance  ·  ~6.6 GB',
         'description': 'Best accuracy/speed balance. Default choice for most GPUs.',
-        'temperature': 0.1, 'num_predict': 4096, 'think': False, 'batch_size': 3,
+        'temperature': 0.1, 'num_predict': 4096, 'think': False, 'batch_size': 10,
     },
     {
         'group': 'Qwen3.5 (Recommended)',
@@ -276,6 +276,18 @@ _MODEL_CATALOG = [
 
 # Fast lookup: model name → catalog entry
 _MODEL_CATALOG_MAP = {m['name']: m for m in _MODEL_CATALOG}
+
+DEFAULT_LLM_BATCH_SIZE = 10
+MAX_LLM_BATCH_SIZE = 25
+
+
+def normalize_llm_batch_size(value: object, default: int = DEFAULT_LLM_BATCH_SIZE) -> int:
+    """Return a safe number of items for one LLM request."""
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        size = default
+    return max(1, min(MAX_LLM_BATCH_SIZE, size))
 
 
 
@@ -1050,6 +1062,7 @@ def ollama_classify_batch(folders: list, url: str = None, model: str = None,
     """
     if not folders:
         return []
+    chunk_limit = normalize_llm_batch_size(chunk_limit, _OLLAMA_BATCH_CHUNK_LIMIT)
     # Chunk dispatch: preserves original output order by concatenating results.
     if len(folders) > chunk_limit:
         if log_cb:

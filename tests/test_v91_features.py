@@ -82,6 +82,21 @@ def test_ollama_batch_empty_input():
     assert ollama_classify_batch([]) == []
 
 
+def test_ollama_batch_defaults_are_safe_and_configurable():
+    from unifile.ollama import (
+        _OLLAMA_DEFAULTS,
+        DEFAULT_LLM_BATCH_SIZE,
+        MAX_LLM_BATCH_SIZE,
+        normalize_llm_batch_size,
+    )
+
+    assert DEFAULT_LLM_BATCH_SIZE == 10
+    assert _OLLAMA_DEFAULTS['batch_size'] == DEFAULT_LLM_BATCH_SIZE
+    assert normalize_llm_batch_size(None) == DEFAULT_LLM_BATCH_SIZE
+    assert normalize_llm_batch_size(0) == 1
+    assert normalize_llm_batch_size(999) == MAX_LLM_BATCH_SIZE
+
+
 # ── CLI --output-json scan plan writer ────────────────────────────────────────
 
 def test_write_scan_json_serializes_file_items(tmp_path):

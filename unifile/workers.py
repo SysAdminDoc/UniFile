@@ -95,6 +95,7 @@ from unifile.ollama import (
     _ollama_pull_model_streaming,
     _prepare_image_base64,
     load_ollama_settings,
+    normalize_llm_batch_size,
     ollama_classify_batch,
     ollama_classify_folder,
     ollama_test_connection,
@@ -824,7 +825,6 @@ class ScanLLMWorker(QThread):
             self.log.emit(f"  Deep scan (depth {self.scan_depth}): scanning subfolders")
 
         llm_ok = 0; llm_fail = 0
-        BATCH_SIZE = 8  # folders per Ollama request
 
         t0 = time.time(); cached_hits = 0; correction_hits = 0; csv_rule_hits = 0; name_cache_hits = 0
 
@@ -937,7 +937,7 @@ class ScanLLMWorker(QThread):
         self.phase.emit("AI Classify", f"Classifying {pending_total:,} folders via Ollama [{settings['model']}]…")
         self.log.emit(f"  Classifying {pending_total} folders via LLM…")
 
-        BATCH_SIZE = settings.get('batch_size', 3)  # per-model default from catalog
+        BATCH_SIZE = normalize_llm_batch_size(settings.get('batch_size', 10))
         consecutive_llm_failures = 0
         MAX_CONSECUTIVE_FAILURES = 5  # switch to rule-based after this many in a row
 

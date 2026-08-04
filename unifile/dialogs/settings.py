@@ -184,7 +184,7 @@ class OllamaSettingsDialog(QDialog):
         col3 = QVBoxLayout()
         col3.addWidget(QLabel("Batch size:"))
         self.spn_batch = QSpinBox()
-        self.spn_batch.setRange(1, 10); self.spn_batch.setValue(self.settings.get('batch_size', 3))
+        self.spn_batch.setRange(1, 25); self.spn_batch.setValue(self.settings.get('batch_size', 10))
         self.spn_batch.setToolTip("Folders per Ollama request. Lower = more reliable, higher = faster.")
         col3.addWidget(self.spn_batch)
 
