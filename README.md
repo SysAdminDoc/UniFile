@@ -137,6 +137,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | 7-Level Pipeline | Extension > Keyword > Fuzzy > Metadata > Composition > Context > LLM |
 | Multiple Profiles | Design Assets, Book Library, PC Files, Photo Library, and custom profiles |
 | Multiple Libraries | Switch registered Tag Libraries from the sidebar with scoped AI, rules, and theme preferences |
+| Color Palette Search | Index dominant image colors and search with `color:blue` or natural color-tone phrases |
 | Rules Editor | Custom if/then rules with condition builder UI |
 | Natural Language Rules | Compile one routing request into a local, reviewable action plan |
 | Rename Templates | Token-based rename templates with live preview |
@@ -157,6 +158,14 @@ Register existing library folders with the **+** control in the sidebar's
 keeps each library's Ollama model/settings, classification rules, and theme in
 its own `.unifile` folder. Opening a folder directly from the Tag Library also
 registers it automatically; forgetting a registration never deletes its files.
+
+### Color Palette Search
+
+Images added or scanned into a Tag Library receive a small, deterministic
+dominant-color palette index. Use **Index Colors** in the Tag Library header to
+rebuild the index for existing images, then search with `color:blue` or phrases
+such as `show me files with predominant blue tones`. Searches remain local and
+read-only; unsupported or unreadable images are simply left without palette rows.
 
 ### Voice Control
 

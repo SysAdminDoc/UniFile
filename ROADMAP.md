@@ -48,7 +48,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Library & Tags
 
-- **Color extraction** — extract dominant palette from images; index by color; "show me files with predominant blue tones" search; analogous to Eagle's color search
 - **Custom field schemas per library** — define additional field types per library (Budget/currency, Deadline/date, Status/enum); validation rules enforced in the editor
 
 ---

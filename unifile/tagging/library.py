@@ -16,6 +16,7 @@ from unifile.tagging.db import make_engine, make_tables  # noqa: E402  -- sentin
 from unifile.tagging.models import (  # noqa: E402
     DEFAULT_FIELDS,
     Entry,
+    EntryColor,
     EntryGroup,
     EntryGroupMember,
     Folder,
@@ -447,6 +448,8 @@ class TagLibrary:
             date_added=dt.now(),
         )
         self._session.add(entry)
+        self._session.flush()
+        self._replace_entry_colors(entry.id, p, commit=False)
         self._session.commit()
         return entry
 
@@ -461,6 +464,7 @@ class TagLibrary:
                     select(Entry.path).where(Entry.path.in_(batch_paths))
                 ).scalars().all()
             )
+            new_entries = []
             for fp in batch:
                 p = Path(fp)
                 if p in existing_paths:
@@ -476,9 +480,59 @@ class TagLibrary:
                     date_added=dt.now(),
                 )
                 self._session.add(entry)
+                new_entries.append((entry, p))
                 count += 1
+            self._session.flush()
+            for entry, path in new_entries:
+                self._replace_entry_colors(entry.id, path, commit=False)
             self._session.commit()
         return count
+
+    def _replace_entry_colors(self, entry_id: int, file_path: Path, *, commit: bool = True) -> int:
+        """Replace one entry's palette rows without failing the file import."""
+        from unifile.color_extraction import extract_color_palette
+
+        self._session.execute(delete(EntryColor).where(EntryColor.entry_id == entry_id))
+        palette = extract_color_palette(file_path)
+        if palette:
+            self._session.add_all([
+                EntryColor(
+                    entry_id=entry_id,
+                    color_name=color["name"],
+                    hex_color=color["hex"],
+                    weight=color["weight"],
+                    rank=color["rank"],
+                )
+                for color in palette
+            ])
+        if commit:
+            self._session.commit()
+        return len(palette)
+
+    def get_entry_colors(self, entry_id: int) -> list[EntryColor]:
+        """Return an entry's palette ordered from most to least prominent."""
+        return list(self._session.execute(
+            select(EntryColor)
+            .where(EntryColor.entry_id == entry_id)
+            .order_by(EntryColor.rank, EntryColor.color_name)
+        ).scalars().all())
+
+    def reindex_colors(self, batch_size: int = 100) -> int:
+        """Rebuild palette rows for existing image entries."""
+        from unifile.color_extraction import IMAGE_EXTENSIONS
+
+        entries = list(self._session.execute(
+            select(Entry.id, Entry.path).order_by(Entry.id)
+        ).all())
+        indexed = 0
+        size = max(1, int(batch_size))
+        for offset in range(0, len(entries), size):
+            for entry_id, path in entries[offset:offset + size]:
+                count = self._replace_entry_colors(entry_id, Path(path), commit=False)
+                if Path(path).suffix.lower() in IMAGE_EXTENSIONS and count:
+                    indexed += 1
+            self._session.commit()
+        return indexed
 
     def get_entry(self, entry_id: int) -> Entry | None:
         return self._session.execute(
@@ -505,6 +559,7 @@ class TagLibrary:
         entry = self._session.get(Entry, entry_id)
         if not entry:
             return False
+        self._session.execute(delete(EntryColor).where(EntryColor.entry_id == entry_id))
         self._session.delete(entry)
         self._session.commit()
         return True
@@ -1067,6 +1122,26 @@ class TagLibrary:
 
     # ── Search ────────────────────────────────────────────────────────────────
 
+    def search_color_entries(
+        self, color_name: str, limit: int = 100, *, dominant_only: bool = False
+    ) -> list[Entry]:
+        """Search the normalized palette index by coarse color name."""
+        from unifile.color_extraction import canonical_color_name
+
+        name = canonical_color_name(color_name)
+        if not name:
+            return []
+        statement = (
+            select(Entry)
+            .join(EntryColor, EntryColor.entry_id == Entry.id)
+            .where(EntryColor.color_name == name)
+        )
+        if dominant_only:
+            statement = statement.where(EntryColor.rank == 0)
+        return list(self._session.execute(
+            statement.order_by(EntryColor.rank, Entry.filename).limit(limit)
+        ).unique().scalars().all())
+
     def search_entries(self, query: str, limit: int = 100) -> list[Entry]:
         """Search entries with query language support.
 
@@ -1081,6 +1156,8 @@ class TagLibrary:
             inbox:true/false     — filter by inbox state
             ns:namespace         — entries with at least one tag in namespace
             group:name           — entries in the named group
+            color:blue           — entries with blue in their indexed palette
+            show me files with predominant blue tones — natural color search
             tag:A AND tag:B      — boolean AND (intersection)
             tag:A OR tag:B       — boolean OR (union)
             plain text           — filename search (ilike)
@@ -1137,6 +1214,14 @@ class TagLibrary:
             if tag:
                 return self.get_entries_by_tag_recursive(tag.id)[:limit]
             return []
+
+        from unifile.color_extraction import parse_color_query
+
+        color_query = parse_color_query(q)
+        if color_query:
+            color_name, dominant_only = color_query
+            return self.search_color_entries(
+                color_name, limit=limit, dominant_only=dominant_only)
 
         # Extension search
         if q.startswith("ext:"):

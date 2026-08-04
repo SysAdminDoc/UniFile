@@ -63,13 +63,15 @@ class _EntrySearchWorker(QThread):
         except Exception:
             entries = []
         archive_entries = []
+        from unifile.color_extraction import parse_color_query
+        is_color_query = parse_color_query(self._query) is not None
         # Archive listings are a read-only companion source.  Query-language
         # expressions remain owned by TagLibrary; plain filename searches are
         # also checked against the archive index so the two result types appear
         # together in one search surface.
-        if self._query and not self._query.lower().startswith((
+        if self._query and not is_color_query and not self._query.lower().startswith((
                 "tag:", "-tag:", "ext:", "field:", "special:", "rating:",
-                "inbox:", "ns:", "group:")):
+                "inbox:", "ns:", "group:", "color:")):
             try:
                 from unifile.archive_indexer import search as search_archives
                 archive_entries = search_archives(self._query, limit=100)
@@ -77,6 +79,28 @@ class _EntrySearchWorker(QThread):
                 archive_entries = []
         if not self._cancelled:
             self.results_ready.emit(self._query, entries, archive_entries)
+
+
+class _ColorIndexWorker(QThread):
+    """Rebuild an image palette index on a private TagLibrary session."""
+
+    colors_ready = pyqtSignal(int)
+
+    def __init__(self, library_dir: str, parent=None):
+        super().__init__(parent)
+        self._library_dir = library_dir
+
+    def run(self):
+        library = TagLibrary(self._library_dir)
+        count = -1
+        try:
+            if library.open():
+                count = library.reindex_colors()
+        except Exception:
+            count = -1
+        finally:
+            library.close()
+        self.colors_ready.emit(count)
 
 
 class TagLibraryPanel(QWidget):
@@ -113,6 +137,7 @@ class TagLibraryPanel(QWidget):
     def close_library(self):
         self._lib.close()
         self.btn_manage_roots.setEnabled(False)
+        self.btn_index_colors.setEnabled(False)
 
     def _build_ui(self):
         self.setAccessibleName("Tag Library")
@@ -160,6 +185,16 @@ class TagLibraryPanel(QWidget):
         self.btn_manage_roots.setEnabled(False)
         self.btn_manage_roots.clicked.connect(self._open_roots)
         h_lay.addWidget(self.btn_manage_roots)
+        self.btn_index_colors = QPushButton("Index Colors")
+        self.btn_index_colors.setProperty("class", "toolbar")
+        self.btn_index_colors.setAccessibleName("Index image colors")
+        self.btn_index_colors.setAccessibleDescription(
+            "Extract and index dominant colors for images already in this library")
+        self.btn_index_colors.setToolTip(
+            "Rebuild the color index for existing image entries")
+        self.btn_index_colors.setEnabled(False)
+        self.btn_index_colors.clicked.connect(self._on_index_colors)
+        h_lay.addWidget(self.btn_index_colors)
 
         lay.addWidget(self.header)
 
@@ -320,11 +355,11 @@ class TagLibraryPanel(QWidget):
 
         self.txt_entry_search = QLineEdit()
         self.txt_entry_search.setPlaceholderText(
-            "Search… (tag:Name, ext:pdf, rating:3, inbox:true, ns:namespace, group:name)"
+            "Search… (tag:Name, color:blue, ext:pdf, rating:3, inbox:true, group:name)"
         )
         self.txt_entry_search.setAccessibleName("Entry search")
         self.txt_entry_search.setAccessibleDescription(
-            "Filter entries by tag, extension, rating, or other query syntax")
+            "Filter entries by tag, color, extension, rating, or other query syntax")
         self.txt_entry_search.setFixedWidth(250)
         self.txt_entry_search.textChanged.connect(self._on_entry_search)
         entry_header.addWidget(self.txt_entry_search)
@@ -433,6 +468,7 @@ class TagLibraryPanel(QWidget):
         tab_widgets = [
             self.btn_open_library,
             self.btn_manage_roots,
+            self.btn_index_colors,
             self.txt_tag_search,
             self.btn_add_tag,
             self.cmb_ns_filter,
@@ -595,6 +631,13 @@ class TagLibraryPanel(QWidget):
             meta_parts.append("Inbox" if entry.is_inbox else "Archived")
         if entry.source_url:
             meta_parts.append(f"Source: {entry.source_url[:40]}...")
+        colors = self._lib.get_entry_colors(entry.id)
+        if colors:
+            meta_parts.append(
+                "Colors: " + ", ".join(
+                    f"{color.color_name} {color.hex_color}" for color in colors[:5]
+                )
+            )
         try:
             from unifile.metadata import _read_zone_identifier_url
             if os.path.exists(full_path):
@@ -766,12 +809,39 @@ class TagLibraryPanel(QWidget):
         self._refresh_entries()
         self._update_stats()
 
+    def _on_index_colors(self):
+        if not self._lib.is_open:
+            self.lbl_selection_info.setText("Open a library before indexing colors")
+            return
+        worker = getattr(self, "_color_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        self.btn_index_colors.setEnabled(False)
+        self.lbl_selection_info.setText("Indexing image colors…")
+        worker = _ColorIndexWorker(self._lib.library_dir, self)
+        worker.colors_ready.connect(self._on_colors_indexed)
+        worker.finished.connect(worker.deleteLater)
+        self._color_worker = worker
+        worker.start()
+
+    def _on_colors_indexed(self, count: int):
+        self.btn_index_colors.setEnabled(self._lib.is_open)
+        if count < 0:
+            self.lbl_selection_info.setText(
+                "Color indexing failed; existing entries were left unchanged")
+            return
+        self._refresh_entries(tag_id=self._current_tag_id)
+        self.lbl_selection_info.setText(
+            f"Indexed colors for {count} image{'s' if count != 1 else ''}")
+
     def _update_stats(self):
         if not self._lib.is_open:
             self.btn_manage_roots.setEnabled(False)
+            self.btn_index_colors.setEnabled(False)
             self.lbl_stats.setText("Open a library folder to browse tags and entries")
             return
         self.btn_manage_roots.setEnabled(True)
+        self.btn_index_colors.setEnabled(True)
         stats = self._lib.get_stats()
         self.lbl_stats.setText(
             f"{stats['entries']} files  •  {stats['tags']} tags  •  "

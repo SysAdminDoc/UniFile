@@ -270,6 +270,19 @@ class Entry(Base):
         return tag in self.tags
 
 
+class EntryColor(Base):
+    """One normalized palette color indexed for an entry."""
+
+    __tablename__ = "entry_colors"
+
+    entry_id: Mapped[int] = mapped_column(
+        ForeignKey("entries.id", ondelete="CASCADE"), primary_key=True)
+    color_name: Mapped[str] = mapped_column(primary_key=True)
+    hex_color: Mapped[str]
+    weight: Mapped[float]
+    rank: Mapped[int]
+
+
 # ── Default Field Definitions ─────────────────────────────────────────────────
 
 DEFAULT_FIELDS = [

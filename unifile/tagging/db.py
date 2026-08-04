@@ -160,11 +160,33 @@ def _migration_2(conn: Connection) -> None:
         conn.execute(text(trig))
 
 
-TAG_DB_SCHEMA_VERSION = 2
+def _migration_3(conn: Connection) -> None:
+    """Add the normalized image palette index used by color search."""
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS entry_colors (
+            entry_id INTEGER NOT NULL,
+            color_name TEXT NOT NULL,
+            hex_color TEXT NOT NULL,
+            weight REAL NOT NULL,
+            rank INTEGER NOT NULL,
+            PRIMARY KEY (entry_id, color_name),
+            FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_entry_colors_name ON entry_colors(color_name)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_entry_colors_entry ON entry_colors(entry_id)"
+    ))
+
+
+TAG_DB_SCHEMA_VERSION = 3
 
 MIGRATIONS = (
     Migration(1, "legacy tag and entry metadata columns", _migration_1),
     Migration(2, "FTS5 search indexes for tags and entries", _migration_2),
+    Migration(3, "normalized image palette color index", _migration_3),
 )
 
 
