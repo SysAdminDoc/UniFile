@@ -141,5 +141,6 @@ def test_natural_language_rules_dialog_builds_review_surface(qapp, tmp_path):
     dialog = NaturalLanguageRulesDialog(source_root=str(tmp_path))
     assert dialog.edit_source.text() == str(tmp_path)
     assert dialog.table.columnCount() == 4
+    assert dialog.btn_open.text() == "Open JSON plan…"
     assert not dialog.btn_apply.isEnabled()
     dialog.close()

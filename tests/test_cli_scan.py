@@ -69,6 +69,9 @@ def test_scan_apply_rules_honors_source_rules_and_dry_run(tmp_path, monkeypatch)
     assert dry_run["would_move"] == 1
     assert dry_run["moved"] == 0
     assert dry_run["items"][0]["method"] == "rule"
+    assert dry_run["action_plan"]["plan_type"] == "file-actions"
+    assert len(dry_run["action_plan"]["actions"]) == 1
+    assert dry_run["action_plan"]["nodes"][-1]["requires_approval"] is True
     assert target.is_file()
     assert not (destination / "Images" / "camera.xyz").exists()
 

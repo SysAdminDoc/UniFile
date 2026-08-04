@@ -11,10 +11,15 @@ import json
 import math
 import os
 import re
-import shutil
 from datetime import datetime
 from types import SimpleNamespace
 
+from unifile.action_plan import (
+    ActionPlanError,
+    apply_action_plan,
+    build_action_plan,
+    normalize_action_plan,
+)
 from unifile.ai_providers import ProviderChain
 from unifile.engine import RenameTemplateEngine, RuleEngine
 
@@ -409,57 +414,34 @@ def build_natural_rule_plan(
         except NaturalRuleError:
             skipped_count += 1
 
-    return {
-        "schema_version": PLAN_SCHEMA_VERSION,
-        "prompt": str(prompt or "").strip()[:2_000],
-        "source_root": root,
-        "provider": str(provider_key or ""),
-        "rule": rule,
-        "nodes": [
+    return build_action_plan(
+        source_root=root,
+        actions=actions,
+        prompt=prompt,
+        provider=provider_key,
+        nodes=[
             {"id": "discover", "type": "scan", "depends_on": []},
             {"id": "match", "type": "rule_filter", "depends_on": ["discover"]},
             {"id": "route", "type": "destination_resolve", "depends_on": ["match"]},
             {"id": "review", "type": "preview", "depends_on": ["route"], "requires_approval": True},
             {"id": "apply", "type": "move", "depends_on": ["review"], "requires_approval": True},
         ],
-        "stats": {
+        stats={
             "scanned": len(files),
             "matched": matched_count,
             "actions": len(actions),
             "skipped": skipped_count,
         },
-        "actions": actions,
-    }
+        rule=rule,
+    )
 
 
 def _validate_plan(plan: dict) -> tuple[str, list[dict]]:
-    if not isinstance(plan, dict) or plan.get("schema_version") != PLAN_SCHEMA_VERSION:
-        raise NaturalRuleError("Unsupported or malformed natural-rule plan.")
-    root = _root_directory(plan.get("source_root", ""))
-    if not isinstance(plan.get("actions"), list):
-        raise NaturalRuleError("The natural-rule plan has no action list.")
-    if len(plan["actions"]) > 100_000:
-        raise NaturalRuleError("The natural-rule plan is larger than the safety limit.")
-    actions = []
-    seen = set()
-    for action in plan["actions"]:
-        if not isinstance(action, dict):
-            raise NaturalRuleError("The natural-rule plan contains an invalid action.")
-        action_id = str(action.get("id", ""))
-        source = os.path.abspath(str(action.get("source", "")))
-        destination = os.path.abspath(str(action.get("destination", "")))
-        if not action_id or action_id in seen:
-            raise NaturalRuleError("The natural-rule plan contains duplicate action IDs.")
-        if not _path_within(source, root) or not _path_within(destination, root):
-            raise NaturalRuleError("A plan action leaves the selected source root.")
-        if not _real_path_within(source, root):
-            raise NaturalRuleError("A plan source resolves outside the selected root.")
-        destination_parent = os.path.dirname(destination) or root
-        if not _real_path_within(destination_parent, root):
-            raise NaturalRuleError("A plan destination resolves outside the selected root.")
-        seen.add(action_id)
-        actions.append({**action, "id": action_id, "source": source, "destination": destination})
-    return root, actions
+    try:
+        normalized = normalize_action_plan(plan)
+    except ActionPlanError as exc:
+        raise NaturalRuleError(str(exc)) from exc
+    return normalized["source_root"], normalized["actions"]
 
 
 def apply_natural_rule_plan(
@@ -469,60 +451,16 @@ def apply_natural_rule_plan(
     action_ids: list[str] | None = None,
     log_cb=None,
 ) -> dict:
-    """Apply selected plan actions without another provider call.
-
-    Existing destination files are never overwritten; a numeric suffix is used
-    when the filesystem changed after the preview.  An undo operation is
-    returned for every successful move.
-    """
-    if not approved:
-        raise NaturalRuleError("Plan approval is required before applying moves.")
-    root, actions = _validate_plan(plan)
-    selected = set(str(item) for item in action_ids) if action_ids is not None else None
-    result = {"applied": 0, "skipped": 0, "errors": [], "undo_ops": [], "details": []}
-    for action in actions:
-        if selected is not None and action["id"] not in selected:
-            continue
-        source = action["source"]
-        planned_destination = action["destination"]
-        try:
-            if not os.path.isfile(source) or os.path.islink(source):
-                result["skipped"] += 1
-                result["details"].append({"id": action["id"], "status": "skipped", "reason": "source missing"})
-                continue
-            if not _real_path_within(source, root):
-                raise NaturalRuleError("The source no longer resolves inside the selected root.")
-            destination_parent = os.path.dirname(planned_destination) or root
-            os.makedirs(destination_parent, exist_ok=True)
-            if not _real_path_within(destination_parent, root):
-                raise NaturalRuleError("The destination parent resolves outside the selected root.")
-            if os.path.normcase(os.path.abspath(source)) == os.path.normcase(os.path.abspath(planned_destination)):
-                result["skipped"] += 1
-                result["details"].append({"id": action["id"], "status": "skipped", "reason": "already at destination"})
-                continue
-            destination = _collision_free_path(planned_destination)
-            shutil.move(source, destination)
-            relative_source = os.path.relpath(source, root).replace(os.sep, "/")
-            relative_destination = os.path.relpath(destination, root).replace(os.sep, "/")
-            result["applied"] += 1
-            result["undo_ops"].append({
-                "type": "move",
-                "src": destination,
-                "dst": source,
-                "status": "Done",
-            })
-            result["details"].append({
-                "id": action["id"],
-                "status": "applied",
-                "source": relative_source,
-                "destination": relative_destination,
-            })
-            if log_cb:
-                log_cb(f"Moved {relative_source} → {relative_destination}")
-        except (OSError, NaturalRuleError) as exc:
-            result["errors"].append({"id": action["id"], "error": str(exc)})
-            result["details"].append({"id": action["id"], "status": "error", "reason": str(exc)})
-    return result
+    """Apply selected natural-rule actions through the shared transaction."""
+    try:
+        return apply_action_plan(
+            plan,
+            approved=approved,
+            action_ids=action_ids,
+            log_cb=log_cb,
+        )
+    except ActionPlanError as exc:
+        raise NaturalRuleError(str(exc)) from exc
 
 
 __all__ = [

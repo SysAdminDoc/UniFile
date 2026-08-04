@@ -156,7 +156,9 @@ choose the source folder. UniFile asks the configured provider for one
 structured rule, evaluates matching files locally, and previews the resulting
 action DAG with exact source and destination paths. Click **Apply approved
 plan** only after reviewing the rows; the apply step makes no further AI calls,
-never overwrites an existing file, and records successful moves for undo.
+never overwrites an existing file, and records successful moves for undo. The
+same dialog can open a JSON plan exported by the headless scan command, so CLI
+dry runs and provider proposals use the same validated action-list contract.
 
 ### Multiple Libraries
 
@@ -436,6 +438,10 @@ plan, and only `--apply-rules` performs collision-safe moves. Use
 the command uses the same configured category destinations as the desktop app.
 Only results at or above the default 80% confidence floor are candidates, and
 `--min-confidence` can adjust that threshold.
+With `--dry-run`, the exported scan envelope includes a canonical `action_plan`
+JSON object. Open that file from **Settings → Natural Language Rules → Open JSON
+plan…** to review the source/destination diff and approve the same transactional
+apply path used by natural-language rules.
 `watch` polls recursively without importing Qt, establishes the current folder as
 the baseline, then classifies files only after their size and modification time
 remain stable for 500 ms. Use `--apply-rules` to enable collision-safe moves;

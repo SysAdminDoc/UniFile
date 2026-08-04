@@ -82,8 +82,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Developer Ecosystem
 
-- **Action DAG dry-run renderer** — LLM produces proposed file actions as a JSON action list; GUI renders a diff view; user approves before atomic apply; same interface used by `--dry-run` CLI flag
-
 ---
 
 ## Competitive Research

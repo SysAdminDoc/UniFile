@@ -30,6 +30,8 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Shared JSON action-plan validation and transactional apply across natural-language
+  rules and `scan --dry-run`, with a GUI diff loader for exported plans.
 - YAML plugin manifests with trust-bound discovery, `unifile plugin create`
   scaffolding, and a bounded display-only community index browser.
 - A per-module pytest-cov gate and targeted regression coverage keep the

@@ -23,10 +23,14 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from unifile.action_plan import (
+    ActionPlanError,
+    apply_action_plan,
+    load_action_plan_file,
+)
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.natural_rules import (
-    apply_natural_rule_plan,
     build_natural_rule_plan,
 )
 
@@ -55,7 +59,7 @@ class _NaturalRuleApplyWorker(QThread):
     def __init__(self, plan: dict, applier=None, parent=None):
         super().__init__(parent)
         self.plan = plan
-        self.applier = applier or apply_natural_rule_plan
+        self.applier = applier or apply_action_plan
 
     def run(self) -> None:
         try:
@@ -119,6 +123,11 @@ class NaturalLanguageRulesDialog(QDialog):
         self.btn_build.setAccessibleName("Build natural language rule review plan")
         self.btn_build.clicked.connect(self._build_plan)
         action_row.addWidget(self.btn_build)
+        self.btn_open = QPushButton("Open JSON plan…")
+        self.btn_open.setAccessibleName("Open a JSON action plan for review")
+        self.btn_open.setToolTip("Review a plan exported by the headless --dry-run command")
+        self.btn_open.clicked.connect(self._open_plan_file)
+        action_row.addWidget(self.btn_open)
         self.lbl_status = QLabel("No plan built yet.")
         self.lbl_status.setWordWrap(True)
         self.lbl_status.setStyleSheet(f"color: {theme['muted']}; font-size: 11px;")
@@ -163,6 +172,26 @@ class NaturalLanguageRulesDialog(QDialog):
         chosen = QFileDialog.getExistingDirectory(self, "Choose rule source folder", current)
         if chosen:
             self.edit_source.setText(chosen)
+
+    def _open_plan_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open action plan",
+            "",
+            "JSON plans (*.json);;All files (*.*)",
+        )
+        if not path:
+            return
+        try:
+            plan = load_action_plan_file(path)
+        except ActionPlanError as exc:
+            self.lbl_status.setText(f"Action plan could not be opened: {exc}")
+            return
+        self.edit_source.setText(str(plan.get("source_root", "")))
+        self._plan_ready(plan)
+        self.lbl_status.setText(
+            "Loaded the exported plan. Review the diff carefully before approving any move."
+        )
 
     def _build_plan(self) -> None:
         if self._plan_worker is not None:
@@ -220,7 +249,7 @@ class NaturalLanguageRulesDialog(QDialog):
             f"proposed {len(actions):,} move(s) · provider: {provider}."
         )
         self.lbl_status.setText(
-            "Review the destinations carefully. Apply remains disabled until this preview is explicitly approved."
+            "Review the action diff carefully. Apply remains disabled until this preview is explicitly approved."
             if actions else "No files matched the compiled rule."
         )
         self.btn_apply.setEnabled(bool(actions))
@@ -276,7 +305,7 @@ class NaturalLanguageRulesDialog(QDialog):
                     undo_ops,
                     source_dir=str(self._plan.get("source_root", "")),
                     mode="natural-rules",
-                    rule=str(self._plan.get("rule", {}).get("name", "")),
+                    rule=str((self._plan.get("rule") or {}).get("name", "")),
                 )
                 append_csv_log(undo_ops)
                 parent = self.parentWidget()

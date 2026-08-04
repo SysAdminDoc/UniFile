@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from unifile.action_plan import action_plan_from_scan_result
 from unifile.config import is_protected
 from unifile.engine import RuleEngine, apply_rule_delta
 from unifile.files import (
@@ -275,6 +276,25 @@ def scan_directory(
     moved = 0
     would_move = sum(1 for item in items if item["selected"])
     failed = 0
+    result = {
+        "version": SCAN_SCHEMA_VERSION,
+        "timestamp": datetime.now().isoformat(),
+        "source": str(source_path),
+        "destination": str(destination_path) if destination_path else "",
+        "mode": "headless-rule-apply" if apply_rules else "headless-rule-based",
+        "apply_rules": bool(apply_rules),
+        "dry_run": bool(dry_run and apply_rules),
+        "min_confidence": confidence_floor,
+        "rules_count": len(rules),
+        "items": items,
+        "count": len(items),
+        "selected_count": sum(1 for item in items if item["selected"]),
+        "would_move": would_move,
+        "moved": moved,
+        "failed": failed,
+        "errors": errors,
+    }
+    action_plan = action_plan_from_scan_result(result)
     if apply_rules:
         planned_keys = {
             os.path.normcase(os.path.realpath(item["dst"]))
@@ -322,21 +342,11 @@ def scan_directory(
                 item["status"] = "Done"
                 moved += 1
 
-    return {
-        "version": SCAN_SCHEMA_VERSION,
-        "timestamp": datetime.now().isoformat(),
-        "source": str(source_path),
-        "destination": str(destination_path) if destination_path else "",
-        "mode": "headless-rule-apply" if apply_rules else "headless-rule-based",
-        "apply_rules": bool(apply_rules),
-        "dry_run": bool(dry_run and apply_rules),
-        "min_confidence": confidence_floor,
-        "rules_count": len(rules),
-        "items": items,
-        "count": len(items),
+    result.update({
         "selected_count": sum(1 for item in items if item["selected"]),
-        "would_move": would_move,
         "moved": moved,
         "failed": failed,
         "errors": errors,
-    }
+        "action_plan": action_plan,
+    })
+    return result
