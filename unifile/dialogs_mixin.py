@@ -211,6 +211,17 @@ class DialogsMixin:
                 f"Disk space protection floor saved: {dlg.spn_min_free.value():,} MB"
             )
 
+    def _open_scan_throttle_settings(self):
+        from unifile.dialogs.advanced_settings import ScanThrottleSettingsDialog
+
+        dlg = ScanThrottleSettingsDialog(self, settings=self.settings)
+        if dlg.exec():
+            self._log(
+                "Background scan throttle saved: "
+                f"{dlg.spn_delay.value()} ms/item, "
+                f"battery pause={'on' if dlg.chk_pause_battery.isChecked() else 'off'}"
+            )
+
     def _open_embedding_settings(self):
         from unifile.dialogs.advanced_settings import EmbeddingSettingsDialog
         dlg = EmbeddingSettingsDialog(self)

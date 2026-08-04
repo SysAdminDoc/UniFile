@@ -121,6 +121,7 @@ from unifile.raw_photos import (
     extract_raw_photo_metadata,
     family_for_path,
 )
+from unifile.scan_throttle import ScanThrottle
 
 _OLLAMA_PULL_MODEL_COMPAT = _ollama_pull_model
 
@@ -212,6 +213,14 @@ class _ScanCheckpointTracker:
             return
         self.flush()
         self.cache.checkpoint_clear(self.scan_id)
+
+
+def _new_scan_throttle(log_cb):
+    """Load the shared pacing policy and announce it once per worker."""
+    throttle = ScanThrottle()
+    if throttle.enabled and log_cb:
+        log_cb(f"  Scan throttle: {throttle.describe()}")
+    return throttle
 
 
 def _get_ai_backend() -> str:
@@ -529,8 +538,14 @@ class ScanAepWorker(QThread):
             self.log.emit(f"  Deep scan (depth {self.scan_depth}): processing {len(folders)} subfolders")
 
         total = len(folders)
+        throttle = _new_scan_throttle(self.log.emit)
         for idx, folder in enumerate(folders):
             if self._cancelled:
+                self.log.emit(f"  Scan cancelled at {idx}/{total}")
+                break
+            if not throttle.wait(
+                    cancelled=lambda: self._cancelled,
+                    log_cb=self.log.emit):
                 self.log.emit(f"  Scan cancelled at {idx}/{total}")
                 break
             self.progress.emit(idx + 1, total)
@@ -733,8 +748,14 @@ class ScanCategoryWorker(QThread):
         total = len(folders)
         self.phase.emit("Categorizing", f"Classifying {total:,} folders with rule engine…")
         t0 = time.time(); cached_hits = 0; correction_hits = 0; csv_rule_hits = 0
+        throttle = _new_scan_throttle(self.log.emit)
         for idx, folder in enumerate(folders):
             if self._cancelled:
+                self.log.emit(f"  Scan cancelled at {idx}/{total}")
+                break
+            if not throttle.wait(
+                    cancelled=lambda: self._cancelled,
+                    log_cb=self.log.emit):
                 self.log.emit(f"  Scan cancelled at {idx}/{total}")
                 break
             self.progress.emit(idx + 1, total)
@@ -926,11 +947,17 @@ class ScanLLMWorker(QThread):
         llm_ok = 0; llm_fail = 0
 
         t0 = time.time(); cached_hits = 0; correction_hits = 0; csv_rule_hits = 0; name_cache_hits = 0
+        throttle = _new_scan_throttle(self.log.emit)
 
         # Separate folders needing LLM from those already handled
         pending = []
         for idx, folder in enumerate(folders):
             if self._cancelled:
+                self.log.emit(f"  Scan cancelled at {idx}/{total}")
+                break
+            if not throttle.wait(
+                    cancelled=lambda: self._cancelled,
+                    log_cb=self.log.emit):
                 self.log.emit(f"  Scan cancelled at {idx}/{total}")
                 break
             self.progress.emit(idx + 1, total)
@@ -1043,6 +1070,10 @@ class ScanLLMWorker(QThread):
         for batch_start in range(0, len(pending), BATCH_SIZE):
             if self._cancelled:
                 break
+            if not throttle.wait(
+                    cancelled=lambda: self._cancelled,
+                    log_cb=self.log.emit):
+                break
 
             # If LLM keeps failing, stop wasting time and use rule-based for the rest
             if consecutive_llm_failures >= MAX_CONSECUTIVE_FAILURES:
@@ -1153,8 +1184,14 @@ class ScanLLMWorker(QThread):
     def _fallback_scan(self, folders):
         """Full rule-based fallback if Ollama is unreachable."""
         total = len(folders)
+        throttle = _new_scan_throttle(self.log.emit)
         for idx, folder in enumerate(folders):
             if self._cancelled:
+                self.log.emit(f"  Scan cancelled at {idx}/{total}")
+                break
+            if not throttle.wait(
+                    cancelled=lambda: self._cancelled,
+                    log_cb=self.log.emit):
                 self.log.emit(f"  Scan cancelled at {idx}/{total}")
                 break
             self.progress.emit(idx + 1, total)
@@ -1688,10 +1725,16 @@ class ScanFilesWorker(QThread):
         _conv_settings = load_ollama_settings()
         _convert_heic = _conv_settings.get('convert_heic_to_jpg', True)
         _convert_webp = _conv_settings.get('convert_webp_to_jpg', True)
+        throttle = _new_scan_throttle(self.log.emit)
 
         for idx, (item_path, is_folder) in enumerate(items):
             if self._cancelled:
                 self.log.emit(f"  Scan cancelled at {idx}/{total}"); break
+            if not throttle.wait(
+                    cancelled=lambda: self._cancelled,
+                    log_cb=self.log.emit):
+                self.log.emit(f"  Scan cancelled at {idx}/{total}")
+                break
             self.progress.emit(idx + 1, total)
 
             name  = item_path.name
@@ -2354,6 +2397,7 @@ class ScanFilesLLMWorker(QThread):
             self._fallback_rule_based(); return
 
         self.phase.emit("Scanning", "Collecting items…")
+        throttle = _new_scan_throttle(self.log.emit)
         src = Path(self.src_dir)
         rule_worker = ScanFilesWorker(
             self.src_dir, self.dst_dir, self.categories,
@@ -3097,6 +3141,10 @@ class ScanFilesLLMWorker(QThread):
             for offset, (item_path, is_folder) in enumerate(batch):
                 bd = _build_item_data(item_path, is_folder)
                 bd['_checkpoint_position'] = batch_start + offset
+                if not throttle.wait(
+                        cancelled=lambda: self._cancelled,
+                        log_cb=self.log.emit):
+                    break
 
                 resumed = checkpoint.resume(bd['checkpoint_key'])
                 if resumed:

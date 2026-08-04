@@ -238,6 +238,9 @@ class SettingsHubDialog(QDialog):
                 ("Disk Space Protection…",
                  "Block bulk applies below a configurable free-space floor (default 500 MB).",
                  self._open_disk_space),
+                ("Background Scan Throttle…",
+                 "Pace filesystem scans and pause them on battery power by default.",
+                 self._open_scan_throttle),
                 ("Plugin Manager…",
                  "Review installed plugins; enable or disable individually.",
                  self._open_plugins),
@@ -330,6 +333,7 @@ class SettingsHubDialog(QDialog):
     def _open_accessibility(self):    self._call('_open_accessibility')
     def _open_protected(self):        self._call('_open_protected_paths')
     def _open_disk_space(self):       self._call('_open_disk_space_settings')
+    def _open_scan_throttle(self):     self._call('_open_scan_throttle_settings')
     def _open_plugins(self):          self._call('_open_plugin_manager')
     def _open_shell(self):            self._call('_open_shell_integration')
 

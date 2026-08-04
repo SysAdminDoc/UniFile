@@ -30,6 +30,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Background scanners now share a cancellation-aware I/O throttle with a 2 ms default yield and battery-power pause; pacing, power polling, and the battery policy are configurable in Settings → System.
 - SQLite WAL transaction replay now journals every apply operation, supports newest-first last-N restoration, and exposes the replay control in Undo Timeline while keeping the legacy JSON history synchronized.
 - Checkpointed PC scans now persist completed results to SQLite in 500-item batches, automatically resume matching interrupted scans, and discard the checkpoint after a successful run.
 - Disk-space protection now preflights AEP renames, folder categorization, and PC file moves, reserves cross-volume copy bytes, and exposes a configurable 500 MB default floor in Settings → System.

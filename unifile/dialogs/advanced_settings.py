@@ -105,6 +105,104 @@ class DiskSpaceSettingsDialog(QDialog):
         self.accept()
 
 
+class ScanThrottleSettingsDialog(QDialog):
+    """Configure pacing and battery-aware pauses for background scans."""
+
+    def __init__(self, parent=None, settings=None):
+        super().__init__(parent)
+        self.setWindowTitle("Background Scan Throttle")
+        self.setMinimumSize(560, 360)
+        self.setStyleSheet(get_active_stylesheet())
+        self.settings = settings or QSettings("UniFile", "UniFile")
+        self._build_ui()
+
+    def _build_ui(self):
+        from unifile.scan_throttle import (
+            DEFAULT_BATTERY_POLL_SECONDS,
+            DEFAULT_DELAY_MS,
+            DEFAULT_PAUSE_ON_BATTERY,
+            MAX_BATTERY_POLL_SECONDS,
+            MAX_DELAY_MS,
+            load_scan_throttle_settings,
+        )
+
+        theme = get_active_theme()
+        values = load_scan_throttle_settings(self.settings)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.addWidget(build_dialog_header(
+            theme,
+            "Performance",
+            "Background Scan Throttle",
+            "Pace filesystem scans so large libraries do not saturate a hard drive. "
+            "Cancellation remains responsive while a scan is paused.",
+        ))
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Delay between items"))
+        self.spn_delay = QSpinBox()
+        self.spn_delay.setRange(0, MAX_DELAY_MS)
+        self.spn_delay.setValue(values['delay_ms'])
+        self.spn_delay.setSuffix(" ms")
+        self.spn_delay.setToolTip("Set to 0 to disable I/O pacing.")
+        row.addWidget(self.spn_delay)
+        row.addStretch()
+        layout.addLayout(row)
+
+        self.chk_pause_battery = QCheckBox(
+            "Pause scans while running on battery power"
+        )
+        self.chk_pause_battery.setChecked(values['pause_on_battery'])
+        self.chk_pause_battery.setToolTip(
+            "The pause activates only when Windows reports a known battery state."
+        )
+        layout.addWidget(self.chk_pause_battery)
+
+        poll_row = QHBoxLayout()
+        poll_row.addWidget(QLabel("Battery status poll interval"))
+        self.spn_poll = QSpinBox()
+        self.spn_poll.setRange(1, MAX_BATTERY_POLL_SECONDS)
+        self.spn_poll.setValue(values['battery_poll_seconds'])
+        self.spn_poll.setSuffix(" seconds")
+        poll_row.addWidget(self.spn_poll)
+        poll_row.addStretch()
+        layout.addLayout(poll_row)
+
+        hint = QLabel(
+            f"Defaults: {DEFAULT_DELAY_MS} ms per item, battery pause "
+            f"{'on' if DEFAULT_PAUSE_ON_BATTERY else 'off'}, and a "
+            f"{DEFAULT_BATTERY_POLL_SECONDS}-second power poll. Set the delay "
+            "to 0 and uncheck battery pause for maximum throughput."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {theme['muted']}; font-size: 11px;")
+        layout.addWidget(hint)
+        layout.addStretch()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
+            "Save Scan Settings"
+        )
+        buttons.accepted.connect(self._save_settings)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _save_settings(self):
+        from unifile.scan_throttle import save_scan_throttle_settings
+
+        save_scan_throttle_settings(
+            self.settings,
+            delay_ms=self.spn_delay.value(),
+            pause_on_battery=self.chk_pause_battery.isChecked(),
+            battery_poll_seconds=self.spn_poll.value(),
+        )
+        self.accept()
+
+
 class AIProviderSettingsDialog(QDialog):
     """Configure multi-provider AI backend (Ollama, OpenAI-compatible, Groq, OpenAI)."""
 

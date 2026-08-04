@@ -267,6 +267,7 @@ require the dialog's review button.
 - **SQLite transaction replay** — apply operations are journaled in WAL mode and can be replayed newest-first by batch or by a configurable last-N count from Undo Timeline
 - **Disk space protection** — bulk moves and renames stop before execution when the destination would fall below the configurable free-space floor (500 MB by default); configure it in Settings → All Settings → System
 - **Checkpointed scans** — PC scans persist completed results to SQLite in 500-item batches and resume interrupted work without reclassifying unchanged items
+- **Background scan throttle** — scans yield between items and pause on known battery power by default; configure pacing and battery behavior in Settings → All Settings → System
 - **CSV audit trail** — every classification logged with timestamp, method, confidence
 - **Confidence tiers** — Auto-apply (90%+), Suggest (70–89%), and Skip (<70%) labels; scheduled applies use only the high-confidence tier, with per-profile overrides in Settings → All Settings → Confidence Tiers
 - **Crash handler** — unhandled exceptions saved to crash log with MessageBox notification

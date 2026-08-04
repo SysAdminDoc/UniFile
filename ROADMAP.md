@@ -62,7 +62,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Performance & Scale
 
-- **Background scanner with throttle** — rate-limit I/O to avoid saturating HDDs; battery-aware throttle on laptops (pause when on battery by default, configurable)
 - **Virtualized tree + thumbnail grid** — `QAbstractItemModel` with lazy-load for 500k+ entries; thumbnail grid uses item view with fixed-size delegates; no full-list materialization in memory
 - **Memory-mapped thumbnail cache** — LRU-evicted per configurable cap (default 500 MB); SQLite blob or filesystem cache with `mmap` access; shared across library panels
 - **Incremental scan** — skip files whose `mtime + size` hasn't changed since last scan; only re-classify new or modified files; configurable "force full rescan" option
