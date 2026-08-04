@@ -44,7 +44,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## AI & Inference
 
-- **Few-shot correction store** — when user overrides an LLM result, append `(folder_name, correct_category)` to a local examples file; inject top-10 examples into the system prompt
 - **Batched vision inference** — queue 32 images, encode in a single forward pass (Nexa SDK / ONNX); 30× faster than one-at-a-time for photo libraries
 - **Provider health dashboard** — Settings panel showing latency, error rate, and token cost for each configured AI provider; sparkline per provider
 - **Anthropic Claude / Gemini adapters** — extend `AIProvider` with Claude (messages API) and Gemini (generateContent API) as additional OpenAI-compat variants

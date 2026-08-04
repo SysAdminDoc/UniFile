@@ -287,6 +287,8 @@ Click **Settings > Ollama LLM** to configure:
 
 Classification results are labeled by confidence: **Auto-apply** (90% or higher), **Suggest** (70–89%), or **Skip** (below 70%). Scheduled `--auto-apply` jobs select only Auto-apply rows; interactive scans keep Suggest rows available for review. Open **Settings → All Settings → Confidence Tiers** to override the thresholds for each built-in scan profile.
 
+Manual category corrections are retained as local few-shot examples and the 10 most recent examples are supplied to later AI classifications as quoted hints. They are included in rules-bundle export/import and never require a remote learning service.
+
 **Recommended models:**
 
 | Model | Size | Speed | Accuracy | Install |

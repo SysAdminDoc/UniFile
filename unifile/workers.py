@@ -2247,6 +2247,12 @@ class ScanFilesLLMWorker(QThread):
             "actual content. If no content preview is provided, clean up the original filename.\n"
             "No other text."
         )
+        from unifile.cache import format_few_shot_prompt
+        few_shot_suffix = format_few_shot_prompt()
+        if few_shot_suffix:
+            system_vision += few_shot_suffix
+            system_batch += few_shot_suffix
+            system_single += few_shot_suffix
 
         def _prep_item(item_path, is_folder, name):
             """Build context lines for one item (sanitize for LLM injection)."""

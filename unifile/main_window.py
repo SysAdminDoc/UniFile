@@ -55,6 +55,7 @@ from unifile.cache import (
     load_corrections,
     load_undo_log,
     save_correction,
+    save_few_shot_example,
 )
 from unifile.categories import (
     get_all_category_names,
@@ -2008,6 +2009,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             if mi: mi.setText("manual"); mi.setForeground(QColor(get_active_theme()['accent_hover']))
             # Feed to adaptive learner
             get_learner().record_correction(it.name, it.full_src, new_cat)
+            save_few_shot_example(it.name, new_cat)
 
     def _reclassify_rows(self, rows: list):
         """Re-classify selected visual rows using LLM in a background thread."""
@@ -4037,7 +4039,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                     it.category = cat_name
                     it.method = 'drag_drop'
                     changed += 1
-                    corrections.append((it.filename, it.full_src, old_cat, cat_name))
+                    corrections.append((it.name, it.full_src, old_cat, cat_name))
                     ci = self.tbl.item(visual_row, 5)
                     if ci:
                         ci.setText(f"\u2B24 {cat_name}")
@@ -4051,6 +4053,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                 learner = get_learner()
                 for fname, fpath, old_cat, new_cat in corrections:
                     learner.record_correction(fname, fpath, new_cat)
+                    save_few_shot_example(fname, new_cat)
             except Exception:
                 pass
 

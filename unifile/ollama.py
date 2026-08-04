@@ -751,10 +751,14 @@ def _escalate_classification(folder_name, folder_path, initial_result,
         return initial_result
 
 
-def _build_llm_system_prompt() -> str:
+def _build_llm_system_prompt(category_names=None) -> str:
     """Build the system prompt with all category names for LLM classification.
     Uses profile-specific persona when a non-design profile is active."""
+    from unifile.cache import format_few_shot_prompt
     from unifile.profiles import get_llm_system_prompt_prefix, get_profile_categories
+
+    def _with_examples(prompt: str) -> str:
+        return prompt + format_few_shot_prompt()
 
     # Check if we have a profile-specific prompt
     prefix = get_llm_system_prompt_prefix()
@@ -763,12 +767,12 @@ def _build_llm_system_prompt() -> str:
         profile_cats = get_profile_categories()
         cat_names = [c[0] for c in profile_cats]
         cat_list = '\n'.join(cat_names)
-        return prefix + cat_list
+        return _with_examples(prefix + cat_list)
 
     # Default: Design Assets prompt (original behavior)
-    cats = get_all_category_names()
+    cats = category_names or get_all_category_names()
     cat_list = '\n'.join(cats)
-    return (
+    base_prompt = (
         "You are a design asset file organizer specializing in creative marketplace content "
         "(Envato, Creative Market, Freepik, etc).\n\n"
         "Your job:\n"
@@ -822,6 +826,7 @@ def _build_llm_system_prompt() -> str:
         "VALID CATEGORIES (pick exactly one):\n"
         f"{cat_list}"
     )
+    return _with_examples(base_prompt)
 
 
 _CLASSIFY_SCHEMA = {

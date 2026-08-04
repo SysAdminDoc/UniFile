@@ -29,6 +29,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Few-shot correction learning now keeps the 10 most recent manual folder/file category overrides in a local JSONL store, safely quotes them in Ollama/provider prompts, and includes them in rules-bundle export/import.
 - Confidence tiers now label every classification as Auto-apply, Suggest, or Skip, support per-profile threshold overrides in Settings, and restrict scheduled unattended applies to the high-confidence tier.
 - Batched LLM inference now uses a validated default batch size of 10, exposes the safe 1–25 range in Ollama settings, and preserves per-model overrides with chunk-level failure isolation.
 - Voice Control: add an offline command grammar for tag, scan, and media-search actions, optional Whisper transcription for existing audio/video files, opt-in provider fallback, review-before-apply execution, and a configurable `Ctrl+Shift+V` activation shortcut.
