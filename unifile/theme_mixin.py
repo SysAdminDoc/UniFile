@@ -73,6 +73,15 @@ class ThemeMixin:
         if hasattr(self, '_nav_section_labels'):
             for lbl in self._nav_section_labels:
                 lbl.setStyleSheet(_NAV_SECTION)
+        _SECTION_HEADER = (
+            f"QToolButton {{ background: transparent; color: {t['sidebar_section']}; border: none;"
+            f"padding: 12px 16px 4px 16px; font-size: 10px; font-weight: 700;"
+            f"letter-spacing: 1.5px; text-align: left; }}"
+            f"QToolButton:hover {{ color: {t['fg_bright']}; background: {t['sidebar_btn_hover_bg']}; }}"
+        )
+        if hasattr(self, '_sidebar_section_headers'):
+            for header in self._sidebar_section_headers:
+                header.setStyleSheet(_SECTION_HEADER)
 
         # Profile combo
         if hasattr(self, 'cmb_profile'):

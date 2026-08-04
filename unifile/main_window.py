@@ -123,6 +123,13 @@ from unifile.ratings import bulk_load as ratings_bulk_load
 from unifile.ratings import clear_rating, get_rating, set_rating
 from unifile.scan_mixin import ScanMixin
 from unifile.shortcuts import ShortcutManager
+from unifile.sidebar import (
+    SIDEBAR_SECTION_ORDER,
+    SidebarSection,
+    SidebarSectionHost,
+    load_sidebar_state,
+    save_sidebar_state,
+)
 from unifile.theme_mixin import ThemeMixin
 from unifile.thumbnail_cache import load_thumbnail_pixmap
 from unifile.timeline import TimelineView
@@ -377,6 +384,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         #  LEFT SIDEBAR — Navigation panel (Czkawka/Krokiet-inspired)
         # ══════════════════════════════════════════════════════════════════════
         sidebar = QWidget()
+        self._sidebar = sidebar
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(232)
         sidebar.setStyleSheet(
@@ -421,14 +429,19 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             f"color: {_t['sidebar_section']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
             f"padding: 12px 16px 4px 16px; background: transparent;"
         )
+        _SECTION_HEADER = (
+            f"QToolButton {{ background: transparent; color: {_t['sidebar_section']}; border: none;"
+            f"padding: 12px 16px 4px 16px; font-size: 10px; font-weight: 700;"
+            f"letter-spacing: 1.5px; text-align: left; }}"
+            f"QToolButton:hover {{ color: {_t['fg_bright']}; background: {_t['sidebar_btn_hover_bg']}; }}"
+        )
         self._nav_btn_style = _NAV_BTN
         self._nav_section_style = _NAV_SECTION
+        self._sidebar_section_header_style = _SECTION_HEADER
 
         # ── ORGANIZE section ─────────────────────────────────────────────
-        lbl_sec_org = QLabel("ORGANIZE")
-        lbl_sec_org.setStyleSheet(_NAV_SECTION)
-        sb_lay.addWidget(lbl_sec_org)
-        self._nav_section_labels = [lbl_sec_org]
+        organize_widgets = []
+        self._nav_section_labels = []
 
         self._nav_buttons = []
         _nav_items_organize = [
@@ -448,14 +461,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             btn.setStyleSheet(_NAV_BTN)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=op_idx: self._on_sidebar_nav(idx))
-            sb_lay.addWidget(btn)
+            organize_widgets.append(btn)
             self._nav_buttons.append(('op', op_idx, btn))
 
         # ── TOOLS section ────────────────────────────────────────────────
-        lbl_sec_tools = QLabel("TOOLS")
-        lbl_sec_tools.setStyleSheet(_NAV_SECTION)
-        sb_lay.addWidget(lbl_sec_tools)
-        self._nav_section_labels.append(lbl_sec_tools)
+        tools_widgets = []
 
         _nav_items_tools = [
             ("Duplicate Finder",  'duplicates', None),
@@ -476,14 +486,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(
                 lambda checked, t=tool_type, ti=tab_idx: self._on_sidebar_tool(t, ti))
-            sb_lay.addWidget(btn)
+            tools_widgets.append(btn)
             self._nav_buttons.append(('tool', (tool_type, tab_idx), btn))
 
         # ── LIBRARY section ──────────────────────────────────────────────────
-        lbl_sec_lib = QLabel("LIBRARY")
-        lbl_sec_lib.setStyleSheet(_NAV_SECTION)
-        sb_lay.addWidget(lbl_sec_lib)
-        self._nav_section_labels.append(lbl_sec_lib)
+        library_widgets = []
 
         library_switcher = QWidget()
         library_switcher.setStyleSheet("background: transparent;")
@@ -515,7 +522,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_add_library.setStyleSheet(_SEC_BTN)
         self.btn_add_library.clicked.connect(self._add_library)
         library_switcher_layout.addWidget(self.btn_add_library)
-        sb_lay.addWidget(library_switcher)
+        library_widgets.append(library_switcher)
         self._populate_library_selector()
 
         _nav_items_library = [
@@ -531,7 +538,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             btn.setStyleSheet(_NAV_BTN)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=op_idx: self._on_sidebar_nav(idx))
-            sb_lay.addWidget(btn)
+            library_widgets.append(btn)
             self._nav_buttons.append(('op', op_idx, btn))
             if label == "Inbox / Archive":
                 self._inbox_nav_button = btn
@@ -542,18 +549,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         smart_lay = QVBoxLayout(self._smart_views_section)
         smart_lay.setContentsMargins(0, 4, 0, 4)
         smart_lay.setSpacing(2)
-        self._smart_views_label = QLabel("SMART VIEWS")
-        self._smart_views_label.setStyleSheet(_NAV_SECTION)
-        self._nav_section_labels.append(self._smart_views_label)
-        smart_lay.addWidget(self._smart_views_label)
         self._smart_views_layout = QVBoxLayout()
         self._smart_views_layout.setContentsMargins(0, 0, 0, 0)
         self._smart_views_layout.setSpacing(2)
         smart_lay.addLayout(self._smart_views_layout)
-        sb_lay.addWidget(self._smart_views_section)
         self._refresh_smart_views_sidebar()
-
-        sb_lay.addStretch()
 
         # ── Profile selector (bottom of sidebar) ─────────────────────────
         prof_w = QWidget()
@@ -561,12 +561,6 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         prof_lay = QVBoxLayout(prof_w)
         prof_lay.setContentsMargins(12, 8, 12, 4)
         prof_lay.setSpacing(4)
-        lbl_prof = QLabel("PROFILE")
-        lbl_prof.setStyleSheet(
-            f"color: {_t['sidebar_section']}; font-size: 10px; font-weight: 700; letter-spacing: 1.5px;"
-            "background: transparent;")
-        self._nav_section_labels.append(lbl_prof)
-        prof_lay.addWidget(lbl_prof)
         self.cmb_profile = QComboBox()
         self.cmb_profile.addItems(get_profile_names())
         self.cmb_profile.setAccessibleName("Scan profile")
@@ -615,7 +609,6 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.cmb_archive_mode.currentIndexChanged.connect(self._on_archive_mode_changed)
         self._set_archive_mode_combo(get_archive_mode())
         prof_lay.addWidget(self.cmb_archive_mode)
-        sb_lay.addWidget(prof_w)
 
         # ── LLM status indicator (bottom of sidebar) ─────────────────────
         llm_w = QWidget()
@@ -629,6 +622,31 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             "color: #f59e0b; font-size: 10px; background: transparent;")
         llm_lay.addWidget(self.lbl_llm_status)
         sb_lay.addWidget(llm_w)
+
+        # ── Customizable sidebar sections ───────────────────────────────
+        section_bodies = {
+            "organize": organize_widgets,
+            "tools": tools_widgets,
+            "library": library_widgets,
+            "smart_views": [self._smart_views_section],
+            "profile": [prof_w],
+        }
+        sections = {
+            key: SidebarSection(key, widgets, _SECTION_HEADER)
+            for key, widgets in section_bodies.items()
+        }
+        self._sidebar_sections = sections
+        self._sidebar_sections_host = SidebarSectionHost()
+        order, collapsed = load_sidebar_state(self.settings)
+        self._sidebar_sections_host.set_sections(sections, order)
+        self._sidebar_section_collapsed = collapsed
+        for key, section in sections.items():
+            section.set_collapsed(collapsed.get(key, False))
+            section.collapse_changed.connect(self._on_sidebar_section_collapsed)
+        self._sidebar_sections_host.order_changed.connect(self._on_sidebar_order_changed)
+        sb_lay.insertWidget(1, self._sidebar_sections_host, 1)
+        self._sidebar_section_headers = [section.header for section in sections.values()]
+        self._nav_section_labels = [lbl_archive_mode]
 
         root.addWidget(sidebar)
 
@@ -655,6 +673,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._voice_control_action = menu_tools.addAction(
             "Voice Control…", self._open_voice_control)
         menu_tools.addAction("Keyboard Shortcuts…", self._open_shortcuts_dialog)
+        menu_tools.addAction("Reset Sidebar Layout", self._reset_sidebar_layout)
         menu_tools.addSeparator()
         menu_tools.addAction("Edit Categories", self._open_custom_cats)
         menu_tools.addAction("Envato API Key", self._set_envato_key)
@@ -3904,6 +3923,23 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
     def _on_search_text_edited(self, text: str):
         """Reset history cycling position when the user edits the search bar manually."""
         self._history_pos = -1
+
+    def _on_sidebar_order_changed(self, order: list[str]) -> None:
+        save_sidebar_state(self.settings, order, self._sidebar_section_collapsed)
+
+    def _on_sidebar_section_collapsed(self, key: str, collapsed: bool) -> None:
+        self._sidebar_section_collapsed[key] = collapsed
+        save_sidebar_state(self.settings, self._sidebar_sections_host.order(),
+                           self._sidebar_section_collapsed)
+
+    def _reset_sidebar_layout(self) -> None:
+        self._sidebar_section_collapsed = {key: False for key in SIDEBAR_SECTION_ORDER}
+        self._sidebar_sections_host.reset_order()
+        for section in self._sidebar_sections.values():
+            section.set_collapsed(False)
+        save_sidebar_state(self.settings, self._sidebar_sections_host.order(),
+                           self._sidebar_section_collapsed)
+        self._log("Sidebar layout reset")
 
     def _setup_shortcuts(self) -> None:
         """Install all non-voice bindings from the persisted shortcut set."""

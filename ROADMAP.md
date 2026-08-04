@@ -72,7 +72,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## UX & Accessibility
 
-- **Customizable sidebar** — drag to reorder panels; collapse any section; persist layout to config
 
 ---
 

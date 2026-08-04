@@ -269,7 +269,7 @@ require the dialog's review button.
 | Refined Editor Workflows | Category and rule editors now use better summaries, calmer action emphasis, and clearer preview-oriented guidance for power users |
 | Guided Helper Dialogs | Before/After, Event Grouping, and rename-source picking now surface stronger summaries and more intentional review-first guidance |
 | Live Theme Preview | See themes applied instantly before committing |
-| Sidebar Navigation | Left panel with Organizer, Cleanup, Duplicates, Tag Library, Media Lookup |
+| Customizable Sidebar | Drag section headers to reorder Organize, Tools, Library, Smart Views, and Profile; click a header to collapse it; state persists in QSettings |
 | Before/After Preview | Visual directory tree comparison |
 | Dashboard Chart | Interactive category distribution with drag-reassign |
 | File Preview Panel | Split-view with image preview, text excerpt, metadata |
