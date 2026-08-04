@@ -32,6 +32,7 @@ All notable changes to UniFile will be documented in this file.
 ### Added
 - Subtitle and chapter sidecars: review OpenSubtitles `.srt`/`.ass` matches, download selected releases beside local media, and save atomic TMDb-derived `.chapters.json` metadata with explicit OpenSubtitles credential fields.
 - Raw Metadata Inspector: enumerate EXIF, XMP, ID3, mutagen, and PDF fields, preview edits before writing, preserve source bytes with atomic format-specific updates, and restore the last write from a durable backup.
+- Cover art fetcher: validate and cache TMDb, MusicBrainz Cover Art Archive, and OpenLibrary images, then atomically embed missing artwork into MP3, FLAC/Ogg, MP4/M4A, and EPUB files with backup restore.
 - Custom Field Schemas: define per-library text, date, currency, status/enum, and checkbox fields with validated entry editing in the Tag Library.
 - Media Lookup parity: add TVDB → TMDb → TVMaze TV fallback, OpenLibrary → Google Books book/audiobook lookup, and MusicBrainz audio search with normalized detail cards, artwork, IDs, and Tag Library payloads.
 - Color Palette Search: index dominant image colors in each Tag Library and search them with `color:<name>` or natural “predominant … tones” phrases, with a reindex action for existing images.

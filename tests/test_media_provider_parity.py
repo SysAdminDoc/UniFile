@@ -152,6 +152,7 @@ def test_media_lookup_panel_exposes_all_catalogs_and_builds_payload(qapp, monkey
     assert panel.txt_tvdb_pin.accessibleName() == "TVDB subscriber PIN"
     assert panel.txt_opensubtitles_key.accessibleName() == "OpenSubtitles API key"
     assert panel.btn_save_chapters.accessibleName() == "Save TMDb chapter sidecar"
+    assert panel.btn_embed_cover.accessibleName() == "Fetch and embed cover artwork"
 
     panel._set_media_type(providers.MediaType.AUDIOBOOK)
     book = providers.BookResult(
@@ -168,12 +169,19 @@ def test_media_lookup_panel_exposes_all_catalogs_and_builds_payload(qapp, monkey
 
     panel._set_media_type(providers.MediaType.AUDIO)
     audio = providers.AudioResult(
-        title="Come Together", artist="The Beatles", id_musicbrainz="recording-1"
+        title="Come Together", artist="The Beatles", id_musicbrainz="recording-1",
+        cover_url="https://covers.example.test/front.jpg",
     )
     panel._on_detail_ready(audio)
     payload = panel._build_metadata_dict()
     assert payload["media_type"] == "audio"
     assert payload["artist"] == "The Beatles"
+    audio_path = tmp_path / "track.mp3"
+    from mutagen.id3 import ID3
+    ID3().save(audio_path)
+    panel.txt_media_file.setText(str(audio_path))
+    panel._update_cover_art_action()
+    assert panel.btn_embed_cover.isEnabled()
     panel.deleteLater()
     qapp.processEvents()
 

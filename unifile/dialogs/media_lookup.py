@@ -30,6 +30,12 @@ from PyQt6.QtWidgets import (
 )
 
 from unifile.config import get_active_theme
+from unifile.media.cover_art import (
+    CoverArtResult,
+    cover_art_status,
+    fetch_and_embed_cover_art,
+    undo_cover_art_write,
+)
 from unifile.media.providers import (
     AudioResult,
     BookResult,
@@ -225,6 +231,22 @@ class _SubtitleDownloadWorker(QThread):
             self.error.emit(str(exc))
 
 
+class _CoverArtWorker(QThread):
+    result_ready = pyqtSignal(object)
+    error = pyqtSignal(str)
+
+    def __init__(self, filepath: str, url: str):
+        super().__init__()
+        self.filepath = filepath
+        self.url = url
+
+    def run(self):
+        try:
+            self.result_ready.emit(fetch_and_embed_cover_art(self.filepath, self.url))
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 # ---------------------------------------------------------------------------
 # Media Lookup Panel
 # ---------------------------------------------------------------------------
@@ -244,6 +266,8 @@ class MediaLookupPanel(QWidget):
         self._subtitle_worker = None
         self._subtitle_download_worker = None
         self._subtitle_results = []
+        self._cover_art_worker = None
+        self._last_cover_art_result: CoverArtResult | None = None
         self._build_ui()
 
     def _build_ui(self):
@@ -500,16 +524,16 @@ class MediaLookupPanel(QWidget):
         tools_lay = QVBoxLayout(self.media_tools)
         tools_lay.setContentsMargins(10, 8, 10, 8)
         tools_lay.setSpacing(6)
-        self.lbl_media_tools = QLabel("Subtitle + chapter sidecars")
+        self.lbl_media_tools = QLabel("Subtitle + chapter sidecars · Cover art")
         tools_lay.addWidget(self.lbl_media_tools)
 
         media_file_row = QHBoxLayout()
         self.txt_media_file = QLineEdit()
         self.txt_media_file.setReadOnly(True)
-        self.txt_media_file.setPlaceholderText("Choose a local video file")
-        self.txt_media_file.setAccessibleName("Local media file for subtitle tools")
+        self.txt_media_file.setPlaceholderText("Choose a local video or audio file")
+        self.txt_media_file.setAccessibleName("Local media file for subtitle and cover-art tools")
         media_file_row.addWidget(self.txt_media_file, 1)
-        self.btn_choose_media = QPushButton("Choose Video")
+        self.btn_choose_media = QPushButton("Choose Media")
         self.btn_choose_media.setAccessibleName("Choose local media file")
         self.btn_choose_media.clicked.connect(self._on_choose_media_file)
         media_file_row.addWidget(self.btn_choose_media)
@@ -550,6 +574,21 @@ class MediaLookupPanel(QWidget):
         self.btn_save_chapters.setEnabled(False)
         self.btn_save_chapters.clicked.connect(self._on_save_chapters)
         chapter_row.addWidget(self.btn_save_chapters)
+        self.btn_embed_cover = QPushButton("Fetch & Embed Artwork")
+        self.btn_embed_cover.setProperty("class", "success")
+        self.btn_embed_cover.setAccessibleName("Fetch and embed cover artwork")
+        self.btn_embed_cover.setAccessibleDescription(
+            "Download the reviewed provider artwork and embed it into the selected local media file"
+        )
+        self.btn_embed_cover.setEnabled(False)
+        self.btn_embed_cover.clicked.connect(self._on_embed_cover_art)
+        chapter_row.addWidget(self.btn_embed_cover)
+        self.btn_undo_cover = QPushButton("Undo Artwork")
+        self.btn_undo_cover.setProperty("class", "toolbar")
+        self.btn_undo_cover.setAccessibleName("Undo embedded cover artwork")
+        self.btn_undo_cover.setEnabled(False)
+        self.btn_undo_cover.clicked.connect(self._on_undo_cover_art)
+        chapter_row.addWidget(self.btn_undo_cover)
         tools_lay.addLayout(chapter_row)
         dp_lay.addWidget(self.media_tools)
 
@@ -802,7 +841,8 @@ class MediaLookupPanel(QWidget):
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "Choose Media File",
-            filter=("Video Files (*.mp4 *.mkv *.avi *.mov *.wmv *.webm *.m4v *.ts *.m2ts);;"
+            filter=("Media Files (*.mp4 *.mkv *.avi *.mov *.wmv *.webm *.m4v *.ts *.m2ts "
+                    "*.mp3 *.flac *.ogg *.oga *.opus *.m4a *.m4b *.epub);;"
                     "All Files (*)"),
         )
         if not files:
@@ -812,6 +852,9 @@ class MediaLookupPanel(QWidget):
         self.btn_save_chapters.setEnabled(bool(self._current_detail))
         self.lbl_media_tools_status.setText(
             "Ready to search. Review a match before downloading it beside the media file.")
+        self._last_cover_art_result = None
+        self.btn_undo_cover.setEnabled(False)
+        self._update_cover_art_action()
 
     def _subtitle_lookup_context(self) -> dict:
         path = self.txt_media_file.text().strip()
@@ -917,6 +960,87 @@ class MediaLookupPanel(QWidget):
             self.lbl_media_tools_status.setText(f"Chapter sidecar failed: {exc}")
             return
         self.lbl_media_tools_status.setText(f"TMDb chapters saved: {Path(sidecar).name}")
+
+    def _cover_art_url(self) -> str:
+        detail = self._current_detail
+        return str(
+            getattr(detail, "poster_url", "") or getattr(detail, "cover_url", "") or ""
+        ).strip()
+
+    def _update_cover_art_action(self):
+        path = self.txt_media_file.text().strip()
+        url = self._cover_art_url()
+        status = cover_art_status(path) if path else None
+        can_embed = bool(
+            path and os.path.isfile(path) and url and status and status.supported
+            and not status.has_artwork
+        )
+        self.btn_embed_cover.setEnabled(can_embed)
+        if status and status.has_artwork:
+            self.btn_embed_cover.setToolTip(
+                "Embedded artwork is already present; use Raw Metadata or choose another file."
+            )
+        elif status and not status.supported:
+            self.btn_embed_cover.setToolTip(status.message)
+        else:
+            self.btn_embed_cover.setToolTip(
+                "Download the selected provider artwork and embed it safely."
+            )
+
+    def _on_embed_cover_art(self):
+        path = self.txt_media_file.text().strip()
+        url = self._cover_art_url()
+        if not path or not url:
+            self.lbl_media_tools_status.setText(
+                "Choose a supported local audio/media file and load artwork first."
+            )
+            return
+        self.btn_embed_cover.setEnabled(False)
+        self.btn_undo_cover.setEnabled(False)
+        self.lbl_media_tools_status.setText("Downloading and validating provider artwork…")
+        self._cover_art_worker = _CoverArtWorker(path, url)
+        self._cover_art_worker.result_ready.connect(self._on_cover_art_result)
+        self._cover_art_worker.error.connect(self._on_cover_art_error)
+        self._cover_art_worker.start()
+
+    @pyqtSlot(object)
+    def _on_cover_art_result(self, result):
+        if not isinstance(result, CoverArtResult):
+            self._on_cover_art_error("cover-art worker returned an invalid result")
+            return
+        if result.success:
+            self._last_cover_art_result = result
+            self.btn_undo_cover.setEnabled(bool(result.backup_path))
+            self.lbl_media_tools_status.setText(
+                f"Artwork embedded in {Path(result.filepath).name}; backup retained for undo."
+            )
+        elif result.skipped:
+            self.lbl_media_tools_status.setText(
+                f"Artwork not written: {result.message}."
+            )
+        else:
+            self.lbl_media_tools_status.setText(f"Artwork embedding failed: {result.message}")
+        self._update_cover_art_action()
+
+    @pyqtSlot(str)
+    def _on_cover_art_error(self, message):
+        self.lbl_media_tools_status.setText(f"Artwork download failed: {message}")
+        self._update_cover_art_action()
+
+    def _on_undo_cover_art(self):
+        result = self._last_cover_art_result
+        if not result or not result.backup_path:
+            self.lbl_media_tools_status.setText("No cover-art write is available to undo.")
+            return
+        if undo_cover_art_write(result.filepath, result.backup_path):
+            self._last_cover_art_result = None
+            self.btn_undo_cover.setEnabled(False)
+            self.lbl_media_tools_status.setText(
+                f"Restored the original artwork state for {Path(result.filepath).name}."
+            )
+            self._update_cover_art_action()
+        else:
+            self.lbl_media_tools_status.setText("Could not restore the cover-art backup.")
 
     @pyqtSlot(list)
     def _on_search_results(self, results):
@@ -1081,6 +1205,7 @@ class MediaLookupPanel(QWidget):
         self.btn_apply_tags.setEnabled(True)
         self.btn_copy.setEnabled(True)
         self.btn_save_chapters.setEnabled(bool(self.txt_media_file.text().strip()))
+        self._update_cover_art_action()
 
     @pyqtSlot(bytes)
     def _on_poster_ready(self, data):
@@ -1136,6 +1261,7 @@ class MediaLookupPanel(QWidget):
         self.btn_apply_tags.setEnabled(True)
         self.btn_copy.setEnabled(True)
         self.btn_save_chapters.setEnabled(bool(self.txt_media_file.text().strip()))
+        self._update_cover_art_action()
 
     def _clear_detail(self):
         self.lbl_detail_title.setText("No title selected")
@@ -1153,6 +1279,9 @@ class MediaLookupPanel(QWidget):
         self.cmb_subtitles.setEnabled(False)
         self.btn_download_subtitle.setEnabled(False)
         self.btn_save_chapters.setEnabled(False)
+        self._last_cover_art_result = None
+        self.btn_undo_cover.setEnabled(False)
+        self._update_cover_art_action()
 
     # ── Actions ────────────────────────────────────────────────────────────
 

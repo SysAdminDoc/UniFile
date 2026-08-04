@@ -109,6 +109,7 @@ TMDb, TVDB, OMDb, and OpenSubtitles use your own API keys via the Media Lookup p
 | Provider Key Status | Missing or rejected credentials are shown before and after searches, with environment-variable precedence |
 | guessit Parser | Parse video, book, audiobook, and audio filenames to auto-detect title, year, season, and episode |
 | Artwork Preview | Full poster or cover-art display with synopsis, genres, and external IDs |
+| Cover Art Embedding | Select a local MP3, FLAC/Ogg, MP4/M4A, or EPUB file and fetch missing artwork from the reviewed provider result; writes are atomic, cached, and undoable |
 | Apply to Tags | Push normalized media metadata into matching Tag Library fields and genre tags |
 | Copy Metadata | One-click copy of all metadata fields to clipboard |
 | Subtitle + Chapter Sidecars | Review `.srt`/`.ass` OpenSubtitles matches and save TMDb-derived `.chapters.json` metadata beside a local video |
