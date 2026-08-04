@@ -282,6 +282,7 @@ Click **Settings > Ollama LLM** to configure:
 | URL | `http://localhost:11434` | Ollama server address |
 | Model | `qwen2.5:7b` | Model for classification |
 | Timeout | 30s | Per-item LLM timeout |
+| Vision batch size | 32 | Images grouped into one multimodal request; failed images retry individually |
 
 ### Confidence Tiers
 

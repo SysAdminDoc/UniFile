@@ -96,8 +96,10 @@ from unifile.ollama import (
     _prepare_image_base64,
     load_ollama_settings,
     normalize_llm_batch_size,
+    normalize_vision_batch_size,
     ollama_classify_batch,
     ollama_classify_folder,
+    ollama_classify_vision_batch,
     ollama_test_connection,
 )
 from unifile.photos import (
@@ -2159,6 +2161,9 @@ class ScanFilesLLMWorker(QThread):
 
         use_vision = bool(_v_enabled and _v_pil and has_images and vision_model and _is_vision_model(vision_model))
         self.log.emit(f"  Vision active: {use_vision}" + (f" [{vision_model}]" if use_vision else ""))
+        vision_batch_size = normalize_vision_batch_size(settings.get('vision_batch_size', 32))
+        if use_vision:
+            self.log.emit(f"  Vision batching: up to {vision_batch_size} images per request")
 
         _vision_schema = {
             'type': 'object',
@@ -2665,10 +2670,90 @@ class ScanFilesLLMWorker(QThread):
                 self.log.emit(f"    [VISION] Error for {name}: {e}")
                 return None
 
+        def _classify_vision_batch(batch_data):
+            """Classify a queued image chunk and preserve its item order."""
+            encoded = []
+            valid = []
+            results = [None] * len(batch_data)
+            for position, bd in enumerate(batch_data):
+                b64 = _prepare_image_base64(str(bd['item_path']), max_pixels=vision_max_px)
+                if b64:
+                    valid.append((position, bd))
+                    encoded.append(b64)
+                else:
+                    self.log.emit(f"    [VISION-BATCH] Failed to encode: {bd['name']}")
+            if not valid:
+                return results
+
+            self.log.emit(f"    [VISION-BATCH] Sending {len(valid)} image(s) in one request")
+            batch_results = ollama_classify_vision_batch(
+                [
+                    {'name': bd['name'], 'image': b64}
+                    for (_, bd), b64 in zip(valid, encoded, strict=True)
+                ],
+                url=settings['url'], model=vision_model,
+                categories=cat_names, system=system_vision,
+                batch_size=vision_batch_size, log_cb=self.log.emit,
+            )
+            for (position, bd), parsed in zip(valid, batch_results, strict=True):
+                if not isinstance(parsed, dict):
+                    continue
+                cat = parsed.get('category', '')
+                if cat not in cat_names:
+                    continue
+                raw_sug = parsed.get('suggested_name', '')
+                if _is_poisoned_name(raw_sug):
+                    raw_sug = _vision_name_from_description(parsed.get('description', ''))
+                try:
+                    conf = int(parsed.get('confidence', 70))
+                except (TypeError, ValueError):
+                    conf = 70
+                results[position] = (
+                    cat,
+                    max(0, min(100, conf)),
+                    parsed.get('reason', ''),
+                    {
+                        'description': parsed.get('description', ''),
+                        'suggested_name': raw_sug,
+                        'detected_text': parsed.get('detected_text', ''),
+                        'photo_type': parsed.get('photo_type', ''),
+                    },
+                )
+                self.log.emit(
+                    f"    [VISION-BATCH] {bd['name']} -> {cat} ({conf}%)"
+                )
+            return results
+
         idx = 0
         consecutive_llm_failures = 0
         MAX_CONSECUTIVE_FAILURES = 5
         llm_disabled = False
+        vision_queue = []
+
+        def _flush_vision_queue(force=False):
+            """Process full vision chunks, with single-image/rule fallbacks."""
+            nonlocal vision_queue
+            while vision_queue and (force or len(vision_queue) >= vision_batch_size):
+                if self._cancelled:
+                    vision_queue.clear()
+                    return
+                chunk = vision_queue[:vision_batch_size]
+                del vision_queue[:vision_batch_size]
+                batch_results = _classify_vision_batch(chunk)
+                for bd, result in zip(chunk, batch_results, strict=True):
+                    if result is None:
+                        result = _classify_vision(bd)
+                    if result:
+                        cat, conf, reason, vision_data = result
+                        _extract_and_emit(bd, cat, conf, 'vision', reason, vision_data)
+                        continue
+                    cat, conf, method = _classify_pc_item(
+                        str(bd['item_path']), ext_map, bd['is_folder'], self.categories)
+                    _extract_and_emit(
+                        bd, cat, conf, method or 'rule_fallback',
+                        'Vision unavailable — rule fallback',
+                    )
+
         while idx < total:
             if self._cancelled:
                 self.log.emit(f"  Cancelled at {idx}/{total}"); break
@@ -2699,18 +2784,16 @@ class ScanFilesLLMWorker(QThread):
                         continue
 
                 if _is_vision_eligible(item_path, is_folder, bd['fsize']):
-                    # Try vision classification
-                    result = _classify_vision(bd)
-                    if result:
-                        cat, conf, reason, vision_data = result
-                        _extract_and_emit(bd, cat, conf, 'vision', reason, vision_data)
-                        continue  # skip text batch for this item
+                    # Queue images so one multimodal request can cover up to 32.
+                    vision_queue.append(bd)
+                    continue
 
                 # Not vision-eligible or vision failed -- add to text batch
                 text_batch_data.append(bd)
 
             # Process remaining text items via text LLM
             if not text_batch_data:
+                _flush_vision_queue()
                 continue
 
             # Skip LLM if it has been failing repeatedly
@@ -2795,7 +2878,11 @@ class ScanFilesLLMWorker(QThread):
                         reason = esc_result.get('detail', reason)
                 _extract_and_emit(bd, cat, conf, method, reason, content_data=content_data)
 
+            _flush_vision_queue()
+
         # ── Flush cache and close ────────────────────────────────────────────
+        if not self._cancelled:
+            _flush_vision_queue(force=True)
         cache.commit()
         if cache_hits > 0:
             self.log.emit(f"  [CACHE] {cache_hits}/{total} items loaded from scan cache (unchanged files)")

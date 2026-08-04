@@ -44,6 +44,7 @@ from unifile.ollama import (
     _ollama_list_models,
     _ollama_pull_model,
     load_ollama_settings,
+    normalize_vision_batch_size,
     ollama_test_connection,
     save_ollama_settings,
 )
@@ -342,6 +343,17 @@ class OllamaSettingsDialog(QDialog):
         self.spn_vision_px.setToolTip("Resize images to this max dimension before sending to model")
         col4.addWidget(self.spn_vision_px)
 
+        col4.addWidget(QLabel("Vision batch size:"))
+        self.spn_vision_batch = QSpinBox()
+        self.spn_vision_batch.setRange(1, 32)
+        self.spn_vision_batch.setValue(
+            normalize_vision_batch_size(self.settings.get('vision_batch_size', 32))
+        )
+        self.spn_vision_batch.setToolTip(
+            "Images per multimodal request. Up to 32 reduces model call overhead."
+        )
+        col4.addWidget(self.spn_vision_batch)
+
         col4.addWidget(QLabel(" "))
         col4.addWidget(QLabel("Content Extraction:"))
         self.chk_content = QCheckBox("Read file content for AI naming")
@@ -584,6 +596,7 @@ class OllamaSettingsDialog(QDialog):
         self.settings['vision_enabled'] = self.chk_vision.isChecked()
         self.settings['vision_max_file_mb'] = self.spn_vision_mb.value()
         self.settings['vision_max_pixels'] = self.spn_vision_px.value()
+        self.settings['vision_batch_size'] = self.spn_vision_batch.value()
         self.settings['content_extraction'] = self.chk_content.isChecked()
         self.settings['content_max_chars'] = self.spn_content_chars.value()
         self.settings['convert_heic_to_jpg'] = self.chk_convert_heic.isChecked()

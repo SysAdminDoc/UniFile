@@ -46,6 +46,7 @@ _OLLAMA_DEFAULTS = {
     'num_predict': 4096,
     'think': False,
     'batch_size': 10,
+    'vision_batch_size': 32,
     'vision_enabled': True,
     'vision_max_file_mb': 20,
     'vision_max_pixels': 1024,
@@ -279,6 +280,8 @@ _MODEL_CATALOG_MAP = {m['name']: m for m in _MODEL_CATALOG}
 
 DEFAULT_LLM_BATCH_SIZE = 10
 MAX_LLM_BATCH_SIZE = 25
+DEFAULT_VISION_BATCH_SIZE = 32
+MAX_VISION_BATCH_SIZE = 32
 
 
 def normalize_llm_batch_size(value: object, default: int = DEFAULT_LLM_BATCH_SIZE) -> int:
@@ -288,6 +291,15 @@ def normalize_llm_batch_size(value: object, default: int = DEFAULT_LLM_BATCH_SIZ
     except (TypeError, ValueError):
         size = default
     return max(1, min(MAX_LLM_BATCH_SIZE, size))
+
+
+def normalize_vision_batch_size(value: object, default: int = DEFAULT_VISION_BATCH_SIZE) -> int:
+    """Return a safe number of images for one multimodal request."""
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        size = default
+    return max(1, min(MAX_VISION_BATCH_SIZE, size))
 
 
 
@@ -858,6 +870,33 @@ _BATCH_CLASSIFY_SCHEMA = {
     'required': ['results'],
 }
 
+_VISION_BATCH_CLASSIFY_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'results': {
+            'type': 'array',
+            'items': {
+                'type': 'object',
+                'properties': {
+                    'index': {'type': 'integer'},
+                    'category': {'type': 'string'},
+                    'confidence': {'type': 'integer'},
+                    'reason': {'type': 'string'},
+                    'description': {'type': 'string'},
+                    'suggested_name': {'type': 'string'},
+                    'detected_text': {'type': 'string'},
+                    'photo_type': {'type': 'string'},
+                },
+                'required': [
+                    'index', 'category', 'confidence', 'reason',
+                    'description', 'suggested_name', 'detected_text',
+                ],
+            },
+        },
+    },
+    'required': ['results'],
+}
+
 
 def ollama_classify_folder(folder_name: str, folder_path: str = None,
                            url: str = None, model: str = None,
@@ -1234,6 +1273,115 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
     except Exception as e:
         for r in empty: r['detail'] = f"batch:error:{e}"
         return empty
+
+
+def ollama_classify_vision_batch(images: list[dict], url: str = None,
+                                 model: str = None, categories: list[str] | None = None,
+                                 system: str = '', batch_size: int = DEFAULT_VISION_BATCH_SIZE,
+                                 log_cb=None) -> list[dict | None]:
+    """Classify images in bounded multimodal requests, preserving input order.
+
+    Each request attaches up to ``batch_size`` resized base64 images to one
+    chat message and asks for one indexed JSON result per image. A failed
+    chunk returns ``None`` entries so callers can retry those images through
+    the slower single-image path without losing the rest of the scan.
+
+    ``images`` entries must contain ``image`` (base64 text) and may contain a
+    display-only ``name``. The returned list always has one slot per input.
+    """
+    if not images:
+        return []
+    batch_size = normalize_vision_batch_size(batch_size)
+    results: list[dict | None] = []
+    for start in range(0, len(images), batch_size):
+        chunk = images[start:start + batch_size]
+        try:
+            chunk_results = _ollama_classify_vision_batch_chunk(
+                chunk, url=url, model=model, categories=categories,
+                system=system, log_cb=log_cb)
+        except Exception as exc:
+            if log_cb:
+                log_cb(f"    [VISION-BATCH] chunk failed: {exc}")
+            chunk_results = [None] * len(chunk)
+        if len(chunk_results) < len(chunk):
+            chunk_results.extend([None] * (len(chunk) - len(chunk_results)))
+        results.extend(chunk_results[:len(chunk)])
+    return results
+
+
+def _ollama_classify_vision_batch_chunk(images: list[dict], url: str = None,
+                                        model: str = None, categories: list[str] | None = None,
+                                        system: str = '', log_cb=None) -> list[dict | None]:
+    """Send one multimodal image chunk and map indexed results back to inputs."""
+    encoded = []
+    names = []
+    for item in images:
+        if not isinstance(item, dict):
+            encoded.append('')
+            names.append('image')
+            continue
+        encoded.append(str(item.get('image', '') or '').strip())
+        names.append(str(item.get('name', '') or 'image').strip()[:200] or 'image')
+    if not encoded or not all(encoded):
+        return [None] * len(images)
+
+    cat_names = list(categories or [])
+    batch_system = (system or (
+        'You are a visual file organizer. Classify each attached image into exactly one '
+        'category and describe its visual content.'
+    )).rstrip()
+    batch_system += (
+        f"\n\nYou are processing {len(images)} attached images in order. "
+        "Return ONLY one JSON object with a results array containing exactly one result "
+        "for every image. Use a 1-based index matching the image order. Keep descriptions "
+        "concise and never use the original filename as suggested_name."
+    )
+    prompt = '\n'.join(
+        f"[IMAGE {index}] source name for context only: {name}"
+        for index, name in enumerate(names, 1)
+    )
+
+    raw = _ollama_generate(
+        prompt, system=batch_system, url=url, model=model,
+        log_cb=log_cb, images=encoded, format=_VISION_BATCH_CLASSIFY_SCHEMA,
+    )
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return [None] * len(images)
+    if isinstance(parsed, dict):
+        parsed = parsed.get('results', parsed.get('items', []))
+    if not isinstance(parsed, list):
+        return [None] * len(images)
+
+    valid_categories = set(cat_names)
+    mapped: list[dict | None] = [None] * len(images)
+    for position, entry in enumerate(parsed):
+        if not isinstance(entry, dict):
+            continue
+        try:
+            index = int(entry.get('index', position + 1)) - 1
+        except (TypeError, ValueError):
+            index = position
+        if not 0 <= index < len(mapped) or mapped[index] is not None:
+            continue
+        category = str(entry.get('category', '') or '').strip()
+        if valid_categories and category not in valid_categories:
+            continue
+        try:
+            confidence = int(entry.get('confidence', 0))
+        except (TypeError, ValueError):
+            confidence = 0
+        mapped[index] = {
+            'category': category,
+            'confidence': max(0, min(100, confidence)),
+            'reason': str(entry.get('reason', '') or '').strip(),
+            'description': str(entry.get('description', '') or '').strip(),
+            'suggested_name': str(entry.get('suggested_name', '') or '').strip(),
+            'detected_text': str(entry.get('detected_text', '') or '').strip(),
+            'photo_type': str(entry.get('photo_type', '') or '').strip(),
+        }
+    return mapped
 
 
 def _ollama_list_models(url: str = None) -> list:

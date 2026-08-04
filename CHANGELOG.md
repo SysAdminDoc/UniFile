@@ -29,6 +29,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Batched vision inference now queues up to 32 images per multimodal request, preserves indexed result order, and retries failed images individually before rule fallback; the batch size is configurable in Ollama settings.
 - Few-shot correction learning now keeps the 10 most recent manual folder/file category overrides in a local JSONL store, safely quotes them in Ollama/provider prompts, and includes them in rules-bundle export/import.
 - Confidence tiers now label every classification as Auto-apply, Suggest, or Skip, support per-profile threshold overrides in Settings, and restrict scheduled unattended applies to the high-confidence tier.
 - Batched LLM inference now uses a validated default batch size of 10, exposes the safe 1–25 range in Ollama settings, and preserves per-model overrides with chunk-level failure isolation.
