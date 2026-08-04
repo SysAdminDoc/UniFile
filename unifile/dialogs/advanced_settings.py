@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QSettings, Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -28,6 +28,81 @@ from PyQt6.QtWidgets import (
 
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
+
+
+class DiskSpaceSettingsDialog(QDialog):
+    """Configure the free-space floor used before filesystem applies."""
+
+    def __init__(self, parent=None, settings=None):
+        super().__init__(parent)
+        self.setWindowTitle("Disk Space Protection")
+        self.setMinimumSize(520, 300)
+        self.setStyleSheet(get_active_stylesheet())
+        self.settings = settings or QSettings("UniFile", "UniFile")
+        self._build_ui()
+
+    def _build_ui(self):
+        from unifile.disk_space import (
+            DEFAULT_MIN_FREE_MB,
+            MAX_MIN_FREE_MB,
+            min_free_mb_from_settings,
+        )
+
+        theme = get_active_theme()
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.addWidget(build_dialog_header(
+            theme,
+            "Safety",
+            "Disk Space Protection",
+            "Stop a bulk move or rename before it starts when the destination volume would fall below a safe free-space floor.",
+        ))
+
+        self.lbl_status = QLabel(
+            "The check includes the configured headroom and bytes needed for cross-volume copies."
+        )
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet(f"color: {theme['muted']}; font-size: 11px;")
+        layout.addWidget(self.lbl_status)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Minimum free space"))
+        self.spn_min_free = QSpinBox()
+        self.spn_min_free.setRange(0, MAX_MIN_FREE_MB)
+        self.spn_min_free.setValue(min_free_mb_from_settings(
+            self.settings,
+            default=DEFAULT_MIN_FREE_MB,
+        ))
+        self.spn_min_free.setSuffix(" MB")
+        self.spn_min_free.setToolTip("Set to 0 to disable the free-space floor.")
+        row.addWidget(self.spn_min_free)
+        row.addStretch()
+        layout.addLayout(row)
+
+        hint = QLabel(
+            f"Default: {DEFAULT_MIN_FREE_MB} MB. Same-volume renames still require this headroom;"
+            " cross-volume moves also reserve the source bytes."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {theme['muted']}; font-size: 11px;")
+        layout.addWidget(hint)
+        layout.addStretch()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Save Safety Setting")
+        buttons.accepted.connect(self._save_settings)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _save_settings(self):
+        from unifile.disk_space import MIN_FREE_MB_KEY
+
+        self.settings.setValue(MIN_FREE_MB_KEY, self.spn_min_free.value())
+        self.settings.sync()
+        self.accept()
 
 
 class AIProviderSettingsDialog(QDialog):

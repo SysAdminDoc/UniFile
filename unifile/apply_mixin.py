@@ -1,14 +1,12 @@
 """Apply logic mixin for UniFile main window."""
-import os
-import shutil
 import time
-from collections import defaultdict
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QMessageBox
 
 from unifile.cache import append_csv_log, create_backup_snapshot, save_undo_log
+from unifile.disk_space import check_work_messages, min_free_mb_from_settings
 from unifile.workers import ApplyAepWorker, ApplyCatWorker, ApplyFilesWorker
 
 
@@ -18,64 +16,28 @@ class ApplyMixin:
     # ═══ DISK SPACE GUARD ════════════════════════════════════════════════════
 
     def _check_disk_space(self, work: list) -> list[str]:
-        """Return error strings for destination volumes with insufficient free space.
+        """Return messages for destination volumes below the configured floor."""
+        return check_work_messages(
+            work,
+            min_free_mb=min_free_mb_from_settings(self.settings),
+        )
 
-        For cross-volume moves (which become copy+delete on different drives),
-        the full file sizes are counted against the destination drive.  For
-        same-volume renames, only the minimum headroom threshold is checked.
-        """
-        min_free = self.settings.value(
-            "disk_protection/min_free_mb", 512, type=int) * 1024 * 1024
-
-        # Map nearest-existing-parent-path → bytes needed on that volume
-        vol_needed: dict[str, int] = defaultdict(int)
-
-        for _i, it in work:
-            dst = getattr(it, 'full_dst', None)
-            if not dst:
-                continue
-            src = getattr(it, 'full_src', '') or ''
-
-            # Walk up to the nearest parent that actually exists
-            dst_root = dst
-            while dst_root and not os.path.exists(dst_root):
-                parent = os.path.dirname(dst_root)
-                if parent == dst_root:
-                    break
-                dst_root = parent
-            if not dst_root or not os.path.exists(dst_root):
-                continue
-
-            src_drive = os.path.splitdrive(src)[0].upper()
-            dst_drive = os.path.splitdrive(dst)[0].upper()
-
-            if src_drive and dst_drive and src_drive != dst_drive:
-                # Cross-volume copy+delete — need file bytes on destination
-                vol_needed[dst_root] += getattr(it, 'size', 0) or 0
-            else:
-                # Same-volume rename — ensure threshold exists for this volume
-                if dst_root not in vol_needed:
-                    vol_needed[dst_root] = 0
-
-        errors: list[str] = []
-        checked_drives: set[str] = set()
-        for path, needed in vol_needed.items():
-            drive = os.path.splitdrive(path)[0].upper()
-            if drive in checked_drives:
-                continue
-            checked_drives.add(drive)
-            try:
-                free = shutil.disk_usage(path).free
-            except Exception:
-                continue
-            required = needed + min_free
-            if free < required:
-                free_mb  = free     // (1024 * 1024)
-                req_mb   = required // (1024 * 1024)
-                errors.append(
-                    f"Drive {drive or path}: {free_mb:,} MB free, {req_mb:,} MB required"
-                )
-        return errors
+    def _disk_space_guard(self, work: list, *, dry_run: bool = False) -> bool:
+        """Warn and stop a real apply when destination headroom is insufficient."""
+        if dry_run:
+            return True
+        disk_errors = self._check_disk_space(work)
+        if not disk_errors:
+            return True
+        QMessageBox.warning(
+            self,
+            "Insufficient Disk Space",
+            "Cannot apply — not enough free space:\n\n"
+            + "\n".join(disk_errors)
+            + "\n\nFree up space or lower the threshold in Settings → System.",
+        )
+        self._log("Apply blocked by disk-space protection")
+        return False
 
     # ═══ APPLY DISPATCHER ════════════════════════════════════════════════════
 
@@ -93,6 +55,8 @@ class ApplyMixin:
     def _apply_aep(self, dry_run=False):
         work = [(i,it) for i,it in enumerate(self.aep_items) if it.selected and it.status=="Pending"]
         if not work: self._log("No items selected"); return
+        if not self._disk_space_guard(work, dry_run=dry_run):
+            return
         if not dry_run:
             snap = create_backup_snapshot(self.txt_src.text(), [it for _,it in work])
             if snap: self._log(f"Backup snapshot saved: {snap}")
@@ -146,6 +110,8 @@ class ApplyMixin:
     def _apply_cat(self):
         work = [(i,it) for i,it in enumerate(self.cat_items) if it.selected and it.status=="Pending"]
         if not work: self._log("No items selected"); return
+        if not self._disk_space_guard(work):
+            return
         snap = create_backup_snapshot(self.txt_src.text(), [it for _,it in work])
         if snap: self._log(f"Backup snapshot saved: {snap}")
         self.btn_apply.setEnabled(False); self.cmb_op.setEnabled(False)
@@ -201,16 +167,8 @@ class ApplyMixin:
         if not work:
             self._log("No items selected"); return
 
-        # ── Disk space guard (skip for dry runs — no files are moved) ─────────
-        if not dry_run:
-            disk_errors = self._check_disk_space(work)
-            if disk_errors:
-                QMessageBox.warning(
-                    self, "Insufficient Disk Space",
-                    "Cannot apply — not enough free space:\n\n" + "\n".join(disk_errors)
-                    + "\n\nFree up space or lower the threshold in Advanced Settings."
-                )
-                return
+        if not self._disk_space_guard(work, dry_run=dry_run):
+            return
 
         label = "Dry Run" if dry_run else "Moving"
         self.btn_apply.setEnabled(False); self.cmb_op.setEnabled(False)

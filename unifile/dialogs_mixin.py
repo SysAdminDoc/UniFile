@@ -202,6 +202,15 @@ class DialogsMixin:
         dlg = SettingsHubDialog(self)
         dlg.exec()
 
+    def _open_disk_space_settings(self):
+        from unifile.dialogs.advanced_settings import DiskSpaceSettingsDialog
+
+        dlg = DiskSpaceSettingsDialog(self, settings=self.settings)
+        if dlg.exec():
+            self._log(
+                f"Disk space protection floor saved: {dlg.spn_min_free.value():,} MB"
+            )
+
     def _open_embedding_settings(self):
         from unifile.dialogs.advanced_settings import EmbeddingSettingsDialog
         dlg = EmbeddingSettingsDialog(self)

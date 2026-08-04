@@ -235,6 +235,9 @@ class SettingsHubDialog(QDialog):
                 ("Protected Paths…",
                  "Folders and filenames that UniFile will never move or delete.",
                  self._open_protected),
+                ("Disk Space Protection…",
+                 "Block bulk applies below a configurable free-space floor (default 500 MB).",
+                 self._open_disk_space),
                 ("Plugin Manager…",
                  "Review installed plugins; enable or disable individually.",
                  self._open_plugins),
@@ -326,6 +329,7 @@ class SettingsHubDialog(QDialog):
     def _open_theme(self):            self._call('_open_theme_picker')
     def _open_accessibility(self):    self._call('_open_accessibility')
     def _open_protected(self):        self._call('_open_protected_paths')
+    def _open_disk_space(self):       self._call('_open_disk_space_settings')
     def _open_plugins(self):          self._call('_open_plugin_manager')
     def _open_shell(self):            self._call('_open_shell_integration')
 

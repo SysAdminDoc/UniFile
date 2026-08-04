@@ -2,6 +2,7 @@
 
 from unifile.dialogs.advanced_settings import (
     AIProviderSettingsDialog,
+    DiskSpaceSettingsDialog,
     EmbeddingSettingsDialog,
     LearningStatsDialog,
     SemanticSearchDialog,
@@ -64,7 +65,7 @@ __all__ = [
     'UndoTimelineDialog', 'UndoBatchDialog', 'PluginManagerDialog',
     'RelationshipGraphWidget', 'WatchHistoryDialog', 'CsvRulesDialog',
     'ThemePickerDialog', 'ProtectedPathsDialog',
-    'AIProviderSettingsDialog', 'WhisperSettingsDialog',
+    'AIProviderSettingsDialog', 'WhisperSettingsDialog', 'DiskSpaceSettingsDialog',
     'SemanticSearchSettingsDialog', 'SemanticSearchDialog',
     'EmbeddingSettingsDialog', 'LearningStatsDialog',
     'SettingsHubDialog',
