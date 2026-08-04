@@ -30,6 +30,9 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- WiX 5 Windows MSI packaging for the frozen build, including a per-user Start
+  Menu shortcut, user `PATH` entry, `.unifile` file association, and Explorer
+  context-menu registration.
 - Qt-free `unifile scan <path>` command with JSON plans, source-local rule evaluation,
   collision-safe category moves behind explicit `--apply-rules`, dry-run support,
   confidence filtering, and configurable destination roots.

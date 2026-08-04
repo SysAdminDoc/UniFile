@@ -549,7 +549,15 @@ make lint        # Ruff
 make audit       # pip-audit --local
 make build       # clean PyInstaller build + frozen --version/classify/GUI smoke + SHA-256
 make build-smoke # rerun frozen smoke/checksum against an existing dist/UniFile/UniFile.exe
+python tools/build_msi.py  # build the unsigned per-user WiX MSI from dist/UniFile
 ```
+
+The Windows MSI installs the frozen application under `Program Files`, creates
+a Start Menu shortcut, adds the install directory to the system `PATH`,
+associates `.unifile` library files, and registers the Explorer context-menu
+actions. Windows may request administrator approval for this machine-wide
+installation. It is intentionally unsigned; release signing is outside this
+project.
 
 ## Related Tools
 

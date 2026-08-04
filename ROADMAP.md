@@ -77,7 +77,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Distribution & Packaging
 
-- **Official Windows installer (MSI)** — WiX Toolset; adds Start Menu shortcut, `unifile` to PATH, file association for `.unifile` library files, and shell extension registration
 - **Chocolatey / Scoop package** — community-maintainable; updated automatically on each release via CI
 - **Homebrew formula** — macOS users `brew install unifile`; formula in `homebrew-unifile` tap
 - **Snap package** — `unifile` on Snapcraft for Ubuntu/Debian; confined snap with `home` and `network` plugs
