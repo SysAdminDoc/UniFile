@@ -170,9 +170,10 @@ registers it automatically; forgetting a registration never deletes its files.
 
 Images added or scanned into a Tag Library receive a small, deterministic
 dominant-color palette index. Use **Index Colors** in the Tag Library header to
-rebuild the index for existing images, then search with `color:blue` or phrases
-such as `show me files with predominant blue tones`. Searches remain local and
-read-only; unsupported or unreadable images are simply left without palette rows.
+rebuild the index for existing images, then click a **Dominant color** swatch or
+search with `color:blue` or phrases such as `show me files with predominant blue
+tones`. Swatches select rank-zero palette entries; searches remain local and
+read-only, and unsupported or unreadable images are simply left without palette rows.
 
 ### Timeline Filtering
 

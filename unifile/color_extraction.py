@@ -16,6 +16,25 @@ COLOR_NAMES = frozenset({
     "orange", "pink", "purple", "red", "teal", "white", "yellow",
 })
 
+# Stable display colors for the Tag Library's dominant-color picker. These
+# are separate from palette values, which come from each image.
+COLOR_SWATCHES = {
+    "red": "#ef4444",
+    "orange": "#f97316",
+    "yellow": "#eab308",
+    "green": "#22c55e",
+    "teal": "#14b8a6",
+    "cyan": "#06b6d4",
+    "blue": "#3b82f6",
+    "purple": "#8b5cf6",
+    "magenta": "#d946ef",
+    "pink": "#ec4899",
+    "brown": "#a16207",
+    "gray": "#6b7280",
+    "black": "#111827",
+    "white": "#f8fafc",
+}
+
 _COLOR_ALIASES = {
     "grey": "gray",
     "violet": "purple",
@@ -174,6 +193,7 @@ def parse_color_query(query: str) -> tuple[str, bool] | None:
 
 __all__ = [
     "COLOR_NAMES",
+    "COLOR_SWATCHES",
     "IMAGE_EXTENSIONS",
     "canonical_color_name",
     "color_name_for_rgb",

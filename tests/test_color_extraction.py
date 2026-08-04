@@ -65,3 +65,22 @@ def test_tag_library_indexes_and_searches_image_colors(tmp_path):
         ] == ["sunset.jpg"]
     finally:
         library.close()
+
+
+def test_tag_library_dominant_color_swatches_drive_search_query(qtbot):
+    from unifile.dialogs.tag_library import TagLibraryPanel
+
+    panel = TagLibraryPanel()
+    qtbot.addWidget(panel)
+
+    panel._color_swatch_buttons["blue"].click()
+
+    assert panel.txt_entry_search.text() == (
+        "show me files with predominant blue tones"
+    )
+    assert panel._color_swatch_buttons["blue"].isChecked()
+    assert not panel._color_swatch_buttons["red"].isChecked()
+
+    panel.btn_color_clear.click()
+    assert panel.txt_entry_search.text() == ""
+    assert not any(button.isChecked() for button in panel._color_swatch_buttons.values())

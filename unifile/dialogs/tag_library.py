@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.color_extraction import COLOR_SWATCHES, parse_color_query
 from unifile.config import get_active_theme
 from unifile.tagging.library import TagLibrary
 from unifile.tagging.models import TAG_COLORS
@@ -397,6 +398,38 @@ class TagLibraryPanel(QWidget):
 
         entry_lay.addLayout(entry_header)
 
+        # Dominant-color swatches provide a discoverable shortcut to the
+        # indexed palette query without requiring users to know the syntax.
+        color_row = QHBoxLayout()
+        color_row.setSpacing(5)
+        self.lbl_color_search = QLabel("Dominant color")
+        color_row.addWidget(self.lbl_color_search)
+        self.btn_color_clear = QPushButton("All")
+        self.btn_color_clear.setProperty("class", "toolbar")
+        self.btn_color_clear.setFixedWidth(34)
+        self.btn_color_clear.setToolTip("Clear the dominant-color filter")
+        self.btn_color_clear.setAccessibleName("Clear dominant color filter")
+        self.btn_color_clear.clicked.connect(self._clear_color_swatch)
+        color_row.addWidget(self.btn_color_clear)
+        self._color_swatch_buttons: dict[str, QPushButton] = {}
+        for name in COLOR_SWATCHES:
+            button = QPushButton()
+            button.setObjectName("color_swatch")
+            button.setCheckable(True)
+            button.setFixedSize(24, 24)
+            button.setToolTip(f"Show images whose dominant color is {name}")
+            button.setAccessibleName(f"Search dominant {name} images")
+            button.setAccessibleDescription(
+                f"Filter the library to images whose indexed dominant color is {name}"
+            )
+            button.clicked.connect(
+                lambda checked, color_name=name: self._select_color_swatch(color_name)
+            )
+            self._color_swatch_buttons[name] = button
+            color_row.addWidget(button)
+        color_row.addStretch()
+        entry_lay.addLayout(color_row)
+
         # Vertical splitter: Entry table (top) | Preview panel (bottom)
         v_splitter = QSplitter(Qt.Orientation.Vertical)
 
@@ -502,6 +535,8 @@ class TagLibraryPanel(QWidget):
             self.btn_ts_import,
             self.btn_ts_export,
             self.txt_entry_search,
+            self.btn_color_clear,
+            *self._color_swatch_buttons.values(),
             self.txt_semantic,
             self.btn_add_files,
             self.btn_scan_dir,
@@ -792,6 +827,10 @@ class TagLibraryPanel(QWidget):
             f"color: {t['fg_bright']}; font-size: 15px; font-weight: 700;"
         )
         self.lbl_entry_hint.setStyleSheet(f"color: {t['muted']}; font-size: 11px;")
+        self.lbl_color_search.setStyleSheet(
+            f"color: {t['muted']}; font-size: 11px; font-weight: 600;"
+        )
+        self._style_color_swatches(t)
         self.lbl_entry_title.setStyleSheet(
             f"color: {t['fg_bright']}; font-size: 13px; font-weight: 700;"
         )
@@ -817,6 +856,17 @@ class TagLibraryPanel(QWidget):
             item = self._preview_tags_flow.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _style_color_swatches(self, theme: dict) -> None:
+        for name, button in self._color_swatch_buttons.items():
+            color = COLOR_SWATCHES[name]
+            button.setStyleSheet(
+                f"QPushButton#color_swatch {{ background: {color}; "
+                f"border: 2px solid {theme['border']}; border-radius: 12px; }}"
+                f"QPushButton#color_swatch:hover {{ border-color: {theme['accent']}; }}"
+                f"QPushButton#color_swatch:checked {{ border-color: {theme['fg_bright']}; "
+                "padding: 0px; }}"
+            )
 
     # ── Library Operations ────────────────────────────────────────────────
 
@@ -1433,6 +1483,7 @@ class TagLibraryPanel(QWidget):
         )
 
     def _on_entry_search(self, text):
+        self._sync_color_swatch(text)
         if not self._lib.is_open:
             return
         if not text.strip():
@@ -1458,6 +1509,25 @@ class TagLibraryPanel(QWidget):
             self._lib.engine, self._lib.library_dir, query)
         self._search_worker.results_ready.connect(self._on_search_results)
         self._search_worker.start()
+
+    def _select_color_swatch(self, color_name: str) -> None:
+        """Search for entries whose indexed dominant color is ``color_name``."""
+        for name, button in self._color_swatch_buttons.items():
+            button.setChecked(name == color_name)
+        self.txt_entry_search.setText(
+            f"show me files with predominant {color_name} tones"
+        )
+
+    def _clear_color_swatch(self) -> None:
+        for button in self._color_swatch_buttons.values():
+            button.setChecked(False)
+        self.txt_entry_search.clear()
+
+    def _sync_color_swatch(self, query: str) -> None:
+        parsed = parse_color_query(query)
+        selected = parsed[0] if parsed and parsed[1] else None
+        for name, button in self._color_swatch_buttons.items():
+            button.setChecked(name == selected)
 
     def _on_search_results(self, query, entries, archive_entries=None):
         if query != self._pending_search:

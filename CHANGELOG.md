@@ -57,7 +57,7 @@ All notable changes to UniFile will be documented in this file.
 - Cover art fetcher: validate and cache TMDb, MusicBrainz Cover Art Archive, and OpenLibrary images, then atomically embed missing artwork into MP3, FLAC/Ogg, MP4/M4A, and EPUB files with backup restore.
 - Custom Field Schemas: define per-library text, date, currency, status/enum, and checkbox fields with validated entry editing in the Tag Library.
 - Media Lookup parity: add TVDB → TMDb → TVMaze TV fallback, OpenLibrary → Google Books book/audiobook lookup, and MusicBrainz audio search with normalized detail cards, artwork, IDs, and Tag Library payloads.
-- Color Palette Search: index dominant image colors in each Tag Library and search them with `color:<name>` or natural “predominant … tones” phrases, with a reindex action for existing images.
+- Color Palette Search: index dominant image colors in each Tag Library and search them with `color:<name>` or natural “predominant … tones” phrases, with a reindex action and accessible dominant-color swatch picker for existing images.
 - Multiple Libraries: switch registered Tag Libraries from the sidebar while keeping each library's Ollama settings, rules, and theme preference scoped to its own `.unifile` folder.
 - Natural Language Rules: compile one plain-language routing request into a validated local action DAG, preview exact file moves, and apply only after explicit approval with collision-safe destinations and undo operations.
 - Native Anthropic Messages and Google Gemini `generateContent` adapters with text/vision support, structured JSON requests, provider-specific authentication, and token accounting in the fallback chain.

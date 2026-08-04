@@ -72,7 +72,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## UX & Accessibility
 
-- **Color-based image search** — pick a color swatch → find images with that dominant color; powered by color palette extracted at index time
 - **Keyboard shortcuts dialog** — Settings → Shortcuts; all bindings shown; click any to rebind; no defaults that conflict with OS shortcuts
 - **High-contrast theme** — WCAG AA compliant; pure black bg, pure white text, bright accent; seventh theme slot
 - **Configurable font size** — Settings → Accessibility → Base font size (8–20 pt); proportional scaling
