@@ -626,6 +626,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         menu_tools.addSeparator()
         menu_ai = menu_tools.addMenu("AI & Intelligence")
         menu_ai.addAction("AI Providers...", self._open_ai_providers)
+        menu_ai.addAction("Provider Health...", self._open_provider_health)
         menu_ai.addAction("Whisper Audio...", self._open_whisper_settings)
         menu_ai.addAction("Semantic Search...", self._open_semantic_search)
         menu_ai.addAction("Semantic Search Settings...", self._open_semantic_settings)

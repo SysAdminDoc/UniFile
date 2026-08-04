@@ -284,6 +284,15 @@ Click **Settings > Ollama LLM** to configure:
 | Timeout | 30s | Per-item LLM timeout |
 | Vision batch size | 32 | Images grouped into one multimodal request; failed images retry individually |
 
+### Provider Health
+
+Open **Settings > AI & Intelligence > Provider Health** to review local request
+history for configured AI providers. The dashboard shows average latency, error
+rate, input/output token totals, optional estimated token cost, and a compact
+latency sparkline. **Probe Enabled Providers** runs reachability checks in the
+background; history is stored locally in `ai_provider_health.json` and errors
+are redacted before storage.
+
 ### Confidence Tiers
 
 Classification results are labeled by confidence: **Auto-apply** (90% or higher), **Suggest** (70–89%), or **Skip** (below 70%). Scheduled `--auto-apply` jobs select only Auto-apply rows; interactive scans keep Suggest rows available for review. Open **Settings → All Settings → Confidence Tiers** to override the thresholds for each built-in scan profile.

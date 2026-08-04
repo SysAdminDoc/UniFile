@@ -136,6 +136,9 @@ class SettingsHubDialog(QDialog):
                 ("AI Providers…",
                  "Add OpenAI-compatible / Groq / LM Studio endpoints with priority fallback.",
                  self._open_providers),
+                ("Provider Health…",
+                 "Review local latency, error rate, token usage, estimated cost, and recent trends.",
+                 self._open_provider_health),
                 ("Semantic Search…",
                  "Natural-language query panel powered by embeddings.",
                  self._open_semantic_search),
@@ -293,6 +296,7 @@ class SettingsHubDialog(QDialog):
     # AI tab
     def _open_ollama(self):           self._call('_open_ollama_settings')
     def _open_providers(self):        self._call('_open_ai_providers')
+    def _open_provider_health(self):  self._call('_open_provider_health')
     def _open_semantic_search(self):  self._call('_open_semantic_search')
     def _open_semantic_settings(self):self._call('_open_semantic_settings')
     def _open_whisper(self):          self._call('_open_whisper_settings')

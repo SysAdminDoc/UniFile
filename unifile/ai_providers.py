@@ -4,9 +4,12 @@ import json
 import logging
 import os
 import re
+import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 from unifile.config import _APP_DATA_DIR
 
@@ -65,6 +68,193 @@ def ai_request(url: str, *, method: str = 'POST', data: bytes | None = None,
     raise last_exc
 
 _PROVIDERS_FILE = os.path.join(_APP_DATA_DIR, 'ai_providers.json')
+_PROVIDER_HEALTH_FILE = os.path.join(_APP_DATA_DIR, 'ai_provider_health.json')
+_PROVIDER_HEALTH_LIMIT = 60
+_PROVIDER_HEALTH_LOCK = threading.RLock()
+
+
+def _nonnegative_int(value) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _nonnegative_float(value) -> float:
+    try:
+        return max(0.0, float(value or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _health_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+
+def _empty_provider_health() -> dict:
+    return {'version': 1, 'providers': {}}
+
+
+def _read_provider_health(path: str) -> dict:
+    """Read and lightly validate the local provider health ledger."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            raw = json.load(f)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return _empty_provider_health()
+    if not isinstance(raw, dict) or not isinstance(raw.get('providers'), dict):
+        return _empty_provider_health()
+
+    providers = {}
+    for provider_id, payload in raw['providers'].items():
+        if not isinstance(payload, dict):
+            continue
+        samples = []
+        raw_samples = payload.get('samples', [])
+        if isinstance(raw_samples, list):
+            for raw_sample in raw_samples[-_PROVIDER_HEALTH_LIMIT:]:
+                if not isinstance(raw_sample, dict):
+                    continue
+                sample = {
+                    'timestamp': str(raw_sample.get('timestamp', '')),
+                    'ok': bool(raw_sample.get('ok', False)),
+                    'latency_ms': round(_nonnegative_float(raw_sample.get('latency_ms')), 2),
+                    'input_tokens': _nonnegative_int(raw_sample.get('input_tokens')),
+                    'output_tokens': _nonnegative_int(raw_sample.get('output_tokens')),
+                    'estimated_cost': round(_nonnegative_float(raw_sample.get('estimated_cost')), 8),
+                    'operation': str(raw_sample.get('operation', 'inference'))[:32],
+                }
+                if raw_sample.get('error'):
+                    sample['error'] = _redact(str(raw_sample.get('error')))[:500]
+                samples.append(sample)
+        providers[str(provider_id)] = {
+            'samples': samples,
+            'last_checked': str(payload.get('last_checked', '')),
+            'last_success': str(payload.get('last_success', '')),
+            'last_error': _redact(str(payload.get('last_error', '')))[:500],
+        }
+    return {'version': 1, 'providers': providers}
+
+
+def _write_provider_health(data: dict, path: str) -> bool:
+    """Atomically write the local health ledger, best effort."""
+    directory = os.path.dirname(os.path.abspath(path))
+    temp_path = ''
+    try:
+        os.makedirs(directory, exist_ok=True)
+        fd, temp_path = tempfile.mkstemp(prefix='.ai-provider-health-', suffix='.tmp',
+                                         dir=directory)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        os.replace(temp_path, path)
+        return True
+    except OSError:
+        return False
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
+def load_provider_health(path: str | None = None) -> dict:
+    """Load the redacted, local-only provider health history."""
+    target = path or _PROVIDER_HEALTH_FILE
+    with _PROVIDER_HEALTH_LOCK:
+        return _read_provider_health(target)
+
+
+def record_provider_health(provider_id: str, *, success: bool, latency_ms: float,
+                           input_tokens: int = 0, output_tokens: int = 0,
+                           estimated_cost: float = 0.0, error: str = '',
+                           operation: str = 'inference', timestamp: str | None = None,
+                           path: str | None = None) -> dict:
+    """Append one provider request sample to the bounded local health ledger."""
+    provider_id = str(provider_id or 'provider').strip() or 'provider'
+    timestamp = timestamp or _health_timestamp()
+    sample = {
+        'timestamp': str(timestamp),
+        'ok': bool(success),
+        'latency_ms': round(_nonnegative_float(latency_ms), 2),
+        'input_tokens': _nonnegative_int(input_tokens),
+        'output_tokens': _nonnegative_int(output_tokens),
+        'estimated_cost': round(_nonnegative_float(estimated_cost), 8),
+        'operation': str(operation or 'inference')[:32],
+    }
+    if error:
+        sample['error'] = _redact(str(error))[:500]
+
+    target = path or _PROVIDER_HEALTH_FILE
+    with _PROVIDER_HEALTH_LOCK:
+        data = _read_provider_health(target)
+        entry = data['providers'].setdefault(provider_id, {
+            'samples': [], 'last_checked': '', 'last_success': '', 'last_error': '',
+        })
+        entry['samples'] = (entry.get('samples', []) + [sample])[-_PROVIDER_HEALTH_LIMIT:]
+        entry['last_checked'] = sample['timestamp']
+        if success:
+            entry['last_success'] = sample['timestamp']
+        elif error:
+            entry['last_error'] = sample['error']
+        _write_provider_health(data, target)
+    return sample
+
+
+def clear_provider_health(path: str | None = None, provider_id: str | None = None) -> bool:
+    """Clear all health history or one provider's history."""
+    target = path or _PROVIDER_HEALTH_FILE
+    with _PROVIDER_HEALTH_LOCK:
+        if provider_id:
+            data = _read_provider_health(target)
+            data['providers'].pop(str(provider_id), None)
+        else:
+            data = _empty_provider_health()
+        return _write_provider_health(data, target)
+
+
+def provider_health_snapshot(providers: dict | None = None,
+                             path: str | None = None) -> dict:
+    """Return dashboard-ready health metrics for configured providers."""
+    providers = providers if providers is not None else load_providers()
+    ledger = load_provider_health(path)
+    snapshot = {}
+    for provider_id, config in providers.items():
+        config = config if isinstance(config, dict) else {}
+        entry = ledger['providers'].get(str(provider_id), {})
+        samples = list(entry.get('samples', []))
+        success_count = sum(1 for sample in samples if sample.get('ok'))
+        error_count = len(samples) - success_count
+        latency_values = [
+            _nonnegative_float(sample.get('latency_ms'))
+            for sample in samples
+            if _nonnegative_float(sample.get('latency_ms')) > 0
+        ]
+        input_tokens = sum(_nonnegative_int(sample.get('input_tokens')) for sample in samples)
+        output_tokens = sum(_nonnegative_int(sample.get('output_tokens')) for sample in samples)
+        estimated_cost = sum(_nonnegative_float(sample.get('estimated_cost')) for sample in samples)
+        latest = samples[-1] if samples else {}
+        snapshot[str(provider_id)] = {
+            'id': str(provider_id),
+            'name': str(config.get('name', provider_id)),
+            'type': str(config.get('type', 'provider')),
+            'enabled': bool(config.get('enabled', False)),
+            'request_count': len(samples),
+            'success_count': success_count,
+            'error_count': error_count,
+            'error_rate': round((error_count / len(samples)) * 100, 1) if samples else 0.0,
+            'avg_latency_ms': round(sum(latency_values) / len(latency_values), 1) if latency_values else 0.0,
+            'input_tokens': input_tokens,
+            'output_tokens': output_tokens,
+            'total_tokens': input_tokens + output_tokens,
+            'estimated_cost': round(estimated_cost, 8),
+            'last_checked': entry.get('last_checked', ''),
+            'last_success': entry.get('last_success', ''),
+            'last_error': entry.get('last_error', ''),
+            'last_ok': latest.get('ok') if latest else None,
+            'samples': samples,
+        }
+    return snapshot
 
 # Default provider configurations
 _DEFAULT_PROVIDERS = {
@@ -78,6 +268,8 @@ _DEFAULT_PROVIDERS = {
         'vision_model': 'gemma3:27b',
         'timeout': 30,
         'api_key': '',
+        'input_cost_per_1k': 0.0,
+        'output_cost_per_1k': 0.0,
     },
     'openai_compat': {
         'name': 'OpenAI-Compatible (LM Studio / vLLM)',
@@ -89,6 +281,8 @@ _DEFAULT_PROVIDERS = {
         'vision_model': '',
         'timeout': 30,
         'api_key': 'not-needed',
+        'input_cost_per_1k': 0.0,
+        'output_cost_per_1k': 0.0,
     },
     'groq': {
         'name': 'Groq Cloud',
@@ -100,6 +294,8 @@ _DEFAULT_PROVIDERS = {
         'vision_model': 'llama-3.2-90b-vision-preview',
         'timeout': 30,
         'api_key': '',
+        'input_cost_per_1k': 0.0,
+        'output_cost_per_1k': 0.0,
     },
     'openai': {
         'name': 'OpenAI',
@@ -111,6 +307,8 @@ _DEFAULT_PROVIDERS = {
         'vision_model': 'gpt-4o',
         'timeout': 30,
         'api_key': '',
+        'input_cost_per_1k': 0.0,
+        'output_cost_per_1k': 0.0,
     },
 }
 
@@ -207,13 +405,53 @@ def get_active_provider(providers: dict | None = None,
 class AIProvider:
     """Unified interface for AI text/vision inference."""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, provider_id: str | None = None):
         self.config = config
+        self.provider_id = str(
+            provider_id or config.get('id') or config.get('name') or config.get('type') or 'provider'
+        )
         self.type = config.get('type', 'ollama')
         self.url = config.get('url', '').rstrip('/')
         self.api_key = config.get('api_key', '')
         self.timeout = config.get('timeout', 30)
-        self._cost_tracker = {'requests': 0, 'input_tokens': 0, 'output_tokens': 0}
+        self._cost_tracker = {
+            'requests': 0, 'errors': 0, 'input_tokens': 0, 'output_tokens': 0,
+            'latency_ms_total': 0.0,
+        }
+
+    def _estimated_token_cost(self, input_tokens: int, output_tokens: int) -> float:
+        input_rate = _nonnegative_float(self.config.get('input_cost_per_1k'))
+        output_rate = _nonnegative_float(self.config.get('output_cost_per_1k'))
+        return (input_tokens / 1000.0) * input_rate + (output_tokens / 1000.0) * output_rate
+
+    def _record_request(self, started: float, *, success: bool, response: dict | None = None,
+                        error: Exception | str = '', operation: str = 'inference') -> None:
+        """Update in-process counters and persist one redacted health sample."""
+        response = response if isinstance(response, dict) else {}
+        usage = response.get('usage') if isinstance(response.get('usage'), dict) else {}
+        if self.type == 'ollama':
+            input_tokens = _nonnegative_int(response.get('prompt_eval_count'))
+            output_tokens = _nonnegative_int(response.get('eval_count'))
+        else:
+            input_tokens = _nonnegative_int(usage.get('prompt_tokens'))
+            output_tokens = _nonnegative_int(usage.get('completion_tokens'))
+        latency_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
+        estimated_cost = self._estimated_token_cost(input_tokens, output_tokens)
+        self._cost_tracker['requests'] += 1
+        self._cost_tracker['errors'] += 0 if success else 1
+        self._cost_tracker['input_tokens'] += input_tokens
+        self._cost_tracker['output_tokens'] += output_tokens
+        self._cost_tracker['latency_ms_total'] += latency_ms
+        record_provider_health(
+            self.provider_id,
+            success=success,
+            latency_ms=latency_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            estimated_cost=estimated_cost,
+            error=str(error) if error else '',
+            operation=operation,
+        )
 
     def classify(self, prompt: str, model: str | None = None,
                  system: str = '', format: dict | None = None) -> str:
@@ -242,6 +480,7 @@ class AIProvider:
 
     def is_available(self) -> bool:
         """Check if the provider is reachable."""
+        started = time.perf_counter()
         try:
             if self.type == 'ollama':
                 url = f"{self.url}/api/tags"
@@ -250,10 +489,14 @@ class AIProvider:
             headers = {}
             if self.api_key:
                 headers['Authorization'] = f'Bearer {self.api_key}'
-            ai_request(url, method='GET', data=None, headers=headers,
-                       timeout=5, retries=0)
+            response = ai_request(url, method='GET', data=None, headers=headers,
+                                  timeout=5, retries=0)
+            self._record_request(started, success=True, response=response,
+                                 operation='availability')
             return True
-        except Exception:
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc,
+                                 operation='availability')
             return False
 
     @property
@@ -263,6 +506,7 @@ class AIProvider:
     def _ollama_generate(self, prompt: str, model: str, system: str = '',
                          format: dict | None = None) -> str:
         """Call Ollama's /api/generate endpoint."""
+        started = time.perf_counter()
         payload = {
             'model': model,
             'prompt': prompt,
@@ -272,32 +516,42 @@ class AIProvider:
         }
         if format is not None:
             payload['format'] = format
-        data = ai_request(f"{self.url}/api/generate",
-                          data=json.dumps(payload).encode(),
-                          timeout=self.timeout)
-        self._cost_tracker['requests'] += 1
-        return data.get('response', '').strip()
+        try:
+            data = ai_request(f"{self.url}/api/generate",
+                              data=json.dumps(payload).encode(),
+                              timeout=self.timeout)
+            self._record_request(started, success=True, response=data, operation='text')
+            return data.get('response', '').strip()
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc, operation='text')
+            raise
 
     def _ollama_vision(self, prompt: str, image_path: str, model: str) -> str:
         """Call Ollama with vision model (image as base64)."""
-        with open(image_path, 'rb') as f:
-            img_b64 = base64.b64encode(f.read()).decode()
-        payload = {
-            'model': model,
-            'prompt': prompt,
-            'images': [img_b64],
-            'stream': False,
-            'options': {'temperature': 0.3, 'num_predict': 300},
-        }
-        data = ai_request(f"{self.url}/api/generate",
-                          data=json.dumps(payload).encode(),
-                          timeout=self.timeout * 2)
-        self._cost_tracker['requests'] += 1
-        return data.get('response', '').strip()
+        started = time.perf_counter()
+        try:
+            with open(image_path, 'rb') as f:
+                img_b64 = base64.b64encode(f.read()).decode()
+            payload = {
+                'model': model,
+                'prompt': prompt,
+                'images': [img_b64],
+                'stream': False,
+                'options': {'temperature': 0.3, 'num_predict': 300},
+            }
+            data = ai_request(f"{self.url}/api/generate",
+                              data=json.dumps(payload).encode(),
+                              timeout=self.timeout * 2)
+            self._record_request(started, success=True, response=data, operation='vision')
+            return data.get('response', '').strip()
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc, operation='vision')
+            raise
 
     def _openai_chat(self, prompt: str, model: str, system: str = '',
                      format: dict | None = None) -> str:
         """Call OpenAI-compatible /chat/completions endpoint."""
+        started = time.perf_counter()
         messages = []
         if system:
             messages.append({'role': 'system', 'content': system})
@@ -316,50 +570,56 @@ class AIProvider:
         headers = {}
         if self.api_key:
             headers['Authorization'] = f'Bearer {self.api_key}'
-        data = ai_request(f"{self.url}/chat/completions",
-                          data=json.dumps(payload).encode(),
-                          headers=headers, timeout=self.timeout)
-        self._cost_tracker['requests'] += 1
-        usage = data.get('usage', {})
-        self._cost_tracker['input_tokens'] += usage.get('prompt_tokens', 0)
-        self._cost_tracker['output_tokens'] += usage.get('completion_tokens', 0)
-        choices = data.get('choices', [])
-        if choices:
-            return choices[0].get('message', {}).get('content', '').strip()
-        return ''
+        try:
+            data = ai_request(f"{self.url}/chat/completions",
+                              data=json.dumps(payload).encode(),
+                              headers=headers, timeout=self.timeout)
+            self._record_request(started, success=True, response=data, operation='text')
+            choices = data.get('choices', [])
+            if choices:
+                return choices[0].get('message', {}).get('content', '').strip()
+            return ''
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc, operation='text')
+            raise
 
     def _openai_vision(self, prompt: str, image_path: str, model: str) -> str:
         """Call OpenAI-compatible vision endpoint."""
-        with open(image_path, 'rb') as f:
-            img_b64 = base64.b64encode(f.read()).decode()
-        ext = os.path.splitext(image_path)[1].lower().lstrip('.')
-        mime = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png',
-                'gif': 'gif', 'webp': 'webp'}.get(ext, 'jpeg')
-        payload = {
-            'model': model,
-            'messages': [{
-                'role': 'user',
-                'content': [
-                    {'type': 'text', 'text': prompt},
-                    {'type': 'image_url', 'image_url': {
-                        'url': f'data:image/{mime};base64,{img_b64}'
-                    }},
-                ],
-            }],
-            'temperature': 0.3,
-            'max_tokens': 300,
-        }
-        headers = {}
-        if self.api_key:
-            headers['Authorization'] = f'Bearer {self.api_key}'
-        data = ai_request(f"{self.url}/chat/completions",
-                          data=json.dumps(payload).encode(),
-                          headers=headers, timeout=self.timeout * 2)
-        self._cost_tracker['requests'] += 1
-        choices = data.get('choices', [])
-        if choices:
-            return choices[0].get('message', {}).get('content', '').strip()
-        return ''
+        started = time.perf_counter()
+        try:
+            with open(image_path, 'rb') as f:
+                img_b64 = base64.b64encode(f.read()).decode()
+            ext = os.path.splitext(image_path)[1].lower().lstrip('.')
+            mime = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png',
+                    'gif': 'gif', 'webp': 'webp'}.get(ext, 'jpeg')
+            payload = {
+                'model': model,
+                'messages': [{
+                    'role': 'user',
+                    'content': [
+                        {'type': 'text', 'text': prompt},
+                        {'type': 'image_url', 'image_url': {
+                            'url': f'data:image/{mime};base64,{img_b64}'
+                        }},
+                    ],
+                }],
+                'temperature': 0.3,
+                'max_tokens': 300,
+            }
+            headers = {}
+            if self.api_key:
+                headers['Authorization'] = f'Bearer {self.api_key}'
+            data = ai_request(f"{self.url}/chat/completions",
+                              data=json.dumps(payload).encode(),
+                              headers=headers, timeout=self.timeout * 2)
+            self._record_request(started, success=True, response=data, operation='vision')
+            choices = data.get('choices', [])
+            if choices:
+                return choices[0].get('message', {}).get('content', '').strip()
+            return ''
+        except Exception as exc:
+            self._record_request(started, success=False, error=exc, operation='vision')
+            raise
 
 
 class ProviderChain:
@@ -373,7 +633,7 @@ class ProviderChain:
         if key not in self._instances:
             cfg = self._providers.get(key)
             if cfg and cfg.get('enabled'):
-                self._instances[key] = AIProvider(cfg)
+                self._instances[key] = AIProvider(cfg, provider_id=key)
         return self._instances.get(key)
 
     def _ordered_providers(self, task: str = "text") -> list[tuple[str, AIProvider]]:
@@ -430,7 +690,8 @@ class ProviderChain:
 
     def get_cost_summary(self) -> dict:
         """Aggregate cost tracking across all providers."""
-        totals = {'requests': 0, 'input_tokens': 0, 'output_tokens': 0}
+        totals = {'requests': 0, 'errors': 0, 'input_tokens': 0,
+                  'output_tokens': 0, 'latency_ms_total': 0.0}
         for inst in self._instances.values():
             for k, v in inst.cost_stats.items():
                 totals[k] = totals.get(k, 0) + v
@@ -585,4 +846,3 @@ def classify_folder_via_chain(folder_name: str, folder_path: str | None,
 
     _llm_cache_set(folder_name, result)
     return result
-

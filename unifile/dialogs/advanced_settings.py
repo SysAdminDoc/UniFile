@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -54,7 +55,10 @@ class AIProviderSettingsDialog(QDialog):
             "Configure fallback providers for classification. Lower priority numbers run first, so keep your fastest or most trusted provider at the top."
         ))
 
-        lbl = QLabel("Enable only the providers you want UniFile to try automatically. Local backends can leave the API key blank.")
+        lbl = QLabel(
+            "Enable only the providers you want UniFile to try automatically. Local backends can leave the API key blank. "
+            "Optional token rates feed the Provider Health dashboard's estimated cost column."
+        )
         lbl.setWordWrap(True)
         lbl.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
         layout.addWidget(lbl)
@@ -100,6 +104,26 @@ class AIProviderSettingsDialog(QDialog):
             g_lay.addWidget(key_edit, row, 1)
 
             row += 1
+            g_lay.addWidget(QLabel("Input $ / 1k tokens:"), row, 0)
+            input_rate = QDoubleSpinBox()
+            input_rate.setRange(0.0, 1000.0)
+            input_rate.setDecimals(4)
+            input_rate.setSingleStep(0.001)
+            input_rate.setValue(float(cfg.get('input_cost_per_1k', 0.0) or 0.0))
+            input_rate.setToolTip("Leave at 0 when the provider has no configured per-token price.")
+            g_lay.addWidget(input_rate, row, 1)
+
+            row += 1
+            g_lay.addWidget(QLabel("Output $ / 1k tokens:"), row, 0)
+            output_rate = QDoubleSpinBox()
+            output_rate.setRange(0.0, 1000.0)
+            output_rate.setDecimals(4)
+            output_rate.setSingleStep(0.001)
+            output_rate.setValue(float(cfg.get('output_cost_per_1k', 0.0) or 0.0))
+            output_rate.setToolTip("Leave at 0 when the provider has no configured per-token price.")
+            g_lay.addWidget(output_rate, row, 1)
+
+            row += 1
             g_lay.addWidget(QLabel("Priority:"), row, 0)
             prio_spin = QSpinBox()
             prio_spin.setRange(1, 99)
@@ -111,8 +135,8 @@ class AIProviderSettingsDialog(QDialog):
             lbl_status = QLabel("Not checked yet")
             lbl_status.setStyleSheet(f"color: {_t['muted']}; font-size: 10px;")
             btn_test.clicked.connect(
-                lambda _, u=url_edit, k=key_edit, t=cfg.get('type', 'ollama'), s=lbl_status:
-                self._test_provider(u.text(), k.text(), t, s))
+                lambda _, u=url_edit, k=key_edit, t=cfg.get('type', 'ollama'),
+                s=lbl_status, pid=key: self._test_provider(u.text(), k.text(), t, pid, s))
             h = QHBoxLayout()
             h.addWidget(btn_test)
             h.addWidget(lbl_status)
@@ -123,6 +147,7 @@ class AIProviderSettingsDialog(QDialog):
             self._provider_widgets[key] = {
                 'group': grp, 'url': url_edit, 'model': model_edit,
                 'vision': vision_edit, 'api_key': key_edit, 'priority': prio_spin,
+                'input_rate': input_rate, 'output_rate': output_rate,
             }
 
         layout.addStretch()
@@ -134,9 +159,12 @@ class AIProviderSettingsDialog(QDialog):
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
 
-    def _test_provider(self, url, api_key, prov_type, status_label):
+    def _test_provider(self, url, api_key, prov_type, provider_id, status_label):
         from unifile.ai_providers import AIProvider
-        provider = AIProvider({'type': prov_type, 'url': url, 'api_key': api_key, 'timeout': 5})
+        provider = AIProvider(
+            {'type': prov_type, 'url': url, 'api_key': api_key, 'timeout': 5},
+            provider_id=provider_id,
+        )
         if provider.is_available():
             status_label.setText("Connected and ready")
             status_label.setStyleSheet(f"color: {get_active_theme()['green']}; font-size: 10px;")
@@ -153,6 +181,8 @@ class AIProviderSettingsDialog(QDialog):
             self._providers[key]['vision_model'] = widgets['vision'].text().strip()
             self._providers[key]['api_key'] = widgets['api_key'].text().strip()
             self._providers[key]['priority'] = widgets['priority'].value()
+            self._providers[key]['input_cost_per_1k'] = widgets['input_rate'].value()
+            self._providers[key]['output_cost_per_1k'] = widgets['output_rate'].value()
         save_providers(self._providers)
         self.accept()
 

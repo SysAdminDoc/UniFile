@@ -29,6 +29,7 @@ from unifile.dialogs.file_health import FileHealthDialog
 from unifile.dialogs.library_roots import LibraryRootsDialog
 from unifile.dialogs.metadata_editor import BatchMetadataEditorDialog
 from unifile.dialogs.project_audit import ProjectAuditDialog
+from unifile.dialogs.provider_health import ProviderHealthDialog
 from unifile.dialogs.settings import (
     ConfidenceTiersDialog,
     FaceManagerDialog,
@@ -68,6 +69,7 @@ __all__ = [
     'CloudRemotesDialog',
     'BatchMetadataEditorDialog',
     'ProjectAuditDialog',
+    'ProviderHealthDialog',
     'LibraryRootsDialog',
     'CollectionBoardDialog',
     'FileHealthDialog',

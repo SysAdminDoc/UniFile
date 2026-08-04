@@ -170,6 +170,10 @@ class DialogsMixin:
         if dlg.exec():
             self._log("AI provider settings saved")
 
+    def _open_provider_health(self):
+        from unifile.dialogs.provider_health import ProviderHealthDialog
+        ProviderHealthDialog(self).exec()
+
     def _open_whisper_settings(self):
         from unifile.dialogs.advanced_settings import WhisperSettingsDialog
         dlg = WhisperSettingsDialog(self)

@@ -37,6 +37,27 @@ from unifile.naming import (
 
 _OLLAMA_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'ollama_settings.json')
 
+
+def _record_ollama_health(started: float, *, success: bool, response: dict | None = None,
+                          error: Exception | str = '', operation: str = 'text') -> None:
+    """Feed direct Ollama calls into the shared local provider health ledger."""
+    try:
+        from unifile.ai_providers import record_provider_health
+
+        response = response if isinstance(response, dict) else {}
+        record_provider_health(
+            'ollama',
+            success=success,
+            latency_ms=max(0.0, (time.perf_counter() - started) * 1000.0),
+            input_tokens=response.get('prompt_eval_count', 0),
+            output_tokens=response.get('eval_count', 0),
+            error=str(error) if error else '',
+            operation=operation,
+        )
+    except Exception:
+        # Health reporting must never change the classification outcome.
+        pass
+
 _OLLAMA_DEFAULTS = {
     'url': 'http://localhost:11434',
     'model': 'qwen3.5:9b',
@@ -382,6 +403,7 @@ def ollama_test_connection(url: str = None, model: str = None) -> tuple:
     s = load_ollama_settings()
     url = url or s['url']
     model = model or s['model']
+    started = time.perf_counter()
 
     # Test server is running
     try:
@@ -390,7 +412,10 @@ def ollama_test_connection(url: str = None, model: str = None) -> tuple:
             data = json.loads(resp.read().decode())
         models = [m['name'] for m in data.get('models', [])]
     except (urllib.error.URLError, OSError, json.JSONDecodeError) as e:
+        _record_ollama_health(started, success=False, error=e, operation='availability')
         return (False, f"Cannot reach Ollama at {url}\n{e}", [])
+
+    _record_ollama_health(started, success=True, response=data, operation='availability')
 
     if not models:
         return (False, f"Ollama is running but no models installed.\nRun: ollama pull {model}", models)
@@ -423,6 +448,7 @@ def _ollama_generate(prompt: str, system: str = '', url: str = None,
     """
     import urllib.error
     import urllib.request
+    started = time.perf_counter()
     s = load_ollama_settings()
     url = url or s['url']
     model = model or s['model']
@@ -474,10 +500,17 @@ def _ollama_generate(prompt: str, system: str = '', url: str = None,
     t.start()
     t.join(timeout=timeout + 30)  # hard deadline = socket timeout + 30s grace
     if t.is_alive():
-        raise TimeoutError(f"Ollama request exceeded hard deadline of {timeout + 30}s")
+        exc = TimeoutError(f"Ollama request exceeded hard deadline of {timeout + 30}s")
+        _record_ollama_health(started, success=False, error=exc,
+                              operation='vision' if images else 'text')
+        raise exc
     if _result_box[1]:
+        _record_ollama_health(started, success=False, error=_result_box[1],
+                              operation='vision' if images else 'text')
         raise _result_box[1]
     result = _result_box[0]
+    _record_ollama_health(started, success=True, response=result,
+                          operation='vision' if images else 'text')
 
     raw = result.get('message', {}).get('content', '')
 
@@ -1180,6 +1213,7 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
 
     empty = [{'name': None, 'category': None, 'confidence': 0,
                'method': 'llm', 'detail': 'batch:not_run'} for _ in folders]
+    started = time.perf_counter()
 
     try:
         data = json.dumps(payload).encode('utf-8')
@@ -1203,11 +1237,14 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
         t.start()
         t.join(timeout=timeout + 30)
         if t.is_alive():
+            exc = TimeoutError(f"Ollama batch exceeded hard deadline of {timeout + 30}s")
+            _record_ollama_health(started, success=False, error=exc, operation='text_batch')
             for r in empty: r['detail'] = 'batch:hard_timeout'
             return empty
         if _result_box[1]:
             raise _result_box[1]
         result = _result_box[0]
+        _record_ollama_health(started, success=True, response=result, operation='text_batch')
         raw = result.get('message', {}).get('content', '').strip()
         if not raw:
             for r in empty: r['detail'] = 'batch:empty_response'
@@ -1271,6 +1308,7 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
         for r in empty: r['detail'] = f"batch:json_error:{e}"
         return empty
     except Exception as e:
+        _record_ollama_health(started, success=False, error=e, operation='text_batch')
         for r in empty: r['detail'] = f"batch:error:{e}"
         return empty
 
