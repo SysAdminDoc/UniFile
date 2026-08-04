@@ -275,10 +275,31 @@ python -m unifile list-models --url http://localhost:11434 --json
 # Manifest-backed plugin scaffolding (no GUI required)
 python -m unifile plugin create --name "My Plugin"
 python -m unifile plugin create --name "My Plugin" --output C:/path/to/plugins --json
+
+# Qt-free Flask API (set UNIFILE_API_KEY for non-health routes)
+python -m unifile serve --host 127.0.0.1 --port 8787
+curl http://127.0.0.1:8787/health
 ```
 
 The `classify` subcommand is safe to use in cron jobs and CI — it loads
 **zero Qt modules** and runs purely against the rule-based classifier.
+
+### Headless Docker deployment
+
+`docker-compose.yml` starts `unifile-api` and Ollama with separate library,
+SQLite, and model volumes. Configure `UNIFILE_API_KEY`, `SCAN_INTERVAL` (seconds,
+rounded to a cron minute), and `OLLAMA_URL` before running:
+
+```bash
+docker compose up -d --build
+curl -H "X-API-Key: $UNIFILE_API_KEY" http://127.0.0.1:8787/health
+```
+
+The API exposes authenticated `/scan`, `/tag`, `/search`, `/report`, and
+scheduled-job routes plus a small `/admin` status page. It is review-first:
+scans return the same versioned JSON plan shape used by `--output-json`, while
+tag writes are explicit. Leave `UNIFILE_ALLOW_UNAUTHENTICATED=0` in shared
+deployments.
 
 ### JSON scan plan format
 

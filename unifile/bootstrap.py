@@ -77,6 +77,7 @@ def _bootstrap():
         'unidecode>=1.4.0', 'reverse_geocoder>=1.5.1',
         'opencv-python-headless>=4.13.0.92', 'send2trash>=2.1.0',
         'guessit>=4.0.2', 'requests>=2.34.2', 'requests-cache>=1.3.2',
+        'Flask>=3.1.0',
         'babelfish>=0.6.1', 'pydantic>=2.13.4', 'platformdirs>=4.10.0',
         'PyYAML>=6.0.3', 'tomli>=2.4.1', 'tomli-w>=1.2.0',
         'pyacoustid>=1.3.1', 'musicbrainzngs>=0.7.1', 'pytesseract>=0.3.13',

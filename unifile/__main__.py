@@ -8,6 +8,7 @@ Usage:
     python -m unifile list-profiles [--json]       List saved scan profiles.
     python -m unifile list-models [--json]         List installed Ollama models.
     python -m unifile plugin create --name <name>  Generate a plugin scaffold.
+    python -m unifile serve [--host HOST]          Run the Qt-free headless API.
     python -m unifile validate-rules <dir> [--json]
                                                    Verify a directory's
                                                    .unifile_rules.json and
@@ -240,6 +241,15 @@ def _cmd_plugin_create(args) -> int:
     return 0
 
 
+def _cmd_serve(args) -> int:
+    """Run the optional Flask API without importing any Qt modules."""
+    from unifile.headless import create_app
+
+    app = create_app({"START_SCHEDULER": True})
+    app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
+    return 0
+
+
 def _write_scan_json(window, output_path: str) -> None:
     """Serialize the current scan results to a JSON plan file.
 
@@ -394,6 +404,22 @@ def main():
     )
     p_plugin_create.add_argument("--json", action="store_true", help="Emit generated paths as JSON")
 
+    p_serve = subparsers.add_parser(
+        "serve",
+        help="Run the Qt-free Flask headless API",
+    )
+    p_serve.add_argument(
+        "--host",
+        default=os.environ.get("UNIFILE_API_HOST", "127.0.0.1"),
+        help="Bind address (default: 127.0.0.1)",
+    )
+    p_serve.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("UNIFILE_API_PORT", "8787")),
+        help="Bind port (default: 8787)",
+    )
+
     p_shell = subparsers.add_parser(
         "install-shell",
         help="Install Windows Explorer shell integration (context menu + Send To)",
@@ -443,6 +469,8 @@ def main():
             sys.exit(_cmd_plugin_create(args))
         print("error: choose a plugin command (currently: create)", file=sys.stderr)
         sys.exit(2)
+    if args.subcommand == "serve":
+        sys.exit(_cmd_serve(args))
 
     if args.subcommand == "install-shell":
         from unifile import shell_integration as si

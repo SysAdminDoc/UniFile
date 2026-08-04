@@ -40,12 +40,6 @@ Larger features requiring non-trivial architecture or multi-week effort.
 
 Strategic / aspirational features. Some require significant architecture changes or external dependencies.
 
-### NAS / Docker Headless Deployment
-- Official `docker-compose.yml` in repo: `unifile-api` service + `ollama` service; volumes for library and DB; `SCAN_INTERVAL`, `OLLAMA_URL` env vars
-- Synology/QNAP `.spk`/`.qpkg` install package
-- Built-in job scheduler: cron-style scan/tag runs; email digest reports when results change
-- Extends the planned Flask REST API with an admin UI for headless configuration
-
 ### TagStudio Library Import / Export
 - Import an existing TagStudio `.db` library into UniFile's SQLAlchemy schema (entries, tags, fields, thumbnails)
 - Export UniFile tag library back to TagStudio format for cross-migration

@@ -1,0 +1,34 @@
+services:
+  unifile-api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${UNIFILE_API_PORT:-8787}:8787"
+    environment:
+      UNIFILE_API_HOST: 0.0.0.0
+      UNIFILE_API_PORT: 8787
+      UNIFILE_API_KEY: "${UNIFILE_API_KEY:-}"
+      UNIFILE_ALLOW_UNAUTHENTICATED: "${UNIFILE_ALLOW_UNAUTHENTICATED:-0}"
+      UNIFILE_LIBRARY_DIR: /library
+      UNIFILE_SCAN_ROOTS: /library
+      SCAN_INTERVAL: "${SCAN_INTERVAL:-0}"
+      OLLAMA_URL: "${OLLAMA_URL:-http://ollama:11434}"
+      UNIFILE_START_SCHEDULER: "1"
+    volumes:
+      - unifile_library:/library
+      - unifile_tag_db:/library/.unifile
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+
+volumes:
+  unifile_library:
+  unifile_tag_db:
+  ollama_models:
