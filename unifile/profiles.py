@@ -2,6 +2,7 @@
 import json
 import os
 
+from unifile.confidence import ConfidenceTiers, normalize_confidence_tiers
 from unifile.config import _APP_DATA_DIR
 
 _PROFILES_FILE = os.path.join(_APP_DATA_DIR, 'active_profile.json')
@@ -467,6 +468,48 @@ def set_archive_mode(mode: str, profile_name: str | None = None) -> bool:
             modes = {}
             data["archive_modes"] = modes
         modes[name] = mode
+        os.makedirs(os.path.dirname(_PROFILES_FILE), exist_ok=True)
+        with open(_PROFILES_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return True
+    except OSError:
+        return False
+
+
+def get_confidence_tiers(profile_name: str | None = None) -> ConfidenceTiers:
+    """Return confidence policy for a built-in scan profile."""
+    name = profile_name or _active_profile_name
+    profile = BUILTIN_PROFILES.get(name, BUILTIN_PROFILES["Design Assets"])
+    default = normalize_confidence_tiers(profile.get("confidence_tiers"))
+    try:
+        with open(_PROFILES_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        overrides = data.get("confidence_tiers", {})
+        if isinstance(overrides, dict) and name in overrides:
+            return normalize_confidence_tiers(overrides[name])
+    except (FileNotFoundError, OSError, json.JSONDecodeError, AttributeError):
+        pass
+    return default
+
+
+def set_confidence_tiers(tiers: ConfidenceTiers | dict, profile_name: str | None = None) -> bool:
+    """Persist a confidence policy override for one built-in scan profile."""
+    name = profile_name or _active_profile_name
+    normalized = normalize_confidence_tiers(tiers.as_dict() if isinstance(tiers, ConfidenceTiers) else tiers)
+    try:
+        data = {}
+        try:
+            with open(_PROFILES_FILE, encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            pass
+        overrides = data.setdefault("confidence_tiers", {})
+        if not isinstance(overrides, dict):
+            overrides = {}
+            data["confidence_tiers"] = overrides
+        overrides[name] = normalized.as_dict()
         os.makedirs(os.path.dirname(_PROFILES_FILE), exist_ok=True)
         with open(_PROFILES_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)

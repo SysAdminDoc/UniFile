@@ -21,6 +21,7 @@ class CategorizeItem:
         self.cleaned_name = ""
         self.category = ""
         self.confidence = 0
+        self.confidence_tier = "skip"
         self.full_source_path = ""
         self.full_dest_path = ""
         self.status = "Pending"
@@ -41,6 +42,7 @@ class FileItem:
         self.full_dst     = ""       # computed destination path
         self.category     = ""
         self.confidence   = 0
+        self.confidence_tier = "skip"
         self.method       = ""
         self.detail       = ""
         self.size         = 0        # bytes (0 for folders)
@@ -55,5 +57,4 @@ class FileItem:
         self.metadata     = {}       # extracted metadata dict
         self.vision_description = "" # AI vision description of image content
         self.vision_ocr   = ""       # text detected in image by vision model
-
 

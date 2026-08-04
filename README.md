@@ -220,6 +220,7 @@ require the dialog's review button.
 - **Progressive hash dedup** — SHA-256 + perceptual hash prevents overwrites
 - **Full undo log** — every operation recorded with one-click rollback
 - **CSV audit trail** — every classification logged with timestamp, method, confidence
+- **Confidence tiers** — Auto-apply (90%+), Suggest (70–89%), and Skip (<70%) labels; scheduled applies use only the high-confidence tier, with per-profile overrides in Settings → All Settings → Confidence Tiers
 - **Crash handler** — unhandled exceptions saved to crash log with MessageBox notification
 - **Redacted diagnostics export** — Settings > Tools creates a support ZIP with paths, emails, and API keys removed
 - **Plugin trust gate** — local Python plugins are fingerprinted and must be explicitly trusted before execution
@@ -245,6 +246,7 @@ unifile/
 ├── workers.py           # QThread workers for scanning/applying
 ├── plugins.py           # Plugin system, profiles, presets
 ├── profiles.py          # Scan profile management
+├── confidence.py        # Per-profile confidence tiers and auto-apply policy
 ├── cleanup.py           # Cleanup scanners (6 types)
 ├── duplicates.py        # Duplicate detection engine
 ├── widgets.py           # Custom Qt widgets (charts, map, preview)
@@ -280,6 +282,10 @@ Click **Settings > Ollama LLM** to configure:
 | URL | `http://localhost:11434` | Ollama server address |
 | Model | `qwen2.5:7b` | Model for classification |
 | Timeout | 30s | Per-item LLM timeout |
+
+### Confidence Tiers
+
+Classification results are labeled by confidence: **Auto-apply** (90% or higher), **Suggest** (70–89%), or **Skip** (below 70%). Scheduled `--auto-apply` jobs select only Auto-apply rows; interactive scans keep Suggest rows available for review. Open **Settings → All Settings → Confidence Tiers** to override the thresholds for each built-in scan profile.
 
 **Recommended models:**
 

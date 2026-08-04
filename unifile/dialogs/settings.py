@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -26,6 +27,7 @@ from PyQt6.QtWidgets import (
 )
 
 from unifile.bootstrap import HAS_CV2, HAS_FACE_RECOGNITION, HAS_REVERSE_GEOCODER
+from unifile.confidence import ConfidenceTiers
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.nexa_backend import (
@@ -46,7 +48,130 @@ from unifile.ollama import (
     save_ollama_settings,
 )
 from unifile.photos import _PHOTO_FOLDER_PRESETS, FaceDB, load_photo_settings, save_photo_settings
+from unifile.profiles import get_active_profile_name, get_confidence_tiers, get_profile_names
 from unifile.workers import ModelDeleteWorker, ModelListWorker, ModelPullWorker, format_size
+
+
+class ConfidenceTiersDialog(QDialog):
+    """Configure review and automation thresholds for each scan profile."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Confidence Tiers")
+        self.setMinimumWidth(500)
+        self.setStyleSheet(get_active_stylesheet())
+        self._build_ui()
+
+    def _build_ui(self):
+        _t = get_active_theme()
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.addWidget(build_dialog_header(
+            _t,
+            "Review policy",
+            "Confidence Tiers",
+            "Use a high-confidence tier for unattended jobs, keep medium-confidence "
+            "results for review, and skip weak matches. Each scan profile can have its own policy.",
+        ))
+
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(QLabel("Scan profile:"))
+        self.cmb_profile = QComboBox()
+        self.cmb_profile.addItems(get_profile_names())
+        active_name = get_active_profile_name()
+        active_index = self.cmb_profile.findText(active_name)
+        if active_index >= 0:
+            self.cmb_profile.setCurrentIndex(active_index)
+        self.cmb_profile.currentTextChanged.connect(self._load_profile)
+        profile_row.addWidget(self.cmb_profile, 1)
+        layout.addLayout(profile_row)
+
+        tier_grid = QGridLayout()
+        tier_grid.setHorizontalSpacing(14)
+        tier_grid.setVerticalSpacing(8)
+        tier_grid.addWidget(QLabel("Auto-apply threshold:"), 0, 0)
+        self.spn_auto = QSpinBox()
+        self.spn_auto.setRange(0, 100)
+        self.spn_auto.setSuffix("%")
+        self.spn_auto.setToolTip("Results at or above this score may be applied by scheduled jobs.")
+        tier_grid.addWidget(self.spn_auto, 0, 1)
+        tier_grid.addWidget(QLabel("Suggest threshold:"), 1, 0)
+        self.spn_suggest = QSpinBox()
+        self.spn_suggest.setRange(0, 100)
+        self.spn_suggest.setSuffix("%")
+        self.spn_suggest.setToolTip("Results from this score up to the auto-apply threshold stay selected for review.")
+        tier_grid.addWidget(self.spn_suggest, 1, 1)
+        layout.addLayout(tier_grid)
+
+        self.lbl_summary = QLabel()
+        self.lbl_summary.setWordWrap(True)
+        self.lbl_summary.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        layout.addWidget(self.lbl_summary)
+
+        self.spn_auto.valueChanged.connect(self._constrain_suggest)
+        self.spn_suggest.valueChanged.connect(self._constrain_auto)
+
+        footer = QHBoxLayout()
+        btn_reset = QPushButton("Reset defaults")
+        btn_reset.setProperty("class", "toolbar")
+        btn_reset.clicked.connect(self._reset_defaults)
+        footer.addWidget(btn_reset)
+        footer.addStretch()
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        footer.addWidget(buttons)
+        layout.addLayout(footer)
+
+        self._load_profile(self.cmb_profile.currentText())
+
+    def _load_profile(self, name: str):
+        tiers = get_confidence_tiers(name)
+        self.spn_auto.blockSignals(True)
+        self.spn_suggest.blockSignals(True)
+        self.spn_auto.setMinimum(0)
+        self.spn_suggest.setMaximum(100)
+        self.spn_suggest.setValue(tiers.suggest)
+        self.spn_auto.setValue(tiers.auto_apply)
+        self.spn_suggest.setMaximum(tiers.auto_apply)
+        self.spn_auto.setMinimum(tiers.suggest)
+        self.spn_auto.blockSignals(False)
+        self.spn_suggest.blockSignals(False)
+        self._update_summary()
+
+    def _constrain_suggest(self, value: int):
+        self.spn_suggest.setMaximum(value)
+        if self.spn_suggest.value() > value:
+            self.spn_suggest.setValue(value)
+        self._update_summary()
+
+    def _constrain_auto(self, value: int):
+        self.spn_auto.setMinimum(value)
+        if self.spn_auto.value() < value:
+            self.spn_auto.setValue(value)
+        self._update_summary()
+
+    def _update_summary(self):
+        tiers = ConfidenceTiers(self.spn_auto.value(), self.spn_suggest.value())
+        self.lbl_summary.setText(tiers.describe())
+
+    def _reset_defaults(self):
+        self.spn_auto.setMinimum(0)
+        self.spn_suggest.setMaximum(100)
+        self.spn_suggest.setValue(70)
+        self.spn_auto.setValue(90)
+        self.spn_suggest.setMaximum(90)
+        self.spn_auto.setMinimum(70)
+        self._update_summary()
+
+    def get_profile_name(self) -> str:
+        return self.cmb_profile.currentText()
+
+    def get_tiers(self) -> ConfidenceTiers:
+        return ConfidenceTiers(self.spn_auto.value(), self.spn_suggest.value())
 
 
 class OllamaSettingsDialog(QDialog):

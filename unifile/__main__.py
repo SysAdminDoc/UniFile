@@ -591,6 +591,7 @@ def _write_scan_json(window, output_path: str) -> None:
             "dst":  getattr(it, 'full_dst', '') or getattr(it, 'full_dest_path', '') or getattr(it, 'full_new_path', ''),
             "category":  getattr(it, 'category', ''),
             "confidence": getattr(it, 'confidence', 0),
+            "confidence_tier": getattr(it, 'confidence_tier', 'skip'),
             "method":    getattr(it, 'method', ''),
             "size":      getattr(it, 'size', 0) or getattr(it, 'file_size', 0),
             "selected":  getattr(it, 'selected', True),
@@ -1155,6 +1156,7 @@ def main():
                 if not still_scanning:
                     if args.output_json:
                         _write_scan_json(window, args.output_json)
+                    window._prepare_auto_apply()
                     op_idx = window.cmb_op.currentIndex()
                     if op_idx == UniFile.OP_FILES:
                         window._apply_files(dry_run=args.dry_run)

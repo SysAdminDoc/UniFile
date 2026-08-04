@@ -30,6 +30,7 @@ from unifile.dialogs.library_roots import LibraryRootsDialog
 from unifile.dialogs.metadata_editor import BatchMetadataEditorDialog
 from unifile.dialogs.project_audit import ProjectAuditDialog
 from unifile.dialogs.settings import (
+    ConfidenceTiersDialog,
     FaceManagerDialog,
     ModelManagerDialog,
     OllamaSettingsDialog,
@@ -51,7 +52,7 @@ from unifile.dialogs.tools import (
 from unifile.dialogs.voice_control import VoiceControlDialog
 
 __all__ = [
-    'OllamaSettingsDialog', 'PhotoSettingsDialog', 'FaceManagerDialog', 'ModelManagerDialog',
+    'OllamaSettingsDialog', 'ConfidenceTiersDialog', 'PhotoSettingsDialog', 'FaceManagerDialog', 'ModelManagerDialog',
     'CustomCategoriesDialog', 'DestTreeDialog', 'PCCategoryEditorDialog',
     'TemplateBuilderWidget', '_FileBrowserDialog', 'RuleEditorDialog',
     '_CleanupScanWorker', 'CleanupToolsDialog', 'CleanupPanel',

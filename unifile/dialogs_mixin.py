@@ -14,6 +14,7 @@ import os
 
 from unifile.dialogs import (
     BatchMetadataEditorDialog,
+    ConfidenceTiersDialog,
     CsvRulesDialog,
     CustomCategoriesDialog,
     OllamaSettingsDialog,
@@ -22,6 +23,7 @@ from unifile.dialogs import (
     ScheduleDialog,
     ThemePickerDialog,
 )
+from unifile.profiles import set_confidence_tiers
 from unifile.voice import (
     VoiceIntent,
     VoiceIntentParser,
@@ -275,6 +277,17 @@ class DialogsMixin:
         from unifile.dialogs.advanced_settings import LearningStatsDialog
         dlg = LearningStatsDialog(self)
         dlg.exec()
+
+    def _open_confidence_tiers(self):
+        """Open per-profile confidence policy settings."""
+        dlg = ConfidenceTiersDialog(self)
+        if dlg.exec():
+            name = dlg.get_profile_name()
+            tiers = dlg.get_tiers()
+            if set_confidence_tiers(tiers, name):
+                self._log(f"Confidence tiers saved for {name}: {tiers.describe()}")
+            else:
+                self._log(f"Could not save confidence tiers for {name}")
 
     # Rule / plugin / schedule / theme ----------------------------------------
 

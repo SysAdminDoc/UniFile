@@ -98,7 +98,10 @@ class FilterMixin:
             visual_map[self._item_idx_from_row(r)] = r
         # Auto-deselect items below threshold
         for it in items:
-            should_select = it.confidence >= val
+            should_select = (
+                it.confidence >= val
+                and getattr(it, 'confidence_tier', 'skip') != 'skip'
+            )
             if it.selected != should_select:
                 it.selected = should_select
                 # Find the item's list index

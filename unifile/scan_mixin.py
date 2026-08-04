@@ -11,6 +11,7 @@ from unifile.bootstrap import HAS_MAGIC, HAS_RAPIDFUZZ
 from unifile.cache import compute_file_fingerprint
 from unifile.categories import is_generic_aep
 from unifile.classifier import _SCAN_FILTERS
+from unifile.confidence import AUTO_APPLY, SKIP
 from unifile.config import _LAST_CONFIG_FILE
 from unifile.duplicates import ConflictResolver
 from unifile.engine import CategoryBalancer, RenameTemplateEngine
@@ -19,7 +20,7 @@ from unifile.models import CategorizeItem, FileItem, RenameItem
 from unifile.naming import _beautify_name, _extract_name_hints, _smart_name
 from unifile.photos import _PHOTO_FOLDER_PRESETS, load_photo_settings
 from unifile.plugins import PluginManager, apply_workflow_commands
-from unifile.profiles import get_active_profile
+from unifile.profiles import get_active_profile, get_confidence_tiers
 from unifile.script import WorkflowBatchWorker
 from unifile.workers import (
     ScanAepWorker,
@@ -108,6 +109,10 @@ class ScanMixin:
             return
 
         op = self.cmb_op.currentIndex()
+        self._confidence_tiers = (
+            getattr(self, '_profile_confidence_tiers_override', None)
+            or get_confidence_tiers()
+        )
         self._save_last_config()
 
         # In PC Files mode, source comes from the PC panel, not txt_src
@@ -419,6 +424,8 @@ class ScanMixin:
         it = CategorizeItem(); it.folder_name = r['folder_name']; it.category = r['category']
         it.cleaned_name = r.get('cleaned_name', r['folder_name'])
         it.confidence = r['confidence']; it.full_source_path = r['folder_path']
+        tiers = getattr(self, '_confidence_tiers', None) or get_confidence_tiers()
+        it.confidence_tier = tiers.classify(it.confidence)
 
         # Use LLM-cleaned name for dest path if available (rename-on-move)
         llm_name = r.get('llm_name')
@@ -472,7 +479,7 @@ class ScanMixin:
         it.method = r.get('method', ''); it.detail = r.get('detail', '')
         it.topic = r.get('topic', '') or ''
         it.status = "Pending"
-        it.selected = it.confidence >= thresh
+        it.selected = it.confidence >= thresh and it.confidence_tier != SKIP
 
         if it.topic:
             self._cat_context_count += 1
@@ -635,6 +642,8 @@ class ScanMixin:
         it.confidence  = r['confidence']
         it.method      = r['method']
         it.detail      = r['detail']
+        tiers = getattr(self, '_confidence_tiers', None) or get_confidence_tiers()
+        it.confidence_tier = tiers.classify(it.confidence)
         it.size        = r['size']
         it.is_folder   = r['is_folder']
         it.is_duplicate = r['is_duplicate']
@@ -644,7 +653,7 @@ class ScanMixin:
         it.metadata    = r.get('metadata', {})
         it.vision_description = r.get('vision_description', '')
         it.vision_ocr  = r.get('vision_ocr', '')
-        it.selected    = not it.is_duplicate   # auto-deselect dupes
+        it.selected    = not it.is_duplicate and it.confidence_tier != SKIP
 
         # ── Rename resolution ─────────────────────────────────────────────────
         # Vision AI name takes priority (pure AI-generated descriptive name)
@@ -702,6 +711,40 @@ class ScanMixin:
         self.file_items.append(it)
         self._add_files_row(it, len(self.file_items) - 1)
         self._stats_files()
+
+    def _prepare_auto_apply(self) -> int:
+        """Select only high-confidence rows for unattended apply operations."""
+        tiers = getattr(self, '_confidence_tiers', None) or get_confidence_tiers()
+        op = self.cmb_op.currentIndex()
+        if op in (self.OP_CAT, self.OP_SMART):
+            items = self.cat_items
+        elif op == self.OP_FILES:
+            items = self.file_items
+        else:
+            selected = sum(
+                1 for item in self.aep_items
+                if getattr(item, 'selected', False)
+                and getattr(item, 'status', 'Pending') == 'Pending'
+            )
+            self._log(
+                f"Auto-apply policy: preserved {selected} non-classification rename row(s)."
+            )
+            return selected
+        selected = 0
+        for item in items:
+            eligible = (
+                getattr(item, 'status', 'Pending') == 'Pending'
+                and not getattr(item, 'is_duplicate', False)
+                and bool(getattr(item, 'category', True))
+                and tiers.classify(getattr(item, 'confidence', 0)) == AUTO_APPLY
+            )
+            item.selected = eligible
+            selected += int(eligible)
+        self._log(
+            f"Auto-apply policy: {selected} row(s) meet the high-confidence tier "
+            f"({tiers.auto_apply}%+); lower-confidence rows remain for review."
+        )
+        return selected
 
     def _dedup_file_dst(self, dst_path: str) -> str:
         """Avoid collisions in destination — append (2), (3) etc. as needed."""

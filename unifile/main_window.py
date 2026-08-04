@@ -61,6 +61,7 @@ from unifile.categories import (
     load_custom_categories,
 )
 from unifile.classifier import _SCAN_FILTERS, tiered_classify
+from unifile.confidence import ConfidenceTiers, confidence_tier_text, normalize_confidence_tiers
 from unifile.config import (
     _LAST_CONFIG_FILE,
     CONF_HIGH,
@@ -100,6 +101,7 @@ from unifile.profiles import (
     get_active_profile,
     get_active_profile_name,
     get_archive_mode,
+    get_confidence_tiers,
     get_profile_names,
     set_active_profile,
     set_archive_mode,
@@ -2048,6 +2050,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                 if r.get('category'):
                     it.category = r['category']
                     it.confidence = r.get('confidence', 0)
+                    tiers = getattr(self, '_confidence_tiers', ConfidenceTiers())
+                    it.confidence_tier = tiers.classify(it.confidence)
+                    if it.confidence_tier == 'skip':
+                        it.selected = False
                     it.method = r.get('method', 'llm')
                     it.detail = r.get('detail', '')
                     it.cleaned_name = r.get('cleaned_name', it.cleaned_name)
@@ -2060,8 +2066,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                         di.setForeground(QColor(get_active_theme()['green']))
                     ci = self.tbl.item(visual_row, 4)
                     if ci:
-                        ci.setText(f"{it.confidence:.0f}%")
+                        ci.setText(confidence_tier_text(it.confidence, tiers))
                         ci.setForeground(QColor(self._confidence_text_color(it.confidence)))
+                        ci.setToolTip(tiers.describe())
                     mi = self.tbl.item(visual_row, 5)
                     if mi:
                         mi.setText(it.method.replace('_', ' '))
@@ -2071,6 +2078,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                 if r.get('category'):
                     it.category = r['category']
                     it.confidence = r.get('confidence', 0)
+                    tiers = getattr(self, '_confidence_tiers', ConfidenceTiers())
+                    it.confidence_tier = tiers.classify(it.confidence)
+                    if it.confidence_tier == 'skip':
+                        it.selected = False
                     it.method = r.get('method', 'llm')
                     it.detail = r.get('detail', '')
                     ci = self.tbl.item(visual_row, 5)
@@ -2080,8 +2091,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                         ci.setText(it.category); ci.setForeground(QColor(cat_color))
                     cfi = self.tbl.item(visual_row, 8)
                     if cfi:
-                        cfi.setText(f"{it.confidence}%")
+                        cfi.setText(confidence_tier_text(it.confidence, tiers))
                         cfi.setForeground(QColor(self._confidence_text_color(it.confidence)))
+                        cfi.setToolTip(tiers.describe())
                     mi = self.tbl.item(visual_row, 9)
                     if mi:
                         mi.setText(it.method.replace('_', ' '))
@@ -2433,6 +2445,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
     def _on_profile_changed(self, name):
         """Handle profile selector change."""
+        self._profile_confidence_tiers_override = None
         set_active_profile(name)
         self._set_archive_mode_combo(get_archive_mode(name))
         profile = get_active_profile()
@@ -2698,6 +2711,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             'inc_folders': self.chk_inc_folders.isChecked(),
             'type_filter': self.cmb_type_filter.currentText(),
             'archive_mode': self.cmb_archive_mode.currentData(),
+            'confidence_tiers': getattr(
+                self, '_confidence_tiers', get_confidence_tiers()).as_dict(),
         }
 
     def _apply_profile_config(self, cfg: dict):
@@ -2724,6 +2739,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.chk_llm.setChecked(cfg.get('llm', False))
         self.chk_hash.setChecked(cfg.get('dedup', False))
         self.spn_depth.setValue(cfg.get('depth', 0))
+        configured_tiers = cfg.get('confidence_tiers')
+        self._profile_confidence_tiers_override = (
+            normalize_confidence_tiers(configured_tiers)
+            if isinstance(configured_tiers, dict) else None
+        )
         self._set_archive_mode_combo(cfg.get('archive_mode', get_archive_mode()))
 
     def _save_profile(self):
@@ -2873,9 +2893,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.tbl.setItem(r, 3, dest_item)
 
         # Col 4: Confidence (smooth heatmap, numeric sort)
-        cfi = self._nit(f"{it.confidence:.0f}%", it.confidence)
+        tiers = getattr(self, '_confidence_tiers', ConfidenceTiers())
+        cfi = self._nit(confidence_tier_text(it.confidence, tiers), it.confidence)
         cfi.setForeground(QColor(self._confidence_text_color(it.confidence)))
         cfi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        cfi.setToolTip(tiers.describe())
         self.tbl.setItem(r, 4, cfi)
 
         # Col 5: Method with color coding
@@ -3322,9 +3344,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.tbl.setItem(r, 7, si)
 
         # Col 8: confidence (smooth heatmap, numeric sort)
-        cfi = self._nit(f"{it.confidence}%", it.confidence)
+        tiers = getattr(self, '_confidence_tiers', ConfidenceTiers())
+        cfi = self._nit(confidence_tier_text(it.confidence, tiers), it.confidence)
         cfi.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         cfi.setForeground(QColor(self._confidence_text_color(it.confidence)))
+        cfi.setToolTip(tiers.describe())
         self.tbl.setItem(r, 8, cfi)
 
         # Col 9: method
@@ -3418,20 +3442,22 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                 w = csv.writer(f)
                 if op == self.OP_FILES:
                     w.writerow(["Selected", "Name", "Rename To", "Source Path", "Destination",
-                                "Category", "Size", "Confidence", "Method", "Status",
+                                "Category", "Size", "Confidence", "Confidence Tier", "Method", "Status",
                                 "Dup Group", "Dup Detail", "Metadata"])
                     for it in items:
                         meta_str = MetadataExtractor.format_summary(it.metadata) if it.metadata else ''
                         rename_to = it.display_name if it.display_name != it.name else ''
                         dup_grp = f"G{it.dup_group}" if it.dup_group > 0 else ''
                         w.writerow([it.selected, it.name, rename_to, it.full_src, it.full_dst,
-                                    it.category, it.size, it.confidence, it.method,
-                                    it.status, dup_grp, it.dup_detail, meta_str])
+                                    it.category, it.size, it.confidence,
+                                    it.confidence_tier, it.method, it.status,
+                                    dup_grp, it.dup_detail, meta_str])
                 elif op in (self.OP_CAT, self.OP_SMART):
-                    w.writerow(["Selected", "Source Path", "Destination Path", "Category", "Confidence", "Method", "Detail", "Status"])
+                    w.writerow(["Selected", "Source Path", "Destination Path", "Category", "Confidence", "Confidence Tier", "Method", "Detail", "Status"])
                     for it in items:
                         w.writerow([it.selected, it.full_source_path, it.full_dest_path,
-                                    it.category, f"{it.confidence:.0f}", it.method, it.detail, it.status])
+                                    it.category, f"{it.confidence:.0f}", it.confidence_tier,
+                                    it.method, it.detail, it.status])
                 else:
                     w.writerow(["Selected", "Source Path", "New Path", "AEP File", "Size", "Status"])
                     for it in items:
@@ -3492,7 +3518,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                     f'<div class="stats">{self.lbl_stats.text()}</div>',
                     '<table><thead><tr>']
             if op == self.OP_FILES:
-                for h in ['Name', 'Category', 'Rename To', 'Size', 'Confidence', 'Method', 'Status']:
+                for h in ['Name', 'Category', 'Rename To', 'Size', 'Confidence', 'Tier', 'Method', 'Status']:
                     html.append(f'<th>{h}</th>')
                 html.append('</tr></thead><tbody>')
                 for it in items:
@@ -3501,17 +3527,17 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                     sz = format_size(it.size) if it.size else '—'
                     html.append(f'<tr><td>{it.name}</td><td class="cat">{it.category}</td>'
                                 f'<td>{rename}</td><td>{sz}</td>'
-                                f'<td class="{cc}">{it.confidence}%</td>'
+                                f'<td class="{cc}">{it.confidence}%</td><td>{it.confidence_tier}</td>'
                                 f'<td class="method">{it.method}</td><td>{it.status}</td></tr>')
             elif op in (self.OP_CAT, self.OP_SMART):
-                for h in ['Source', 'Destination', 'Category', 'Confidence', 'Method', 'Status']:
+                for h in ['Source', 'Destination', 'Category', 'Confidence', 'Tier', 'Method', 'Status']:
                     html.append(f'<th>{h}</th>')
                 html.append('</tr></thead><tbody>')
                 for it in items:
                     cc = 'hi' if it.confidence >= CONF_HIGH else 'med' if it.confidence >= CONF_MEDIUM else 'lo'
                     html.append(f'<tr><td>{it.full_source_path}</td><td>{it.full_dest_path}</td>'
                                 f'<td class="cat">{it.category}</td>'
-                                f'<td class="{cc}">{it.confidence:.0f}%</td>'
+                                f'<td class="{cc}">{it.confidence:.0f}%</td><td>{it.confidence_tier}</td>'
                                 f'<td class="method">{it.method}</td><td>{it.status}</td></tr>')
             else:
                 for h in ['Source', 'New Path', 'AEP File', 'Size', 'Status']:

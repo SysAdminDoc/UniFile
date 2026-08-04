@@ -148,6 +148,9 @@ class SettingsHubDialog(QDialog):
                 ("Adaptive Learning Stats…",
                  "View patterns learned from your corrections and clear the learner.",
                  self._open_learning),
+                ("Confidence Tiers…",
+                 "Set auto-apply and review thresholds separately for each scan profile.",
+                 self._open_confidence_tiers),
             ],
             theme,
         )
@@ -294,6 +297,7 @@ class SettingsHubDialog(QDialog):
     def _open_semantic_settings(self):self._call('_open_semantic_settings')
     def _open_whisper(self):          self._call('_open_whisper_settings')
     def _open_learning(self):         self._call('_open_learning_stats')
+    def _open_confidence_tiers(self):  self._call('_open_confidence_tiers')
 
     # Photo tab
     def _open_cloud_remotes(self):
