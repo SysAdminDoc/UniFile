@@ -57,7 +57,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Cleanup & Safety
 
-- **Transaction log replay** — SQLite WAL with a reverse-iterator to undo the last N apply operations; exposed in the Undo Timeline panel
 
 ---
 

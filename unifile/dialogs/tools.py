@@ -34,7 +34,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from unifile.cache import _load_undo_stack, _save_undo_stack
+from unifile.cache import (
+    _load_undo_stack,
+    _save_undo_stack,
+    operation_log_count,
+    replay_operation_log,
+)
 from unifile.config import clear_watch_history, get_active_stylesheet, get_active_theme, load_watch_history
 from unifile.dialogs.common import build_dialog_header
 from unifile.engine import EventGrouper, ScheduleManager
@@ -800,6 +805,20 @@ class UndoTimelineDialog(QDialog):
         self.btn_undo_all = QPushButton("Undo Entire History")
         self.btn_undo_all.clicked.connect(self._undo_all)
         btn_row.addWidget(self.btn_undo_all)
+        btn_row.addWidget(QLabel("Last N:"))
+        self.spn_last_n = QSpinBox()
+        self.spn_last_n.setRange(1, 100000)
+        self.spn_last_n.setValue(10)
+        self.spn_last_n.setToolTip(
+            "Number of newest applied operations to replay in reverse order"
+        )
+        btn_row.addWidget(self.spn_last_n)
+        self.btn_undo_last = QPushButton("Replay Last N")
+        self.btn_undo_last.setToolTip(
+            "Restore the newest applied operations from the SQLite transaction log"
+        )
+        self.btn_undo_last.clicked.connect(self._undo_last_n)
+        btn_row.addWidget(self.btn_undo_last)
         btn_row.addStretch()
         left.addLayout(btn_row)
         lay.addLayout(left, 1)
@@ -820,6 +839,7 @@ class UndoTimelineDialog(QDialog):
         lay.addLayout(right, 2)
         root.addLayout(lay, 1)
 
+        operation_log_count()  # Also imports any pre-SQLite JSON history once.
         self.stack = _load_undo_stack()
         self._populate()
 
@@ -844,6 +864,7 @@ class UndoTimelineDialog(QDialog):
             if self.stack else
             "No operation history is available yet."
         )
+        self.btn_undo_last.setEnabled(operation_log_count() > 0)
         self._update_selection_state()
 
     def _on_batch_selected(self, row):
@@ -885,6 +906,18 @@ class UndoTimelineDialog(QDialog):
             return
         self._perform_undo(indices)
 
+    def _undo_last_n(self):
+        """Replay the newest N still-applied SQLite journal entries."""
+        result = replay_operation_log(limit=self.spn_last_n.value())
+        self.stack = _load_undo_stack()
+        self._populate()
+        msg = f"Undo complete: {result['restored']} restored"
+        if result['errors']:
+            msg += f", {result['errors']} errors"
+        if result['skipped']:
+            msg += f", {result['skipped']} skipped"
+        QMessageBox.information(self, "Undo", msg)
+
     def _undo_all(self):
         indices = sorted(range(len(self.stack)), reverse=True)
         self._perform_undo(indices)
@@ -892,6 +925,26 @@ class UndoTimelineDialog(QDialog):
     def _perform_undo(self, indices):
         import os as _os
         import shutil as _shutil
+        operation_batch_ids = [
+            self.stack[idx].get('operation_batch_id')
+            for idx in indices
+            if 0 <= idx < len(self.stack)
+        ]
+        if operation_batch_ids and len(operation_batch_ids) == len(indices):
+            result = replay_operation_log(batch_ids=operation_batch_ids)
+            self.stack = _load_undo_stack()
+            self._populate()
+            msg = f"Undo complete: {result['restored']} restored"
+            if result['errors']:
+                msg += f", {result['errors']} errors"
+            if result['skipped']:
+                msg += f", {result['skipped']} skipped"
+            if result['restored'] or result['skipped']:
+                QMessageBox.information(self, "Undo", msg)
+            else:
+                QMessageBox.warning(self, "Undo", msg)
+            self.accept()
+            return
         ok = err = skipped = 0
         for idx in indices:
             if idx >= len(self.stack):

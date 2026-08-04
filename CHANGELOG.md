@@ -30,6 +30,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- SQLite WAL transaction replay now journals every apply operation, supports newest-first last-N restoration, and exposes the replay control in Undo Timeline while keeping the legacy JSON history synchronized.
 - Checkpointed PC scans now persist completed results to SQLite in 500-item batches, automatically resume matching interrupted scans, and discard the checkpoint after a successful run.
 - Disk-space protection now preflights AEP renames, folder categorization, and PC file moves, reserves cross-volume copy bytes, and exposes a configurable 500 MB default floor in Settings → System.
 - Cleanup Sweep: review empty folders, zero-byte files, and broken shortcuts in one pass, then move selected candidates into the existing Undo Timeline-backed UniFile Recovery quarantine.

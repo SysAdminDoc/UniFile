@@ -264,6 +264,7 @@ require the dialog's review button.
 - **Safe merge-move** — merging into existing folders preserves all files
 - **Progressive hash dedup** — SHA-256 + perceptual hash prevents overwrites
 - **Full undo log** — every operation recorded with one-click rollback
+- **SQLite transaction replay** — apply operations are journaled in WAL mode and can be replayed newest-first by batch or by a configurable last-N count from Undo Timeline
 - **Disk space protection** — bulk moves and renames stop before execution when the destination would fall below the configurable free-space floor (500 MB by default); configure it in Settings → All Settings → System
 - **Checkpointed scans** — PC scans persist completed results to SQLite in 500-item batches and resume interrupted work without reclassifying unchanged items
 - **CSV audit trail** — every classification logged with timestamp, method, confidence
