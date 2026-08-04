@@ -77,7 +77,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Distribution & Packaging
 
-- **`unifile-sdk` package on PyPI** — core engine only (no PyQt6); `pip install unifile-sdk`; provides `Classifier`, `TagLibrary`, `SemanticIndex`, `PatternLearner` for embedding in third-party tools
 
 ---
 

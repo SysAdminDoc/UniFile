@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unifile-sdk"
+version = "9.3.32"
+description = "PyQt-free UniFile classification, tagging, semantic search, and learning engine"
+readme = { text = "PyQt-free UniFile classification, tagging, semantic search, and learning engine.", content-type = "text/plain" }
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "SysAdminDoc" }]
+keywords = ["file-organizer", "classification", "tag-library", "semantic-search", "learning"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = ["SQLAlchemy>=2.0"]
+
+[project.urls]
+Homepage = "https://github.com/SysAdminDoc/UniFile"
+Repository = "https://github.com/SysAdminDoc/UniFile"
+Issues = "https://github.com/SysAdminDoc/UniFile/issues"
+
+[tool.setuptools]
+include-package-data = false
+packages = ["unifile_sdk", "unifile", "unifile.tagging"]
+
+[tool.setuptools.package-dir]
+unifile_sdk = "unifile_sdk"
+unifile = "../unifile"
+"unifile.tagging" = "../unifile/tagging"

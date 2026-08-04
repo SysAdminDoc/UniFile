@@ -551,6 +551,7 @@ make build       # clean PyInstaller build + frozen --version/classify/GUI smoke
 make build-smoke # rerun frozen smoke/checksum against an existing dist/UniFile/UniFile.exe
 python tools/build_msi.py  # build the unsigned per-machine WiX MSI from dist/UniFile
 python tools/build_portable_zip.py  # build UniFile-portable-vX.Y.Z.zip
+make sdk  # build the PyQt-free unifile-sdk wheel under dist/sdk
 ```
 
 The Windows MSI installs the frozen application under `Program Files`, creates
@@ -569,6 +570,17 @@ after startup. A newer stable release appears as a Download/Dismiss banner;
 UniFile never installs updates automatically. Toggle **Settings → Check for
 Updates on Startup** to disable the check; the `disable_update_check` setting
 is persisted with the rest of the application configuration.
+
+Embedding hosts can use the isolated `unifile-sdk` project for the core
+engine without installing PyQt6:
+
+```python
+from unifile_sdk import Classifier, PatternLearner, SemanticIndex, TagLibrary
+```
+
+Build it locally with `make sdk` (or `python tools/build_sdk.py`). The wheel
+exposes the classification, tag-library, semantic-index, and learning APIs;
+desktop UI modules are not part of its public surface.
 
 ## Related Tools
 

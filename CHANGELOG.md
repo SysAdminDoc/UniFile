@@ -30,6 +30,8 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Isolated `unifile-sdk` wheel build exposing `Classifier`, `TagLibrary`,
+  `SemanticIndex`, and `PatternLearner` without a PyQt6 dependency.
 - Background GitHub release checking with a persisted opt-out setting and a
   Download/Dismiss banner that never auto-installs updates.
 - Portable ZIP release packaging with an adjacent marker that makes frozen
