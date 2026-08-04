@@ -67,7 +67,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Automation & CLI
 
-- **Built-in job scheduler** — cron-style: add scan jobs with a time expression (e.g., `0 2 * * *`); runs in background thread; results logged and summarized in dashboard
 - **Docker Compose template** — `docker-compose.yml` in repo root; `unifile-api` + `ollama` services; volume mounts for library path and DB; environment variables for all settings
 
 ---
