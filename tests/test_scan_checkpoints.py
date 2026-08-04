@@ -138,6 +138,93 @@ def test_cancelled_scan_resumes_completed_items(tmp_path, monkeypatch,
     cache.close()
 
 
+def test_incremental_scan_reuses_unchanged_files_and_honors_force_rescan(
+    tmp_path, monkeypatch, _disable_protected_paths,
+):
+    from unifile import workers
+
+    root = tmp_path / 'incremental-root'
+    root.mkdir()
+    source = root / 'item.txt'
+    source.write_text('initial', encoding='utf-8')
+    db_path = tmp_path / 'incremental-cache.db'
+
+    class _TempCache(_ScanCache):
+        def __init__(self):
+            super().__init__(str(db_path))
+
+    monkeypatch.setattr(workers, '_ScanCache', _TempCache)
+    monkeypatch.setattr(workers, 'MetadataExtractor', type(
+        '_Metadata', (), {'extract': staticmethod(lambda *args, **kwargs: {})}
+    ))
+    categories = [{'name': 'Documents', 'extensions': ['txt']}]
+    calls = []
+
+    def classify(path, ext_map, is_folder, configured_categories):
+        calls.append(Path(path).name)
+        return ('Documents', 90, 'test')
+
+    monkeypatch.setattr(workers, '_classify_pc_item', classify)
+    first_worker = workers.ScanFilesWorker(
+        str(root), '', categories, include_folders=False, include_files=True,
+    )
+    first_results = []
+    first_worker.result_ready.connect(first_results.append)
+    first_worker.run()
+
+    assert len(first_results) == 1
+    assert calls == ['item.txt']
+
+    def fail_if_reclassified(*args, **kwargs):
+        raise AssertionError('unchanged file was reclassified')
+
+    monkeypatch.setattr(workers, '_classify_pc_item', fail_if_reclassified)
+    second_worker = workers.ScanFilesWorker(
+        str(root), '', categories, include_folders=False, include_files=True,
+    )
+    second_results = []
+    second_logs = []
+    second_worker.result_ready.connect(second_results.append)
+    second_worker.log.connect(second_logs.append)
+    second_worker.run()
+
+    assert len(second_results) == 1
+    assert second_results[0]['method'] == 'test+cached'
+    assert any('[CACHE] 1 items loaded' in message for message in second_logs)
+
+    source.write_text('changed content', encoding='utf-8')
+    changed_calls = []
+
+    def classify_changed(path, ext_map, is_folder, configured_categories):
+        changed_calls.append(Path(path).name)
+        return ('Documents', 91, 'changed')
+
+    monkeypatch.setattr(workers, '_classify_pc_item', classify_changed)
+    changed_worker = workers.ScanFilesWorker(
+        str(root), '', categories, include_folders=False, include_files=True,
+    )
+    changed_worker.run()
+    assert changed_calls == ['item.txt']
+
+    force_calls = []
+
+    def classify_forced(path, ext_map, is_folder, configured_categories):
+        force_calls.append(Path(path).name)
+        return ('Documents', 92, 'forced')
+
+    monkeypatch.setattr(workers, '_classify_pc_item', classify_forced)
+    forced_worker = workers.ScanFilesWorker(
+        str(root), '', categories, include_folders=False, include_files=True,
+        force_rescan=True,
+    )
+    forced_results = []
+    forced_worker.result_ready.connect(forced_results.append)
+    forced_worker.run()
+
+    assert force_calls == ['item.txt']
+    assert forced_results[0]['method'] == 'forced'
+
+
 def test_llm_scan_resumes_emitted_batch_results(tmp_path, monkeypatch,
                                                 _disable_protected_paths):
     from unifile import workers
