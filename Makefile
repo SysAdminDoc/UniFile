@@ -3,7 +3,7 @@
 
 PY ?= python
 
-.PHONY: help install dev deps-check test cov lint typecheck audit format build build-smoke portable sdk release-audit clean run
+.PHONY: help install dev deps-check test cov lint typecheck docs audit format build build-smoke portable sdk release-audit clean run
 
 help:
 	@echo "UniFile developer targets:"
@@ -14,6 +14,7 @@ help:
 	@echo "  cov         Run pytest with coverage report"
 	@echo "  lint        Run ruff"
 	@echo "  typecheck   Run strict mypy for the public SDK contract"
+	@echo "  docs        Build the SDK API and tutorial docs"
 	@echo "  audit       Run pip-audit against the local environment"
 	@echo "  format      Auto-fix ruff issues"
 	@echo "  build       Clean, build, smoke-test, and checksum the PyInstaller exe"
@@ -43,6 +44,9 @@ lint:
 
 typecheck:
 	$(PY) -m mypy --strict
+
+docs:
+	$(PY) -m sphinx -W --keep-going docs build/docs
 
 audit:
 	$(PY) -m pip_audit --local

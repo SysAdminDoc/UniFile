@@ -84,6 +84,7 @@ dev = [
     "pytest-qt>=4",
     "ruff>=0.5",
     "mypy>=1.11",
+    "Sphinx>=7.2,<9",
     "pip-audit>=2.10",
     "packaging>=25",
 ]

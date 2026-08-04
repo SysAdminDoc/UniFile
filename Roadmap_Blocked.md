@@ -20,3 +20,7 @@ Items here need external input, credentials, or packaging decisions before they 
 ## Python Package Publication
 
 - **Publish `unifile-sdk` to PyPI** — the repository now builds a local PyQt-free wheel exposing `Classifier`, `TagLibrary`, `SemanticIndex`, and `PatternLearner`. The PyPI release remains blocked pending an operator-owned project/token and publication approval; no PyPI credentials are available in this workspace.
+
+## Documentation Hosting
+
+- **Publish SDK documentation to Read the Docs** — local Sphinx API and tutorial sources plus `.readthedocs.yaml` are implemented and buildable; activation of the hosted project remains blocked pending operator-owned Read the Docs/GitHub project authorization.

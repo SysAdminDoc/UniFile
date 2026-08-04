@@ -30,6 +30,8 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Sphinx API reference and custom-classifier/S3 integration tutorials for the
+  PyQt-free SDK, with a warning-clean local documentation build target.
 - Strict mypy coverage for the public `unifile-sdk` embedding facade, with a
   dedicated `make typecheck` developer gate.
 - Isolated `unifile-sdk` wheel build exposing `Classifier`, `TagLibrary`,

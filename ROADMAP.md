@@ -83,7 +83,6 @@ Strategic / aspirational features. Some require significant architecture changes
 ## Developer Ecosystem
 
 - **Full type hints (PEP 484)** — all public APIs annotated; `mypy --strict` clean; improves IDE autocomplete and catches integration bugs
-- **Sphinx API documentation** — auto-generated from docstrings; published to Read the Docs; includes "How to add a custom classifier" and "How to integrate with S3" tutorials
 - **Test coverage baseline** — current tests cover critical paths; target: 60% coverage on `classifier.py`, `engine.py`, `learning.py`, `tagging/library.py`; enforced locally via `pytest-cov`
 - **YAML plugin manifest + scaffolding CLI** — `unifile plugin create --name "My Plugin"`; community plugin index (hosted JSON); browsable from Settings → Plugins
 - **Action DAG dry-run renderer** — LLM produces proposed file actions as a JSON action list; GUI renders a diff view; user approves before atomic apply; same interface used by `--dry-run` CLI flag
