@@ -1390,6 +1390,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._content_splitter.addWidget(left_content)
 
         self.preview_panel = FilePreviewPanel()
+        self.preview_panel.related_requested.connect(self._on_related_requested)
         self.preview_panel.hide()
         self._content_splitter.addWidget(self.preview_panel)
         self._content_splitter.setSizes([800, 300])
@@ -4105,7 +4106,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         idx = self._item_idx_from_row(row)
         if op == self.OP_FILES and 0 <= idx < len(self.file_items):
             it = self.file_items[idx]
-            self.preview_panel.show_file(it.full_src, it.metadata if it.metadata else {})
+            self.preview_panel.show_file(
+                it.full_src,
+                it.metadata if it.metadata else {},
+                related_items=self.file_items,
+            )
         elif op in (self.OP_CAT, self.OP_SMART) and 0 <= idx < len(self.cat_items):
             self.preview_panel.show_file(self.cat_items[idx].full_source_path, {})
         else:
@@ -4117,6 +4122,16 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.preview_panel.setVisible(show)
         if show and self.tbl.currentRow() >= 0:
             self._on_row_selected(self.tbl.currentRow(), 0, -1, -1)
+
+    def _on_related_requested(self, path: str) -> None:
+        """Focus an in-scan related file or inspect a linked external path."""
+        wanted = os.path.normcase(os.path.abspath(str(path)))
+        for item in self.file_items:
+            candidate = os.path.normcase(os.path.abspath(str(getattr(item, "full_src", ""))))
+            if candidate == wanted:
+                self._focus_result_path(path)
+                return
+        self.preview_panel.show_file(path, {}, related_items=self.file_items)
 
     # ═══ GRAPH VIEW ══════════════════════════════════════════════════════════
     def _toggle_graph_view(self):

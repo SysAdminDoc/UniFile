@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime
+from typing import Any
 
 from PyQt6.QtCore import (
     QFileSystemWatcher,
@@ -24,7 +25,9 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSpinBox,
     QSystemTrayIcon,
@@ -41,6 +44,7 @@ from unifile.config import (
     get_active_theme,
 )
 from unifile.metadata import ArchivePeeker
+from unifile.relationships import ManualLinkStore, find_related
 from unifile.thumbnail_cache import load_thumbnail_pixmap
 
 # PIL availability handled via HAS_PILLOW in bootstrap.py; no standalone probe needed here.
@@ -724,6 +728,7 @@ class FilePreviewPanel(QWidget):
     """Split-view side panel showing image preview, text excerpt, metadata."""
 
     open_requested = pyqtSignal(str)  # filepath
+    related_requested = pyqtSignal(str)  # related filepath
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -781,6 +786,8 @@ class FilePreviewPanel(QWidget):
         self.txt_archive.hide()
         lay.addWidget(self.txt_archive)
 
+        self._build_related_panel(lay)
+
         self.btn_preview_open = QPushButton("Open File")
         self.btn_preview_open.setFixedHeight(32)
         self.btn_preview_open.setStyleSheet(
@@ -794,8 +801,13 @@ class FilePreviewPanel(QWidget):
         self._current_path = ""
         self.clear()
 
-    def show_file(self, filepath: str, metadata: dict = None):
-        """Display preview for a file."""
+    def show_file(
+        self,
+        filepath: str,
+        metadata: dict = None,
+        related_items: list[Any] | None = None,
+    ):
+        """Display preview and explainable relationships for a file."""
         self._current_path = filepath
         if not filepath or not os.path.exists(filepath):
             self.clear()
@@ -887,6 +899,87 @@ class FilePreviewPanel(QWidget):
         else:
             self.txt_archive.hide()
 
+        self._show_related(related_items)
+
+    def _build_related_panel(self, layout) -> None:
+        """Add explainable relationship results and the manual link editor."""
+        t = self._t
+        self.lbl_related = QLabel("RELATED FILES")
+        self.lbl_related.setStyleSheet(
+            f"color: {t['sidebar_btn_active_fg']}; font-size: 10px; font-weight: 700;"
+            " letter-spacing: 1.2px;"
+        )
+        layout.addWidget(self.lbl_related)
+        self.lst_related = QListWidget()
+        self.lst_related.setMaximumHeight(150)
+        self.lst_related.setStyleSheet(
+            f"QListWidget {{ background: {t['bg']}; color: {t['fg']}; border: 1px solid {t['border']};"
+            " border-radius: 8px; padding: 2px; }"
+            f"QListWidget::item:selected {{ background: {t['selection']}; }}"
+        )
+        self.lst_related.itemActivated.connect(self._open_related_item)
+        layout.addWidget(self.lst_related)
+
+        link_row = QHBoxLayout()
+        self.txt_link = QLineEdit()
+        self.txt_link.setPlaceholderText("Link another file path…")
+        self.txt_link.setToolTip("Add a symmetric manual link to another file")
+        self.txt_link.setStyleSheet(
+            f"QLineEdit {{ background: {t['bg']}; color: {t['fg']}; border: 1px solid {t['border']};"
+            " border-radius: 7px; padding: 4px 6px; font-size: 10px; }"
+        )
+        link_row.addWidget(self.txt_link, 1)
+        self.btn_link = QPushButton("Link")
+        self.btn_link.setToolTip("Save a bidirectional manual file link")
+        self.btn_link.clicked.connect(self._add_manual_link)
+        link_row.addWidget(self.btn_link)
+        layout.addLayout(link_row)
+
+        self._relation_store = ManualLinkStore()
+        self._related_candidates: list[Any] = []
+
+    def _open_related_item(self, item: QListWidgetItem) -> None:
+        path = item.data(Qt.ItemDataRole.UserRole)
+        if path:
+            self.related_requested.emit(str(path))
+
+    def _add_manual_link(self) -> None:
+        if not self._current_path:
+            return
+        target = self.txt_link.text().strip()
+        if not target:
+            return
+        try:
+            self._relation_store.add_link(self._current_path, target)
+            self.txt_link.clear()
+            self._show_related(self._related_candidates)
+        except (OSError, TypeError, ValueError):
+            return
+
+    def _show_related(self, candidates: list[Any] | None) -> None:
+        self._related_candidates = list(candidates or [])
+        self.lst_related.clear()
+        if not self._current_path:
+            self.lst_related.addItem("Select a file to inspect relationships")
+            self.btn_link.setEnabled(False)
+            return
+        results = find_related(
+            self._current_path,
+            self._related_candidates,
+            manual_store=self._relation_store,
+        )
+        if not results:
+            self.lst_related.addItem("No related files found")
+        else:
+            for result in results:
+                item = QListWidgetItem(
+                    f"{result['name']}  ·  {'; '.join(result['reasons'])}"
+                )
+                item.setToolTip(result["path"])
+                item.setData(Qt.ItemDataRole.UserRole, result["path"])
+                self.lst_related.addItem(item)
+        self.btn_link.setEnabled(True)
+
     def clear(self):
         self._current_path = ""
         self.lbl_preview_img.clear()
@@ -899,6 +992,7 @@ class FilePreviewPanel(QWidget):
         self.lbl_preview_meta.setText("Choose a result to inspect its preview, metadata, and quick file details.")
         self.txt_preview_text.hide()
         self.txt_archive.hide()
+        self._show_related([])
         self.btn_preview_open.setEnabled(False)
 
     def _open_file(self):

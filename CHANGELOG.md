@@ -40,6 +40,8 @@ All notable changes to UniFile will be documented in this file.
   pending work on `SIGINT`/`SIGTERM`.
 - Qt-free `unifile report` exports category distributions and bounded file lists
   as escaped HTML, dependency-free PDF, or JSON with atomic output writes.
+- File inspector Related Files panel now ranks shared tags, photographer, date
+  range, and filename-pattern matches, with symmetric durable manual links.
 - Large PC File Organizer results now use a paged `QAbstractTableModel`/`QTableView`, and the thumbnail grid uses fixed-size `QListView` delegates with visible-item thumbnail loading instead of one widget per result.
 - Shared thumbnail previews now use a bounded SQLite-indexed filesystem cache with read-only `mmap` access, LRU eviction, and a configurable cap under Settings → All Settings → System → Thumbnail Cache; the PC grid, file preview, command palette, Tag Library, Collections, and Duplicate Finder share the store.
 - Rule-based PC scans now fan out local classification across a bounded set of QThread workers while preserving result order, incremental-cache behavior, and cancellation; LLM requests remain on the serialized worker path.

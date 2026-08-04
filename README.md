@@ -429,6 +429,9 @@ so it can be piped directly to `jq`.
 `report` exports the category-tag distribution and bounded file inventory from a
 Tag Library as a self-contained HTML, dependency-free text PDF, or JSON file;
 use `--limit` when generating a report for a very large library.
+The file inspector also shows ranked Related Files matches for shared tags,
+photographer, date range, or filename pattern. Enter another path in the Link
+field to save a symmetric manual relationship in UniFile app data.
 
 ### Headless Docker deployment
 

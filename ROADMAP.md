@@ -72,7 +72,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## UX & Accessibility
 
-- **Bidirectional file relationships** — "Related Files" panel in the file info sidebar: similar tags, same photographer, same date range, same name pattern; optional manual "Link" field
 - **Timeline view** — histogram of files by creation/modification date; scrub to filter results panel; analogous to Apple Photos date navigator
 - **Color-based image search** — pick a color swatch → find images with that dominant color; powered by color palette extracted at index time
 - **Keyboard shortcuts dialog** — Settings → Shortcuts; all bindings shown; click any to rebind; no defaults that conflict with OS shortcuts
