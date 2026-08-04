@@ -69,6 +69,7 @@ from unifile.config import (
     CONF_MEDIUM,
     get_active_stylesheet,
     get_active_theme,
+    load_theme_name,
 )
 from unifile.dialogs import (
     BeforeAfterDialog,
@@ -92,6 +93,8 @@ from unifile.engine import EventGrouper, RenameTemplateEngine, RuleEngine
 from unifile.files import _load_pc_categories, _save_pc_categories
 from unifile.filter_mixin import FilterMixin
 from unifile.learning import get_learner
+from unifile.library_context import set_active_library_root
+from unifile.library_profiles import LibraryProfileStore
 from unifile.metadata import MetadataExtractor, _load_envato_api_key, _save_envato_api_key
 from unifile.models import FileItem
 from unifile.ollama import load_ollama_settings
@@ -187,6 +190,14 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.settings = QSettings("UniFile", "UniFile")
         self._ollama_ready = False
         self._command_palette = None
+        self._library_store = LibraryProfileStore()
+        self._active_library_profile = self._library_store.active_profile()
+        self._library_switching = False
+        self._library_switch_ready = False
+        set_active_library_root(
+            self._active_library_profile.get("path")
+            if self._active_library_profile else None
+        )
 
         # Enable drag & drop
         self.setAcceptDrops(True)
@@ -256,7 +267,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         thresh = self.settings.value("confidence_threshold", 0, type=int)
         use_llm = self.settings.value("use_llm", True, type=bool)
         scan_depth = self.settings.value("scan_depth", 0, type=int)
-        if src: self.txt_src.setText(src)
+        if src and not self._active_library_profile:
+            self.txt_src.setText(src)
         if dst: self.txt_dst.setText(dst)
         if op < self.cmb_op.count(): self.cmb_op.setCurrentIndex(op)
         self.sld_conf.setValue(thresh)
@@ -460,6 +472,39 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         lbl_sec_lib.setStyleSheet(_NAV_SECTION)
         sb_lay.addWidget(lbl_sec_lib)
         self._nav_section_labels.append(lbl_sec_lib)
+
+        library_switcher = QWidget()
+        library_switcher.setStyleSheet("background: transparent;")
+        library_switcher_layout = QHBoxLayout(library_switcher)
+        library_switcher_layout.setContentsMargins(12, 0, 12, 4)
+        library_switcher_layout.setSpacing(4)
+        self.cmb_library = QComboBox()
+        self.cmb_library.setAccessibleName("Active library")
+        self.cmb_library.setAccessibleDescription(
+            "Switch the active Tag Library and its scoped model, rules, and theme preferences"
+        )
+        self.cmb_library.setToolTip(
+            "Each library keeps its own Ollama settings, classification rules, and theme preference."
+        )
+        self.cmb_library.setStyleSheet(
+            f"QComboBox {{ background: {_t['sidebar_profile_bg']}; color: {_t['sidebar_profile_fg']}; "
+            f"border: 1px solid {_t['sidebar_profile_border']}; border-radius: 4px; "
+            "padding: 5px 7px; font-size: 10px; font-weight: bold; }}"
+            f"QComboBox:hover {{ border-color: {_t['sidebar_profile_fg']}; }}"
+            f"QComboBox QAbstractItemView {{ background: {_t['sidebar_profile_bg']}; color: {_t['fg']}; "
+            f"selection-background-color: {_t['selection']}; }}"
+        )
+        self.cmb_library.currentIndexChanged.connect(self._on_library_selector_changed)
+        library_switcher_layout.addWidget(self.cmb_library, 1)
+        self.btn_add_library = QPushButton("+")
+        self.btn_add_library.setToolTip("Register another existing library folder")
+        self.btn_add_library.setAccessibleName("Add library")
+        self.btn_add_library.setFixedWidth(28)
+        self.btn_add_library.setStyleSheet(_SEC_BTN)
+        self.btn_add_library.clicked.connect(self._add_library)
+        library_switcher_layout.addWidget(self.btn_add_library)
+        sb_lay.addWidget(library_switcher)
+        self._populate_library_selector()
 
         _nav_items_library = [
             ("Statistics",        self.OP_STATS),
@@ -1525,7 +1570,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         # ── Page 3: Tag Library (from TagStudio integration) ─────────
         self._tag_panel = TagLibraryPanel()
-        self._tag_panel.library_opened.connect(lambda _path: self._sync_inbox_library())
+        self._tag_panel.library_opened.connect(self._on_tag_library_opened)
         self._content_stack.addWidget(self._tag_panel)  # index 3
 
         # ── Page 4: Media Lookup (from mnamer integration) ─────────────
@@ -1593,6 +1638,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
 
         self._mode_labels = [self.cmb_op.itemText(i) for i in range(self.cmb_op.count())]
         self._refresh_workspace_copy()
+        self._library_switch_ready = True
+        self._activate_library(self._active_library_profile, initial=True)
 
     def _mode_presentation(self, idx: int) -> dict:
         return {
@@ -2331,6 +2378,86 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             self._apply_filter()
 
     # ═══ OPERATION SWITCH ════════════════════════════════════════════════════
+    def _populate_library_selector(self):
+        """Refresh the compact active-library selector in the sidebar."""
+        if not hasattr(self, "cmb_library"):
+            return
+        active_id = self._library_store.active_id
+        self.cmb_library.blockSignals(True)
+        self.cmb_library.clear()
+        profiles = self._library_store.profiles
+        if not profiles:
+            self.cmb_library.addItem("No library selected", "")
+        else:
+            for profile in profiles:
+                self.cmb_library.addItem(profile["name"], profile["id"])
+            index = self.cmb_library.findData(active_id)
+            if index >= 0:
+                self.cmb_library.setCurrentIndex(index)
+        self.cmb_library.blockSignals(False)
+
+    def _add_library(self):
+        """Register and activate an existing folder as a separate library."""
+        path = QFileDialog.getExistingDirectory(self, "Add UniFile Library")
+        if not path:
+            return
+        profile = self._library_store.add(path)
+        if profile is None:
+            self._log("Library: choose an existing folder")
+            return
+        self._active_library_profile = profile
+        self._populate_library_selector()
+        self._activate_library(profile)
+
+    def _on_library_selector_changed(self, index: int):
+        if not self._library_switch_ready or index < 0:
+            return
+        profile = self._library_store.set_active(self.cmb_library.itemData(index))
+        if profile is not None:
+            self._active_library_profile = profile
+            self._activate_library(profile)
+
+    def _on_tag_library_opened(self, path: str):
+        """Adopt folders opened from inside Tag Library into the switcher."""
+        profile = self._library_store.add(path)
+        if profile is not None:
+            self._active_library_profile = profile
+            set_active_library_root(profile["path"])
+            if not self._library_switching:
+                self._populate_library_selector()
+                if self._library_switch_ready:
+                    self._on_theme_changed(load_theme_name())
+        self._sync_inbox_library()
+
+    def _activate_library(self, profile: dict | None, *, initial: bool = False):
+        """Switch the open TagLibrary and activate its scoped preferences."""
+        if profile is None:
+            set_active_library_root(None)
+            if hasattr(self, "_tag_panel") and self._tag_panel.library.is_open:
+                self._tag_panel.close_library()
+            return
+        path = str(profile.get("path", ""))
+        set_active_library_root(path)
+        self._active_library_profile = dict(profile)
+        if hasattr(self, "_tag_panel"):
+            current = str(self._tag_panel.library.library_dir or "") if self._tag_panel.library.is_open else ""
+            if os.path.normcase(os.path.realpath(current)) != os.path.normcase(os.path.realpath(path)):
+                self._library_switching = True
+                try:
+                    self._tag_panel.close_library()
+                    if os.path.isdir(path):
+                        self._tag_panel.open_library(path)
+                finally:
+                    self._library_switching = False
+        if hasattr(self, "txt_src") and os.path.isdir(path):
+            self.txt_src.setText(path)
+        if not initial and self._library_switch_ready:
+            self._on_theme_changed(load_theme_name())
+            self._log(f"Active library: {profile.get('name', path)}")
+        if hasattr(self, "_stats_panel") and self._content_stack.currentIndex() == 6:
+            self._stats_panel.set_library(self._tag_panel.library)
+        self._refresh_inbox_badge()
+
     def _on_sidebar_nav(self, op_idx: int):
         """Handle sidebar ORGANIZE button click — switch to organizer mode."""
         # Update checked state: check this op button, uncheck all tool buttons

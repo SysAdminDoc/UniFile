@@ -7,6 +7,8 @@ import sys
 import weakref
 from datetime import datetime
 
+from unifile.library_context import active_library_settings_path
+
 # ── Connection registry ──────────────────────────────────────────────────────
 # Long-lived SQLite connections scattered across the codebase register
 # themselves here so we can close everything cleanly on interpreter exit.
@@ -569,22 +571,40 @@ DARK_STYLE = _build_theme_qss(THEME_STEAM_DARK)
 
 _THEME_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'theme.json')
 _cached_theme_name: str | None = None
+_cached_theme_names: dict[str, str] = {}
+
+
+def _theme_settings_path() -> str:
+    return active_library_settings_path('theme.json') or _THEME_SETTINGS_FILE
 
 def load_theme_name() -> str:
     global _cached_theme_name
-    if _cached_theme_name is not None:
-        return _cached_theme_name
-    try:
-        with open(_THEME_SETTINGS_FILE) as f:
-            _cached_theme_name = json.load(f).get('theme', 'Steam Dark')
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        _cached_theme_name = 'Steam Dark'
-    return _cached_theme_name
+    path = _theme_settings_path()
+    if path in _cached_theme_names:
+        return _cached_theme_names[path]
+    name = None
+    candidates = [path]
+    if path != _THEME_SETTINGS_FILE:
+        candidates.append(_THEME_SETTINGS_FILE)
+    for candidate in candidates:
+        try:
+            with open(candidate) as f:
+                name = json.load(f).get('theme', 'Steam Dark')
+            break
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            continue
+    if name is None:
+        name = 'Steam Dark'
+    _cached_theme_names[path] = name
+    _cached_theme_name = name
+    return name
 
 def save_theme_name(name: str):
     global _cached_theme_name
+    path = _theme_settings_path()
     _cached_theme_name = name
-    save_json_safe(_THEME_SETTINGS_FILE, {'theme': name})
+    _cached_theme_names[path] = name
+    save_json_safe(path, {'theme': name})
 
 def get_active_theme() -> dict:
     return THEMES.get(load_theme_name(), THEME_STEAM_DARK)

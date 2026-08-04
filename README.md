@@ -136,6 +136,7 @@ Enable in **Settings > Ollama LLM > Alternative Backend: Nexa SDK**. Requires `p
 | 384+ Built-in Categories | Covers design, video, audio, print, web, 3D, photography |
 | 7-Level Pipeline | Extension > Keyword > Fuzzy > Metadata > Composition > Context > LLM |
 | Multiple Profiles | Design Assets, Book Library, PC Files, Photo Library, and custom profiles |
+| Multiple Libraries | Switch registered Tag Libraries from the sidebar with scoped AI, rules, and theme preferences |
 | Rules Editor | Custom if/then rules with condition builder UI |
 | Natural Language Rules | Compile one routing request into a local, reviewable action plan |
 | Rename Templates | Token-based rename templates with live preview |
@@ -148,6 +149,14 @@ structured rule, evaluates matching files locally, and previews the resulting
 action DAG with exact source and destination paths. Click **Apply approved
 plan** only after reviewing the rows; the apply step makes no further AI calls,
 never overwrites an existing file, and records successful moves for undo.
+
+### Multiple Libraries
+
+Register existing library folders with the **+** control in the sidebar's
+**LIBRARY** section. The active selector switches the open Tag Library and
+keeps each library's Ollama model/settings, classification rules, and theme in
+its own `.unifile` folder. Opening a folder directly from the Tag Library also
+registers it automatically; forgetting a registration never deletes its files.
 
 ### Voice Control
 

@@ -48,7 +48,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Library & Tags
 
-- **Multi-library support** — switch libraries from the sidebar; each library has its own Ollama model selection, rules, and theme preference
 - **Color extraction** — extract dominant palette from images; index by color; "show me files with predominant blue tones" search; analogous to Eagle's color search
 - **Custom field schemas per library** — define additional field types per library (Budget/currency, Deadline/date, Status/enum); validation rules enforced in the editor
 

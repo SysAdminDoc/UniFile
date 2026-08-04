@@ -8,8 +8,18 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 from unifile.config import _APP_DATA_DIR
+from unifile.library_context import active_library_settings_path
 
 _RULES_FILE = os.path.join(_APP_DATA_DIR, 'rules.json')
+
+
+def _rules_file(library_root: str | None = None) -> str:
+    if library_root:
+        return os.path.join(
+            os.path.realpath(os.path.abspath(os.path.expanduser(str(library_root)))),
+            '.unifile', 'rules.json',
+        )
+    return active_library_settings_path('rules.json') or _RULES_FILE
 
 
 def _parse_naive_dt(s: str) -> datetime:
@@ -128,18 +138,21 @@ class RuleEngine:
     }
 
     @staticmethod
-    def load_rules() -> list:
-        if os.path.isfile(_RULES_FILE):
+    def load_rules(library_root: str | None = None) -> list:
+        path = _rules_file(library_root)
+        if os.path.isfile(path):
             try:
-                with open(_RULES_FILE, encoding='utf-8') as f:
+                with open(path, encoding='utf-8') as f:
                     return json.load(f)
             except Exception:
                 pass
         return []
 
     @staticmethod
-    def save_rules(rules: list):
-        with open(_RULES_FILE, 'w', encoding='utf-8') as f:
+    def save_rules(rules: list, library_root: str | None = None):
+        path = _rules_file(library_root)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
             json.dump(rules, f, indent=2)
 
     @staticmethod

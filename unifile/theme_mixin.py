@@ -85,6 +85,22 @@ class ThemeMixin:
                 f"QComboBox QAbstractItemView {{ background: {t['sidebar_profile_bg']}; color: {t['fg']};"
                 f"selection-background-color: {t['selection']}; border: 1px solid {t['sidebar_profile_border']}; }}")
 
+        if hasattr(self, 'cmb_library'):
+            self.cmb_library.setStyleSheet(
+                f"QComboBox {{ background: {t['sidebar_profile_bg']}; color: {t['sidebar_profile_fg']}; "
+                f"border: 1px solid {t['sidebar_profile_border']}; border-radius: 4px; "
+                "padding: 5px 7px; font-size: 10px; font-weight: bold; }}"
+                f"QComboBox:hover {{ border-color: {t['sidebar_profile_fg']}; }}"
+                f"QComboBox QAbstractItemView {{ background: {t['sidebar_profile_bg']}; color: {t['fg']}; "
+                f"selection-background-color: {t['selection']}; }}"
+            )
+        if hasattr(self, 'btn_add_library'):
+            self.btn_add_library.setStyleSheet(
+                f"QPushButton {{ font-size: 11px; padding: 2px 8px; background: {t['bg_alt']}; "
+                f"color: {t['sidebar_btn_active_fg']}; border: 1px solid {t['border']}; border-radius: 10px; }}"
+                f"QPushButton:hover {{ background: {t['btn_hover']}; }}"
+            )
+
         # ── Action Bar ───────────────────────────────────────────────────
         if hasattr(self, '_themed_action_bar'):
             self._themed_action_bar.setStyleSheet(

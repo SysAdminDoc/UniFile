@@ -22,6 +22,7 @@ except ImportError:
 from unifile.bootstrap import HAS_RAPIDFUZZ
 from unifile.categories import get_all_category_names
 from unifile.config import _APP_DATA_DIR
+from unifile.library_context import active_library_settings_path
 
 try:
     from rapidfuzz import fuzz as _rfuzz
@@ -84,17 +85,30 @@ def _normalize_ollama_url(url: str) -> str:
     return url.rstrip('/').strip() or 'http://localhost:11434'
 
 
-def load_ollama_settings() -> dict:
+def _ollama_settings_path(library_root: str | None = None) -> str:
+    if library_root:
+        return os.path.join(
+            os.path.realpath(os.path.abspath(os.path.expanduser(str(library_root)))),
+            '.unifile', 'ollama_settings.json',
+        )
+    return active_library_settings_path('ollama_settings.json') or _OLLAMA_SETTINGS_FILE
+
+
+def load_ollama_settings(library_root: str | None = None) -> dict:
     from unifile.config import load_json_safe
+    path = _ollama_settings_path(library_root)
     saved = load_json_safe(_OLLAMA_SETTINGS_FILE, {}, expected_type=dict)
+    if path != _OLLAMA_SETTINGS_FILE:
+        scoped = load_json_safe(path, {}, expected_type=dict)
+        saved = {**saved, **scoped}
     merged = {**_OLLAMA_DEFAULTS, **saved}
     merged['url'] = _normalize_ollama_url(merged.get('url', ''))
     return merged
 
 
-def save_ollama_settings(settings: dict):
+def save_ollama_settings(settings: dict, library_root: str | None = None):
     from unifile.config import save_json_safe
-    save_json_safe(_OLLAMA_SETTINGS_FILE, settings)
+    save_json_safe(_ollama_settings_path(library_root), settings)
 
 _MODEL_CATALOG = [
     # ── Qwen3.5 (latest, recommended) ─────────────────────────────────────────
