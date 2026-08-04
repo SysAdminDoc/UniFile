@@ -115,6 +115,7 @@ from unifile.ratings import bulk_load as ratings_bulk_load
 from unifile.ratings import clear_rating, get_rating, set_rating
 from unifile.scan_mixin import ScanMixin
 from unifile.theme_mixin import ThemeMixin
+from unifile.thumbnail_cache import load_thumbnail_pixmap
 from unifile.tray_mixin import TrayMixin
 from unifile.undo_mixin import UndoMixin
 from unifile.virtualized_view import VirtualizedResultsView, VirtualizedThumbnailView
@@ -3436,10 +3437,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl.setStyleSheet("background:transparent;border:none;")
         try:
-            pix = QPixmap(path)
-            if not pix.isNull():
-                pix = pix.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
-                                 Qt.TransformationMode.SmoothTransformation)
+            pix = load_thumbnail_pixmap(path, size)
+            if pix is not None and not pix.isNull():
                 lbl.setPixmap(pix)
                 lbl.setToolTip(path)
             else:

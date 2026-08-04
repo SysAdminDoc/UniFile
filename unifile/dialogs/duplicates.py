@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
+from unifile.thumbnail_cache import load_thumbnail_pixmap
 from unifile.workers import format_size
 
 
@@ -201,8 +202,8 @@ class DuplicateCompareDialog(QDialog):
             lbl_thumb.setFixedSize(60, 60)
             ext = os.path.splitext(it.name)[1].lower()
             if ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
-                pix = QPixmap(it.full_src)
-                if not pix.isNull():
+                pix = load_thumbnail_pixmap(it.full_src, 58)
+                if pix is not None and not pix.isNull():
                     lbl_thumb.setPixmap(pix.scaled(58, 58, Qt.AspectRatioMode.KeepAspectRatio,
                                                     Qt.TransformationMode.SmoothTransformation))
             row_lay.addWidget(lbl_thumb)

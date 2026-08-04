@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -24,6 +23,7 @@ from PyQt6.QtWidgets import (
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.tagging.library import TagLibrary
+from unifile.thumbnail_cache import load_thumbnail_pixmap
 
 _THUMB_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tif', '.tiff'}
 
@@ -170,8 +170,8 @@ class CollectionBoardDialog(QDialog):
         card_layout.setSpacing(4)
         source = Path(entry.path)
         if source.is_file() and source.suffix.lower() in _THUMB_EXTS:
-            pixmap = QPixmap(str(source))
-            if not pixmap.isNull():
+            pixmap = load_thumbnail_pixmap(str(source), 230)
+            if pixmap is not None and not pixmap.isNull():
                 preview = QLabel()
                 preview.setPixmap(pixmap.scaled(
                     QSize(230, 120), Qt.AspectRatioMode.KeepAspectRatio,

@@ -203,6 +203,89 @@ class ScanThrottleSettingsDialog(QDialog):
         self.accept()
 
 
+class ThumbnailCacheSettingsDialog(QDialog):
+    """Configure and clear the shared mmap-backed thumbnail cache."""
+
+    def __init__(self, parent=None, settings=None):
+        super().__init__(parent)
+        self.setWindowTitle("Thumbnail Cache")
+        self.setMinimumSize(560, 360)
+        self.setStyleSheet(get_active_stylesheet())
+        self.settings = settings or QSettings("UniFile", "UniFile")
+        self._build_ui()
+
+    def _build_ui(self):
+        from unifile.thumbnail_cache import (
+            DEFAULT_MAX_MB,
+            MAX_MAX_MB,
+            MIN_MAX_MB,
+            get_thumbnail_cache,
+            max_mb_from_settings,
+        )
+
+        theme = get_active_theme()
+        values = get_thumbnail_cache().stats()
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.addWidget(build_dialog_header(
+            theme,
+            "Performance",
+            "Shared Thumbnail Cache",
+            "Keep one bounded cache for the PC grid, Tag Library, Collections, and Duplicate Finder. "
+            "Encoded thumbnails are read through memory maps and evicted least-recently-used.",
+        ))
+
+        self.lbl_status = QLabel(
+            f"Currently cached: {values['count']:,} thumbnails ({values['bytes'] / (1024 * 1024):.1f} MB)"
+        )
+        self.lbl_status.setStyleSheet(f"color: {theme['muted']}; font-size: 11px;")
+        layout.addWidget(self.lbl_status)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Maximum cache size"))
+        self.spn_max_mb = QSpinBox()
+        self.spn_max_mb.setRange(MIN_MAX_MB, MAX_MAX_MB)
+        self.spn_max_mb.setValue(max_mb_from_settings(self.settings))
+        self.spn_max_mb.setSuffix(" MB")
+        self.spn_max_mb.setToolTip("Least-recently-used thumbnails are removed above this cap.")
+        row.addWidget(self.spn_max_mb)
+        row.addStretch()
+        layout.addLayout(row)
+
+        hint = QLabel(
+            f"Default: {DEFAULT_MAX_MB} MB. The cache stores encoded thumbnails only; source files are never copied or changed."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {theme['muted']}; font-size: 11px;")
+        layout.addWidget(hint)
+
+        btn_clear = QPushButton("Clear Thumbnail Cache")
+        btn_clear.clicked.connect(self._clear_cache)
+        layout.addWidget(btn_clear)
+        layout.addStretch()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Save Cache Setting")
+        buttons.accepted.connect(self._save_settings)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _clear_cache(self):
+        from unifile.thumbnail_cache import get_thumbnail_cache
+
+        removed = get_thumbnail_cache().clear()
+        self.lbl_status.setText(f"Cleared {removed:,} cached thumbnail(s).")
+
+    def _save_settings(self):
+        from unifile.thumbnail_cache import save_max_mb
+
+        save_max_mb(self.settings, self.spn_max_mb.value())
+        self.accept()
+
+
 class AIProviderSettingsDialog(QDialog):
     """Configure multi-provider AI backend (Ollama, OpenAI-compatible, Groq, OpenAI)."""
 

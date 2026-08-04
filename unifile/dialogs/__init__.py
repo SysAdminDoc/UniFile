@@ -8,6 +8,7 @@ from unifile.dialogs.advanced_settings import (
     ScanThrottleSettingsDialog,
     SemanticSearchDialog,
     SemanticSearchSettingsDialog,
+    ThumbnailCacheSettingsDialog,
     WhisperSettingsDialog,
 )
 from unifile.dialogs.cleanup import CleanupPanel, CleanupToolsDialog, _CleanupScanWorker
@@ -68,6 +69,7 @@ __all__ = [
     'ThemePickerDialog', 'ProtectedPathsDialog',
     'AIProviderSettingsDialog', 'WhisperSettingsDialog', 'DiskSpaceSettingsDialog',
     'ScanThrottleSettingsDialog',
+    'ThumbnailCacheSettingsDialog',
     'SemanticSearchSettingsDialog', 'SemanticSearchDialog',
     'EmbeddingSettingsDialog', 'LearningStatsDialog',
     'SettingsHubDialog',

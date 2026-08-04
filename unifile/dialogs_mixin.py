@@ -222,6 +222,15 @@ class DialogsMixin:
                 f"battery pause={'on' if dlg.chk_pause_battery.isChecked() else 'off'}"
             )
 
+    def _open_thumbnail_cache_settings(self):
+        from unifile.dialogs.advanced_settings import ThumbnailCacheSettingsDialog
+
+        dlg = ThumbnailCacheSettingsDialog(self, settings=self.settings)
+        if dlg.exec():
+            self._log(
+                f"Thumbnail cache cap saved: {dlg.spn_max_mb.value():,} MB"
+            )
+
     def _open_embedding_settings(self):
         from unifile.dialogs.advanced_settings import EmbeddingSettingsDialog
         dlg = EmbeddingSettingsDialog(self)

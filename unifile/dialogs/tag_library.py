@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 from unifile.config import get_active_theme
 from unifile.tagging.library import TagLibrary
 from unifile.tagging.models import TAG_COLORS
+from unifile.thumbnail_cache import load_thumbnail_pixmap
 from unifile.widgets import KeyboardTreeWidget
 
 
@@ -689,8 +690,8 @@ class TagLibraryPanel(QWidget):
         # Thumbnail
         suffix = entry.suffix.lower()
         if suffix in self._IMAGE_EXTS and os.path.exists(full_path):
-            pixmap = QPixmap(full_path)
-            if not pixmap.isNull():
+            pixmap = load_thumbnail_pixmap(full_path, 136)
+            if pixmap is not None and not pixmap.isNull():
                 scaled = pixmap.scaled(
                     QSize(136, 136),
                     Qt.AspectRatioMode.KeepAspectRatio,

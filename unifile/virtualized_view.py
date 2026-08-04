@@ -16,6 +16,9 @@ from collections.abc import Callable, Iterable, Sequence
 from PyQt6.QtCore import (
     QAbstractListModel,
     QAbstractTableModel,
+    QBuffer,
+    QByteArray,
+    QIODevice,
     QModelIndex,
     QObject,
     QPoint,
@@ -43,6 +46,7 @@ from PyQt6.QtWidgets import (
 )
 
 from unifile.confidence import ConfidenceTiers, confidence_tier_text
+from unifile.thumbnail_cache import get_thumbnail_cache, thumbnail_key
 
 
 def _format_size(size: int) -> str:
@@ -621,7 +625,7 @@ class VirtualizedResultsView(QTableView):
 
 
 class _ThumbnailSignals(QObject):
-    ready = pyqtSignal(str, QImage)
+    ready = pyqtSignal(str, bytes)
 
 
 class _ThumbnailLoader(QRunnable):
@@ -636,15 +640,22 @@ class _ThumbnailLoader(QRunnable):
             image = QImage(self.path)
             if image.isNull():
                 return
-            self.signals.ready.emit(
-                self.path,
-                image.scaled(
-                    self.size,
-                    self.size,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                ),
+            scaled = image.scaled(
+                self.size,
+                self.size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
+            payload = QByteArray()
+            buffer = QBuffer(payload)
+            if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+                return
+            try:
+                if not scaled.save(buffer, "PNG"):
+                    return
+            finally:
+                buffer.close()
+            self.signals.ready.emit(self.path, bytes(payload))
         except Exception:
             return
 
@@ -781,6 +792,7 @@ class VirtualizedThumbnailView(QListView):
         self._pixmaps: OrderedDict[str, QPixmap] = OrderedDict()
         self._loading: set[str] = set()
         self._cache_limit = 256
+        self._thumbnail_cache = get_thumbnail_cache()
         self.setItemDelegate(VirtualizedThumbnailDelegate(self))
         self.setViewMode(QListView.ViewMode.IconMode)
         self.setFlow(QListView.Flow.LeftToRight)
@@ -822,6 +834,14 @@ class VirtualizedThumbnailView(QListView):
         if cached is not None:
             self._pixmaps.move_to_end(path)
             return cached
+        key = thumbnail_key(path, 150)
+        if key:
+            payload = self._thumbnail_cache.get(key)
+            if payload:
+                pixmap = QPixmap()
+                if pixmap.loadFromData(payload):
+                    self._remember_pixmap(path, pixmap)
+                    return pixmap
         if path not in self._loading:
             self._loading.add(path)
             loader = _ThumbnailLoader(path, 150)
@@ -829,13 +849,20 @@ class VirtualizedThumbnailView(QListView):
             QThreadPool.globalInstance().start(loader)
         return None
 
-    def _thumbnail_ready(self, path: str, image: QImage) -> None:
-        self._loading.discard(path)
-        pixmap = QPixmap.fromImage(image)
-        if pixmap.isNull():
-            return
+    def _remember_pixmap(self, path: str, pixmap: QPixmap) -> None:
         self._pixmaps[path] = pixmap
         self._pixmaps.move_to_end(path)
         while len(self._pixmaps) > self._cache_limit:
             self._pixmaps.popitem(last=False)
+
+    def _thumbnail_ready(self, path: str, payload: bytes) -> None:
+        self._loading.discard(path)
+        key = thumbnail_key(path, 150)
+        if key:
+            self._thumbnail_cache.put(key, payload)
+        pixmap = QPixmap()
+        pixmap.loadFromData(payload)
+        if pixmap.isNull():
+            return
+        self._remember_pixmap(path, pixmap)
         self.viewport().update()

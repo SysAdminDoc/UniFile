@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
 )
 
 from unifile.config import get_active_theme
+from unifile.thumbnail_cache import load_thumbnail_pixmap
 
 
 class _Command(NamedTuple):
@@ -263,8 +264,8 @@ class CommandPalette(QDialog):
             self.preview.setPixmap(QPixmap())
             self.preview.setText("Hover a file result to preview it")
             return
-        pixmap = QPixmap(cmd.preview_path)
-        if pixmap.isNull():
+        pixmap = load_thumbnail_pixmap(cmd.preview_path, 120)
+        if pixmap is None or pixmap.isNull():
             self.preview.setPixmap(QPixmap())
             self.preview.setText(cmd.hint or cmd.preview_path)
             return

@@ -41,6 +41,7 @@ from unifile.config import (
     get_active_theme,
 )
 from unifile.metadata import ArchivePeeker
+from unifile.thumbnail_cache import load_thumbnail_pixmap
 
 # PIL availability handled via HAS_PILLOW in bootstrap.py; no standalone probe needed here.
 
@@ -808,8 +809,8 @@ class FilePreviewPanel(QWidget):
         img_exts = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp',
                     '.ico', '.svg', '.heic', '.heif', '.avif'}
         if ext in img_exts:
-            pix = QPixmap(filepath)
-            if not pix.isNull():
+            pix = load_thumbnail_pixmap(filepath, 280)
+            if pix is not None and not pix.isNull():
                 scaled = pix.scaled(280, 230, Qt.AspectRatioMode.KeepAspectRatio,
                                    Qt.TransformationMode.SmoothTransformation)
                 self.lbl_preview_img.setPixmap(scaled)

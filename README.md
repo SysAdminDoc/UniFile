@@ -227,6 +227,7 @@ require the dialog's review button.
 - AI event grouping — cluster photos by vision descriptions
 - Face detection and person-based organization (optional)
 - Virtualized thumbnail grid with fixed-size item delegates and visible-item loading; large PC result tables use a lazy `QAbstractTableModel`/`QTableView` surface instead of one widget per result
+- Shared thumbnail cache stores encoded previews in a bounded SQLite-indexed filesystem cache with read-only `mmap` reads and LRU eviction; configure or clear it at Settings → All Settings → System → Thumbnail Cache
 
 ### Watch Mode
 
@@ -287,6 +288,7 @@ unifile/
 ├── engine.py            # Rule engine, scheduler, templates
 ├── naming.py            # Smart rename logic
 ├── metadata.py          # File metadata extraction
+├── thumbnail_cache.py   # Shared mmap-backed thumbnail cache with LRU eviction
 ├── virtualized_view.py  # Paged PC results model and thumbnail-grid delegates
 ├── ollama.py            # Ollama LLM integration
 ├── photos.py            # Photo/EXIF/face processing
