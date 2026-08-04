@@ -30,6 +30,7 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Checkpointed PC scans now persist completed results to SQLite in 500-item batches, automatically resume matching interrupted scans, and discard the checkpoint after a successful run.
 - Disk-space protection now preflights AEP renames, folder categorization, and PC file moves, reserves cross-volume copy bytes, and exposes a configurable 500 MB default floor in Settings → System.
 - Cleanup Sweep: review empty folders, zero-byte files, and broken shortcuts in one pass, then move selected candidates into the existing Undo Timeline-backed UniFile Recovery quarantine.
 - RAW photo families: recognize camera RAW formats, collapse same-stem RAW+JPEG captures into one logical scan item, move both members together with undo records, and use RAW EXIF first with JPEG fallback fields.

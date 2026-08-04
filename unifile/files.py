@@ -1,10 +1,12 @@
 """UniFile — PC file classification, scan cache, MIME detection, filename intelligence."""
+import hashlib
 import json
 import mimetypes as _mimetypes
 import os
 import re
 import sqlite3
 import time
+from pathlib import Path
 
 from unifile.bootstrap import HAS_MAGIC, HAS_RAPIDFUZZ
 
@@ -20,6 +22,72 @@ except ImportError:
 from unifile.config import _APP_DATA_DIR, _PC_SCAN_CACHE_DB, register_sqlite_connection
 
 _PC_CATEGORIES_DB = os.path.join(_APP_DATA_DIR, 'pc_categories.json')
+
+
+def _checkpoint_json_value(value):
+    """Convert scan configuration values into deterministic JSON data."""
+    if isinstance(value, dict):
+        return {str(key): _checkpoint_json_value(value[key])
+                for key in sorted(value, key=lambda item: str(item))}
+    if isinstance(value, (list, tuple)):
+        return [_checkpoint_json_value(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted((_checkpoint_json_value(item) for item in value), key=str)
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
+def scan_checkpoint_identity(source_dir: str, *, mode: str,
+                             destination: str = '', categories=None,
+                             scan_depth: int = 0, check_hashes: bool = False,
+                             include_folders: bool = True,
+                             include_files: bool = True, ext_filter=None,
+                             extra=None) -> tuple[str, str]:
+    """Return a stable ID and serialized configuration for a PC scan.
+
+    The identity deliberately includes all user-visible scan settings so an
+    interrupted scan is resumed only when the next scan has the same scope.
+    The serialized configuration is also stored with the checkpoint to make
+    the SQLite records inspectable and to guard against hash collisions.
+    """
+    payload = {
+        'source_dir': os.path.normcase(os.path.abspath(os.path.expanduser(str(source_dir)))),
+        'destination': os.path.normcase(os.path.abspath(os.path.expanduser(str(destination))))
+        if destination else '',
+        'mode': mode,
+        'categories': categories or [],
+        'scan_depth': scan_depth,
+        'check_hashes': bool(check_hashes),
+        'include_folders': bool(include_folders),
+        'include_files': bool(include_files),
+        'ext_filter': ext_filter,
+        'extra': extra or {},
+    }
+    normalized = _checkpoint_json_value(payload)
+    config_json = json.dumps(normalized, sort_keys=True, separators=(',', ':'),
+                             default=str)
+    scan_id = hashlib.sha256(config_json.encode('utf-8')).hexdigest()
+    return scan_id, config_json
+
+
+def scan_checkpoint_item_key(path: str, is_folder: bool, *, size: int = 0,
+                             mtime_ns: int | None = None) -> str:
+    """Build a key that invalidates a checkpoint when an item changes."""
+    item_path = os.path.normcase(os.path.abspath(os.path.expanduser(str(path))))
+    if mtime_ns is None:
+        try:
+            mtime_ns = os.stat(item_path).st_mtime_ns
+            if not is_folder:
+                size = os.stat(item_path).st_size
+        except OSError:
+            mtime_ns = 0
+    return json.dumps({
+        'path': item_path,
+        'folder': bool(is_folder),
+        'size': int(size or 0),
+        'mtime_ns': int(mtime_ns or 0),
+    }, sort_keys=True, separators=(',', ':'))
 
 _DEFAULT_PC_CATEGORIES = [
     {"name": "Documents",    "color": "#60a5fa", "rename_template": "",
@@ -570,6 +638,26 @@ class _ScanCache:
             )""")
             self._conn.execute("""CREATE INDEX IF NOT EXISTS idx_cache_mtime
                 ON scan_cache(path, mtime, size)""")
+            self._conn.execute("""CREATE TABLE IF NOT EXISTS scan_checkpoints (
+                scan_id TEXT PRIMARY KEY,
+                source_dir TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                total_items INTEGER NOT NULL DEFAULT 0,
+                completed_items INTEGER NOT NULL DEFAULT 0,
+                state TEXT NOT NULL DEFAULT 'running',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )""")
+            self._conn.execute("""CREATE TABLE IF NOT EXISTS scan_checkpoint_items (
+                scan_id TEXT NOT NULL,
+                item_key TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                result_json TEXT NOT NULL,
+                completed_at REAL NOT NULL,
+                PRIMARY KEY (scan_id, item_key)
+            )""")
+            self._conn.execute("""CREATE INDEX IF NOT EXISTS idx_checkpoint_updated
+                ON scan_checkpoints(updated_at)""")
             self._conn.commit()
         except Exception:
             self._conn = None
@@ -632,6 +720,140 @@ class _ScanCache:
         try:
             cutoff = time.time() - (max_age_days * 86400)
             self._conn.execute("DELETE FROM scan_cache WHERE cached_at < ?", (cutoff,))
+            stale = self._conn.execute(
+                "SELECT scan_id FROM scan_checkpoints WHERE updated_at < ?",
+                (cutoff,)
+            ).fetchall()
+            if stale:
+                self._conn.executemany(
+                    "DELETE FROM scan_checkpoint_items WHERE scan_id = ?",
+                    stale,
+                )
+                self._conn.executemany(
+                    "DELETE FROM scan_checkpoints WHERE scan_id = ?",
+                    stale,
+                )
+            self._conn.commit()
+        except Exception:
+            pass
+
+    def checkpoint_prepare(self, scan_id: str, source_dir: str,
+                           config_json: str, total_items: int) -> bool:
+        """Create or reopen an incomplete checkpoint.
+
+        Returns ``True`` when completed item records already exist and can be
+        resumed.  The metadata row is committed immediately so a process
+        failure before the first 500 items still leaves a resumable scan.
+        """
+        if not self._conn:
+            return False
+        try:
+            row = self._conn.execute(
+                "SELECT config_json FROM scan_checkpoints WHERE scan_id = ?",
+                (scan_id,)
+            ).fetchone()
+            now = time.time()
+            if row and row[0] != config_json:
+                self._conn.execute(
+                    "DELETE FROM scan_checkpoint_items WHERE scan_id = ?",
+                    (scan_id,)
+                )
+                self._conn.execute(
+                    "DELETE FROM scan_checkpoints WHERE scan_id = ?",
+                    (scan_id,)
+                )
+                row = None
+            if row:
+                self._conn.execute(
+                    "UPDATE scan_checkpoints SET source_dir=?, total_items=?, "
+                    "state='running', updated_at=? WHERE scan_id=?",
+                    (str(source_dir), int(total_items), now, scan_id)
+                )
+                resumable = self._conn.execute(
+                    "SELECT 1 FROM scan_checkpoint_items WHERE scan_id=? LIMIT 1",
+                    (scan_id,)
+                ).fetchone() is not None
+            else:
+                self._conn.execute(
+                    "INSERT INTO scan_checkpoints "
+                    "(scan_id, source_dir, config_json, total_items, "
+                    "completed_items, state, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, 0, 'running', ?, ?)",
+                    (scan_id, str(source_dir), config_json, int(total_items), now, now)
+                )
+                resumable = False
+            self._conn.commit()
+            return resumable
+        except Exception:
+            return False
+
+    def checkpoint_load(self, scan_id: str) -> dict:
+        """Load completed checkpoint results keyed by item identity."""
+        if not self._conn:
+            return {}
+        try:
+            rows = self._conn.execute(
+                "SELECT item_key, result_json FROM scan_checkpoint_items "
+                "WHERE scan_id = ?",
+                (scan_id,)
+            ).fetchall()
+            completed = {}
+            for item_key, result_json in rows:
+                try:
+                    result = json.loads(result_json)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if isinstance(result, dict):
+                    completed[item_key] = result
+            return completed
+        except Exception:
+            return {}
+
+    def checkpoint_store(self, scan_id: str, item_key: str, position: int,
+                         result: dict):
+        """Stage one completed item in the current checkpoint transaction."""
+        if not self._conn:
+            return
+        try:
+            result_json = json.dumps(result, default=str,
+                                     separators=(',', ':'))
+            existing = self._conn.execute(
+                "SELECT 1 FROM scan_checkpoint_items WHERE scan_id=? AND item_key=?",
+                (scan_id, item_key)
+            ).fetchone()
+            self._conn.execute(
+                "INSERT OR REPLACE INTO scan_checkpoint_items "
+                "(scan_id, item_key, position, result_json, completed_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (scan_id, item_key, int(position), result_json, time.time())
+            )
+            if existing is None:
+                self._conn.execute(
+                    "UPDATE scan_checkpoints SET completed_items=completed_items+1, "
+                    "updated_at=? WHERE scan_id=?",
+                    (time.time(), scan_id)
+                )
+            else:
+                self._conn.execute(
+                    "UPDATE scan_checkpoints SET updated_at=? WHERE scan_id=?",
+                    (time.time(), scan_id)
+                )
+        except Exception:
+            pass
+
+    def checkpoint_clear(self, scan_id: str):
+        """Delete a checkpoint after a scan completes successfully."""
+        if not self._conn:
+            return
+        try:
+            self._conn.execute(
+                "DELETE FROM scan_checkpoint_items WHERE scan_id = ?",
+                (scan_id,)
+            )
+            self._conn.execute(
+                "DELETE FROM scan_checkpoints WHERE scan_id = ?",
+                (scan_id,)
+            )
             self._conn.commit()
         except Exception:
             pass
@@ -679,4 +901,3 @@ _META_PDF_EXTS   = {'.pdf'}
 _META_DOCX_EXTS  = {'.docx'}
 _META_XLSX_EXTS  = {'.xlsx'}
 _META_PPTX_EXTS  = {'.pptx'}
-

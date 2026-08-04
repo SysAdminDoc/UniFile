@@ -58,6 +58,8 @@ from unifile.files import (
     load_directory_config,
     load_directory_rules,
     merge_categories,
+    scan_checkpoint_identity,
+    scan_checkpoint_item_key,
 )
 from unifile.ignore import IgnoreFilter
 from unifile.learning import get_learner
@@ -121,6 +123,95 @@ from unifile.raw_photos import (
 )
 
 _OLLAMA_PULL_MODEL_COMPAT = _ollama_pull_model
+
+_SCAN_CHECKPOINT_BATCH_SIZE = 500
+
+
+class _ScanCheckpointTracker:
+    """Persist completed scan results in bounded SQLite transactions."""
+
+    def __init__(self, cache, source_dir, *, mode, categories, destination,
+                 scan_depth, check_hashes, include_folders, include_files,
+                 ext_filter, extra=None, total_items=0, force_rescan=False,
+                 log_cb=None):
+        self.cache = cache
+        self.scan_id, self.config_json = scan_checkpoint_identity(
+            source_dir,
+            mode=mode,
+            destination=destination,
+            categories=categories,
+            scan_depth=scan_depth,
+            check_hashes=check_hashes,
+            include_folders=include_folders,
+            include_files=include_files,
+            ext_filter=ext_filter,
+            extra=extra,
+        )
+        self._log = log_cb or (lambda _message: None)
+        self._pending = 0
+        self.resumed = 0
+        self._completed = {}
+        self.enabled = all(hasattr(cache, name) for name in (
+            'checkpoint_prepare', 'checkpoint_load', 'checkpoint_store',
+            'checkpoint_clear'))
+        if not self.enabled:
+            return
+        if force_rescan:
+            cache.checkpoint_clear(self.scan_id)
+        was_resumable = cache.checkpoint_prepare(
+            self.scan_id, str(source_dir), self.config_json, total_items
+        )
+        if was_resumable:
+            self._completed = cache.checkpoint_load(self.scan_id)
+            if self._completed:
+                self._log(
+                    f"  [CHECKPOINT] Resuming {len(self._completed)} completed "
+                    "item(s) from the previous scan"
+                )
+
+    @staticmethod
+    def item_key(path, is_folder, *, size=0, mtime_ns=None):
+        return scan_checkpoint_item_key(
+            str(path), is_folder, size=size, mtime_ns=mtime_ns
+        )
+
+    def resume(self, item_key):
+        """Return a previously emitted result for an unchanged item."""
+        if not self.enabled:
+            return None
+        result = self._completed.get(item_key)
+        if result is None:
+            return None
+        self.resumed += 1
+        return dict(result)
+
+    def record(self, item_key, position, result):
+        """Stage one result and commit every 500 newly emitted items."""
+        if not self.enabled:
+            return
+        self.cache.checkpoint_store(
+            self.scan_id, item_key, position, dict(result)
+        )
+        self._pending += 1
+        if self._pending >= _SCAN_CHECKPOINT_BATCH_SIZE:
+            self.cache.commit()
+            self._pending = 0
+            self._log("  [CHECKPOINT] Saved progress")
+
+    def flush(self):
+        """Commit the final partial batch, including cancellation progress."""
+        if not self.enabled:
+            return
+        if self._pending:
+            self.cache.commit()
+            self._pending = 0
+
+    def complete(self):
+        """Remove the checkpoint after every collected item was emitted."""
+        if not self.enabled:
+            return
+        self.flush()
+        self.cache.checkpoint_clear(self.scan_id)
 
 
 def _get_ai_backend() -> str:
@@ -1484,7 +1575,7 @@ class ScanFilesWorker(QThread):
 
     def __init__(self, src_dir, dst_dir, categories, scan_depth=0,
                  check_hashes=False, include_folders=True, include_files=True,
-                 ext_filter=None, force_rescan=False):
+                 ext_filter=None, force_rescan=False, checkpoint_mode='rules'):
         super().__init__()
         self.src_dir        = src_dir
         self.dst_dir        = dst_dir
@@ -1495,6 +1586,7 @@ class ScanFilesWorker(QThread):
         self.include_files  = include_files
         self.ext_filter     = ext_filter   # set of allowed extensions (e.g. _FILTER_IMAGE_EXTS) or None
         self.force_rescan   = force_rescan
+        self.checkpoint_mode = checkpoint_mode
         self._skip_cloud_placeholders = False
         self._raw_families = {}
         self._cancelled     = False
@@ -1549,6 +1641,24 @@ class ScanFilesWorker(QThread):
         cache.open()
         cache.prune(max_age_days=30)
         cache_hits = 0
+        checkpoint = _ScanCheckpointTracker(
+            cache, src,
+            mode=self.checkpoint_mode,
+            categories=self.categories,
+            destination=self.dst_dir,
+            scan_depth=self.scan_depth,
+            check_hashes=self.check_hashes,
+            include_folders=self.include_folders,
+            include_files=self.include_files,
+            ext_filter=self.ext_filter,
+            extra={
+                'effective_categories': effective_cats,
+                'directory_rules': _rule_delta,
+            },
+            total_items=total,
+            force_rescan=self.force_rescan,
+            log_cb=self.log.emit,
+        )
 
         # ── Progressive duplicate detection (runs before classification) ─────
         dup_map = {}
@@ -1599,10 +1709,12 @@ class ScanFilesWorker(QThread):
 
             fsize = 0
             fmtime = 0.0
+            mtime_ns = 0
             try:
                 st = item_path.stat()
                 fsize  = st.st_size if not is_folder else 0
                 fmtime = st.st_mtime if not is_folder else 0.0
+                mtime_ns = st.st_mtime_ns
             except OSError:
                 pass
 
@@ -1621,6 +1733,28 @@ class ScanFilesWorker(QThread):
                 is_dup = not dinfo.is_original   # mark non-originals as duplicates
                 if is_dup:
                     self.log.emit(f"  [DUP] {name}  —  {dup_detail}")
+
+            checkpoint_key = checkpoint.item_key(
+                item_path, is_folder, size=fsize, mtime_ns=mtime_ns
+            )
+            resumed = checkpoint.resume(checkpoint_key)
+            if resumed:
+                resumed.update({
+                    'name': name,
+                    'full_src': fpath_str,
+                    'size': fsize,
+                    'is_folder': is_folder,
+                    'is_duplicate': is_dup,
+                    'dup_group': dup_group,
+                    'dup_detail': dup_detail,
+                    'dup_is_original': dup_is_original,
+                })
+                self.log.emit(
+                    f"  {name}  →  {resumed.get('category', '')}  "
+                    f"({resumed.get('confidence', 0)}%) [checkpoint]"
+                )
+                self.result_ready.emit(resumed)
+                continue
 
             # ── Try scan cache first ─────────────────────────────────────────
             cached = None
@@ -1741,7 +1875,7 @@ class ScanFilesWorker(QThread):
             detail = f"{'Folder' if is_folder else 'File'}: {os.path.splitext(name)[1] or '(no ext)'}{pair_suffix}"
             self.log.emit(f"  {name}  →  {cat}  ({conf}%) [{method}]")
 
-            self.result_ready.emit({
+            result = {
                 'name':       name,
                 'full_src':   fpath_str,
                 'category':   cat,
@@ -1755,12 +1889,21 @@ class ScanFilesWorker(QThread):
                 'dup_detail': dup_detail,
                 'dup_is_original': dup_is_original,
                 'metadata':   item_meta,
-            })
+            }
+            checkpoint.record(checkpoint_key, idx, result)
+            self.result_ready.emit(result)
 
         # Flush cache and close
+        checkpoint.flush()
+        if not self._cancelled:
+            checkpoint.complete()
         cache.commit()
         if cache_hits > 0:
             self.log.emit(f"  [CACHE] {cache_hits} items loaded from scan cache (unchanged files)")
+        if checkpoint.resumed > 0:
+            self.log.emit(
+                f"  [CHECKPOINT] {checkpoint.resumed} items resumed without reclassification"
+            )
         cache.close()
 
         self.finished.emit()
@@ -2111,7 +2254,7 @@ class ScanFilesLLMWorker(QThread):
 
     def __init__(self, src_dir, dst_dir, categories, scan_depth=0,
                  check_hashes=False, include_folders=True, include_files=True,
-                 ext_filter=None, force_rescan=False):
+                 ext_filter=None, force_rescan=False, checkpoint_mode='llm'):
         super().__init__()
         self.src_dir        = src_dir
         self.dst_dir        = dst_dir
@@ -2122,6 +2265,7 @@ class ScanFilesLLMWorker(QThread):
         self.include_files  = include_files
         self.ext_filter     = ext_filter
         self.force_rescan   = force_rescan
+        self.checkpoint_mode = checkpoint_mode
         self._cancelled     = False
         self._fallback_worker = None
 
@@ -2131,7 +2275,8 @@ class ScanFilesLLMWorker(QThread):
             self.src_dir, self.dst_dir, self.categories,
             self.scan_depth, self.check_hashes,
             self.include_folders, self.include_files,
-            ext_filter=self.ext_filter, force_rescan=self.force_rescan)
+            ext_filter=self.ext_filter, force_rescan=self.force_rescan,
+            checkpoint_mode='rules-fallback')
         # Forward cancel state so the user can stop the fallback scan too
         fallback._cancelled = self._cancelled
         self._fallback_worker = fallback  # keep ref for cancel forwarding
@@ -2236,6 +2381,26 @@ class ScanFilesLLMWorker(QThread):
         cache.open()
         cache.prune(max_age_days=30)
         cache_hits = 0
+        checkpoint = _ScanCheckpointTracker(
+            cache, src,
+            mode=self.checkpoint_mode,
+            categories=self.categories,
+            destination=self.dst_dir,
+            scan_depth=self.scan_depth,
+            check_hashes=self.check_hashes,
+            include_folders=self.include_folders,
+            include_files=self.include_files,
+            ext_filter=self.ext_filter,
+            extra={
+                'model': settings.get('model', ''),
+                'vision_enabled': settings.get('vision_enabled', True),
+                'vision_batch_size': settings.get('vision_batch_size', 32),
+                'content_extraction': settings.get('content_extraction', True),
+            },
+            total_items=total,
+            force_rescan=self.force_rescan,
+            log_cb=self.log.emit,
+        )
 
         # ── Progressive duplicate detection (runs before classification) ─────
         dup_map = {}
@@ -2434,10 +2599,12 @@ class ScanFilesLLMWorker(QThread):
             name = item_path.name
             fsize = 0
             fmtime = 0.0
+            mtime_ns = 0
             try:
                 st = item_path.stat()
                 fsize = st.st_size if not is_folder else 0
                 fmtime = st.st_mtime if not is_folder else 0.0
+                mtime_ns = st.st_mtime_ns
             except OSError: pass
             fpath_str = str(item_path)
             is_dup = False; dup_group = 0; dup_detail = ''; dup_is_original = False
@@ -2448,6 +2615,10 @@ class ScanFilesLLMWorker(QThread):
             return {
                 'item_path': item_path, 'is_folder': is_folder, 'name': name,
                 'fsize': fsize, 'fmtime': fmtime, 'is_dup': is_dup,
+                'mtime_ns': mtime_ns,
+                'checkpoint_key': checkpoint.item_key(
+                    item_path, is_folder, size=fsize, mtime_ns=mtime_ns
+                ),
                 'dup_group': dup_group, 'dup_detail': dup_detail,
                 'dup_is_original': dup_is_original,
             }
@@ -2482,6 +2653,9 @@ class ScanFilesLLMWorker(QThread):
             elif c_sname:
                 result['vision_suggested_name'] = c_sname
             self.log.emit(f"  {bd['name']}  →  {cached['category']}  ({cached['confidence']}%) [{cached['method']}]")
+            checkpoint.record(
+                bd['checkpoint_key'], bd.get('_checkpoint_position', 0), result
+            )
             self.result_ready.emit(result)
 
         def _extract_and_emit(bd, cat, conf, method, reason, vision_data=None, content_data=None):
@@ -2606,6 +2780,9 @@ class ScanFilesLLMWorker(QThread):
                 cache.store(str(bd['item_path']), bd['fmtime'], bd['fsize'],
                             cat, conf, method, cache_meta)
 
+            checkpoint.record(
+                bd['checkpoint_key'], bd.get('_checkpoint_position', 0), result
+            )
             self.result_ready.emit(result)
 
         def _is_vision_eligible(item_path, is_folder, fsize):
@@ -2904,6 +3081,7 @@ class ScanFilesLLMWorker(QThread):
 
             # Collect batch
             batch = []
+            batch_start = idx
             while len(batch) < BATCH_SIZE and idx < total:
                 batch.append(items[idx])
                 idx += 1
@@ -2916,8 +3094,28 @@ class ScanFilesLLMWorker(QThread):
 
             # Separate vision-eligible images from text items
             text_batch_data = []
-            for item_path, is_folder in batch:
+            for offset, (item_path, is_folder) in enumerate(batch):
                 bd = _build_item_data(item_path, is_folder)
+                bd['_checkpoint_position'] = batch_start + offset
+
+                resumed = checkpoint.resume(bd['checkpoint_key'])
+                if resumed:
+                    resumed.update({
+                        'name': bd['name'],
+                        'full_src': str(bd['item_path']),
+                        'size': bd['fsize'],
+                        'is_folder': bd['is_folder'],
+                        'is_duplicate': bd['is_dup'],
+                        'dup_group': bd['dup_group'],
+                        'dup_detail': bd['dup_detail'],
+                        'dup_is_original': bd['dup_is_original'],
+                    })
+                    self.log.emit(
+                        f"  {bd['name']}  →  {resumed.get('category', '')}  "
+                        f"({resumed.get('confidence', 0)}%) [checkpoint]"
+                    )
+                    self.result_ready.emit(resumed)
+                    continue
 
                 # ── Cache check — skip AI if file unchanged since last scan ──
                 if not self.force_rescan and not bd['is_folder'] and bd['fsize'] > 0:
@@ -3027,9 +3225,16 @@ class ScanFilesLLMWorker(QThread):
         # ── Flush cache and close ────────────────────────────────────────────
         if not self._cancelled:
             _flush_vision_queue(force=True)
+        checkpoint.flush()
+        if not self._cancelled:
+            checkpoint.complete()
         cache.commit()
         if cache_hits > 0:
             self.log.emit(f"  [CACHE] {cache_hits}/{total} items loaded from scan cache (unchanged files)")
+        if checkpoint.resumed > 0:
+            self.log.emit(
+                f"  [CHECKPOINT] {checkpoint.resumed} items resumed without reclassification"
+            )
         cache.close()
         if hasattr(_extract_and_emit, '_face_db'):
             try:

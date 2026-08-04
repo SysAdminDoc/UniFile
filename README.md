@@ -265,6 +265,7 @@ require the dialog's review button.
 - **Progressive hash dedup** — SHA-256 + perceptual hash prevents overwrites
 - **Full undo log** — every operation recorded with one-click rollback
 - **Disk space protection** — bulk moves and renames stop before execution when the destination would fall below the configurable free-space floor (500 MB by default); configure it in Settings → All Settings → System
+- **Checkpointed scans** — PC scans persist completed results to SQLite in 500-item batches and resume interrupted work without reclassifying unchanged items
 - **CSV audit trail** — every classification logged with timestamp, method, confidence
 - **Confidence tiers** — Auto-apply (90%+), Suggest (70–89%), and Skip (<70%) labels; scheduled applies use only the high-confidence tier, with per-profile overrides in Settings → All Settings → Confidence Tiers
 - **Crash handler** — unhandled exceptions saved to crash log with MessageBox notification
