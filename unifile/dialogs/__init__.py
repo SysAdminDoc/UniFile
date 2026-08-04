@@ -27,6 +27,7 @@ from unifile.dialogs.editors import (
 )
 from unifile.dialogs.library_roots import LibraryRootsDialog
 from unifile.dialogs.metadata_editor import BatchMetadataEditorDialog
+from unifile.dialogs.project_audit import ProjectAuditDialog
 from unifile.dialogs.settings import (
     FaceManagerDialog,
     ModelManagerDialog,
@@ -63,6 +64,7 @@ __all__ = [
     'SettingsHubDialog',
     'CloudRemotesDialog',
     'BatchMetadataEditorDialog',
+    'ProjectAuditDialog',
     'LibraryRootsDialog',
     'CollectionBoardDialog',
 ]

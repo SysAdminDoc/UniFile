@@ -109,6 +109,16 @@ class DialogsMixin:
                 "field change(s) remain available to undo"
             )
 
+    def _open_project_audit(self):
+        """Open the read-only video project reference audit."""
+        from unifile.dialogs.project_audit import ProjectAuditDialog
+
+        source = self.txt_src.text() if hasattr(self, "txt_src") else ""
+        panel = getattr(self, "_tag_panel", None)
+        library = getattr(panel, "library", None)
+        dlg = ProjectAuditDialog(source=source, library=library, parent=self)
+        dlg.exec()
+
     def _open_learning_stats(self):
         from unifile.dialogs.advanced_settings import LearningStatsDialog
         dlg = LearningStatsDialog(self)

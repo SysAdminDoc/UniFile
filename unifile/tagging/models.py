@@ -301,6 +301,10 @@ DEFAULT_FIELDS = [
     {"key": "cover_url", "name": "Cover URL", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 49},
     {"key": "published", "name": "Published", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 50},
     {"key": "cover_path", "name": "Cover Path", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 51},
+    # Video-project awareness metadata
+    {"key": "project_names", "name": "Project Names", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 60},
+    {"key": "project_modified", "name": "Project Modified", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 61},
+    {"key": "project_reference_count", "name": "Project Reference Count", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 62},
     # AI-generated (from Local-File-Organizer integration)
     {"key": "ai_summary", "name": "AI Summary", "type": FieldTypeEnum.TEXT_BOX, "is_default": False, "position": 50},
     {"key": "ai_category", "name": "AI Category", "type": FieldTypeEnum.TEXT_LINE, "is_default": False, "position": 51},

@@ -84,6 +84,17 @@ python -m unifile books export-opf /path/to/unifile-library --output /path/to/ca
 
 OPF export is non-destructive: each book gets a deterministic folder containing a Calibre-compatible `metadata.opf`, and cached cover art is copied when available. Generated metadata defaults to `.unifile/calibre-opf` when `--output` is omitted.
 
+### Video Project Awareness
+
+**Project Audit** reads `.aep`, `.prproj`, `.drp`, and `.fcpbundle` projects without opening or modifying them. It resolves referenced media, reports assets shared by multiple projects, lists media files with no project reference, and separates missing paths. Open **Ctrl+K → Project Audit** from the desktop UI, or use the read-only CLI report:
+
+```bash
+python -m unifile projects audit /path/to/projects --json
+python -m unifile projects audit /path/to/projects --library /path/to/unifile-library --apply
+```
+
+`--apply` is explicit: resolved assets receive `project:*` and `project-reference` tags plus project names, project modified timestamps, and reference counts in the tag library. Binary project formats use bounded string extraction, while Final Cut bundles also inspect FCPXML/SQLite content and managed media.
+
 ### Media Lookup (NEW in v8.0)
 
 Movie and TV metadata lookup powered by TMDb, OMDb, and TVMaze APIs (adapted from mnamer):

@@ -386,6 +386,7 @@ def build_commands(main_window) -> list[_Command]:
     _add("Apply",             "Apply pending moves / renames",        "_on_apply")
     _add("Open Settings",     "Open the Settings Hub",                "_open_settings_hub")
     _add("Open Tag Library",  "Manage and browse your tag database",  "_open_tag_library")
+    _add("Project Audit",    "Find shared, orphaned, and missing media references", "_open_project_audit")
     _add("Open Media Lookup", "Fetch metadata from TMDb / OMDb",      "_open_media_lookup")
     _add("Open Duplicates",   "Find and remove duplicate files",      "_open_duplicates")
     _add("Open Cleanup",      "Remove empty folders & junk files",    "_open_cleanup")

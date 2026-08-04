@@ -40,11 +40,6 @@ Larger features requiring non-trivial architecture or multi-week effort.
 
 Strategic / aspirational features. Some require significant architecture changes or external dependencies.
 
-### Video Project Awareness (AE, Premiere, DaVinci, FCPX)
-- Parse `.aep`, `.prproj`, `.drp`, `.fcpbundle` project files to discover all referenced media assets
-- Tag referenced files with the parent project name and last-modified date
-- "Project Audit" view: which assets are referenced by multiple projects; which are orphaned
-
 ### Mobile Companion App (Read-Only LAN Browser)
 - Lightweight web server started on demand; accessible from phone browser on local network
 - Browse tag library, search, preview thumbnails; no write operations

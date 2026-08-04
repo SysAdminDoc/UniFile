@@ -17,6 +17,8 @@ Usage:
                                                    Scan and enrich ebook metadata.
     python -m unifile books export-opf LIBRARY
                                                    Export Calibre metadata.opf files.
+    python -m unifile projects audit SOURCE [--apply]
+                                                   Audit project media references.
     python -m unifile validate-rules <dir> [--json]
                                                    Verify a directory's
                                                    .unifile_rules.json and
@@ -358,6 +360,41 @@ def _cmd_books_export_opf(args) -> int:
     return 0 if not result.errors else 2
 
 
+def _cmd_projects_audit(args) -> int:
+    """Audit project-file media references without changing source projects."""
+    from unifile.project_awareness import apply_project_tags, build_project_audit
+
+    if args.apply and not args.library:
+        print("error: --apply requires --library", file=sys.stderr)
+        return 2
+    try:
+        audit = build_project_audit(args.source)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        print(f"error: project audit failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    payload = audit.to_dict()
+    if args.apply:
+        applied = apply_project_tags(audit, args.library)
+        payload["apply"] = applied.to_dict()
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        counts = payload["counts"]
+        print(f"Project audit: {audit.source}")
+        print(f"  projects:             {counts['projects']}")
+        print(f"  references:           {counts['references']}")
+        print(f"  resolved references:  {counts['resolved_references']}")
+        print(f"  shared assets:        {counts['shared_assets']}")
+        print(f"  orphaned assets:      {counts['orphaned_assets']}")
+        print(f"  missing references:   {counts['missing_references']}")
+        if args.apply:
+            print(f"  tagged assets:        {payload['apply']['applied']}")
+            print(f"  skipped assets:       {payload['apply']['skipped']}")
+        for error in audit.errors + payload.get("apply", {}).get("errors", []):
+            print(f"  error: {error}")
+    return 0 if not audit.errors and not payload.get("apply", {}).get("errors") else 2
+
+
 def _write_scan_json(window, output_path: str) -> None:
     """Serialize the current scan results to a JSON plan file.
 
@@ -585,6 +622,27 @@ def main():
     p_books_export.add_argument("--no-overwrite", action="store_true", help="Keep existing generated OPF files")
     p_books_export.add_argument("--json", action="store_true", help="Emit a JSON result")
 
+    p_projects = subparsers.add_parser(
+        "projects",
+        help="Audit media references in video-project files",
+    )
+    projects_subparsers = p_projects.add_subparsers(dest="projects_command")
+    p_projects_audit = projects_subparsers.add_parser(
+        "audit",
+        help="Find referenced, shared, orphaned, and missing media assets",
+    )
+    p_projects_audit.add_argument("source", help="Project file or directory to audit")
+    p_projects_audit.add_argument(
+        "--library",
+        help="UniFile library root to update when --apply is specified",
+    )
+    p_projects_audit.add_argument(
+        "--apply",
+        action="store_true",
+        help="Tag resolved assets with project names and project modified dates",
+    )
+    p_projects_audit.add_argument("--json", action="store_true", help="Emit a JSON report")
+
     p_shell = subparsers.add_parser(
         "install-shell",
         help="Install Windows Explorer shell integration (context menu + Send To)",
@@ -646,6 +704,11 @@ def main():
         if args.books_command == "export-opf":
             sys.exit(_cmd_books_export_opf(args))
         print("error: choose a books command (currently: scan or export-opf)", file=sys.stderr)
+        sys.exit(2)
+    if args.subcommand == "projects":
+        if args.projects_command == "audit":
+            sys.exit(_cmd_projects_audit(args))
+        print("error: choose a projects command (currently: audit)", file=sys.stderr)
         sys.exit(2)
 
     if args.subcommand == "install-shell":
