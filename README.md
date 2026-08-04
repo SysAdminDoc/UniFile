@@ -62,6 +62,15 @@ Full tag-based file management adapted from TagStudio's SQLAlchemy models:
 
 The tag library stores data in `.unifile/unifile_tags.sqlite` within your library directory — non-destructive, no files are modified.
 
+TagStudio migration is available from the Tag Library panel and headless CLI. Import accepts a TagStudio library folder or `.TagStudio/ts_library.sqlite`/`.db` file and reads it in SQLite read-only mode. Export writes an additive TagStudio-compatible `.TagStudio/ts_library.sqlite`; existing TagStudio records are retained, and preserved `.TagStudio/thumbs` data is copied without changing the original files.
+
+```bash
+python -m unifile import-tagstudio /path/to/tagstudio /path/to/unifile-library --json
+python -m unifile export-tagstudio /path/to/unifile-library /path/to/tagstudio-export --json
+```
+
+Use `--dry-run` with `import-tagstudio` to inspect counts without creating a UniFile database, or `--no-thumbnails` to omit cached thumbnail transfer.
+
 ### Media Lookup (NEW in v8.0)
 
 Movie and TV metadata lookup powered by TMDb, OMDb, and TVMaze APIs (adapted from mnamer):

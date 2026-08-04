@@ -40,11 +40,6 @@ Larger features requiring non-trivial architecture or multi-week effort.
 
 Strategic / aspirational features. Some require significant architecture changes or external dependencies.
 
-### TagStudio Library Import / Export
-- Import an existing TagStudio `.db` library into UniFile's SQLAlchemy schema (entries, tags, fields, thumbnails)
-- Export UniFile tag library back to TagStudio format for cross-migration
-- Users can run both tools on the same library without destructive conflict; TagStudio's non-destructive philosophy is preserved
-
 ### Calibre / OpenLibrary Ebook Mode
 - Dedicated "Book Library" profile: scan ebooks (`.epub`, `.pdf`, `.mobi`, `.azw3`), extract metadata (title, author, ISBN via `isbnlib`), fetch cover art + synopsis from OpenLibrary/Google Books
 - Auto-tag by genre, language, series, reading status

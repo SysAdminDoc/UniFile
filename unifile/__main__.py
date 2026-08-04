@@ -9,6 +9,10 @@ Usage:
     python -m unifile list-models [--json]         List installed Ollama models.
     python -m unifile plugin create --name <name>  Generate a plugin scaffold.
     python -m unifile serve [--host HOST]          Run the Qt-free headless API.
+    python -m unifile import-tagstudio SOURCE LIBRARY
+                                                   Import a TagStudio SQLite library.
+    python -m unifile export-tagstudio LIBRARY OUTPUT
+                                                   Export a TagStudio SQLite library.
     python -m unifile validate-rules <dir> [--json]
                                                    Verify a directory's
                                                    .unifile_rules.json and
@@ -250,6 +254,58 @@ def _cmd_serve(args) -> int:
     return 0
 
 
+def _print_tagstudio_result(result, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        return
+    print(f"{result.operation} TagStudio library: {result.database}")
+    print(f"  tags:        {result.tags}")
+    print(f"  entries:     {result.entries}")
+    print(f"  fields:      {result.fields}")
+    print(f"  thumbnails:  {result.thumbnails}")
+    print(f"  merged:      {result.merged}")
+    print(f"  skipped:     {result.skipped}")
+    for conflict in result.conflicts:
+        print(f"  conflict:    {conflict}")
+    for warning in result.warnings:
+        print(f"  warning:     {warning}")
+
+
+def _cmd_import_tagstudio(args) -> int:
+    """Import a TagStudio database without modifying its source files."""
+    from unifile.tagstudio import TagStudioInteropError, import_tagstudio
+
+    try:
+        result = import_tagstudio(
+            args.source,
+            args.library,
+            copy_thumbnails=not args.no_thumbnails,
+            dry_run=args.dry_run,
+        )
+    except (FileNotFoundError, OSError, TagStudioInteropError) as exc:
+        print(f"error: TagStudio import failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    _print_tagstudio_result(result, args.json)
+    return 0
+
+
+def _cmd_export_tagstudio(args) -> int:
+    """Export UniFile metadata to an additive TagStudio database."""
+    from unifile.tagstudio import TagStudioInteropError, export_tagstudio
+
+    try:
+        result = export_tagstudio(
+            args.library,
+            args.output,
+            copy_thumbnails=not args.no_thumbnails,
+        )
+    except (FileNotFoundError, OSError, TagStudioInteropError) as exc:
+        print(f"error: TagStudio export failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    _print_tagstudio_result(result, args.json)
+    return 0
+
+
 def _write_scan_json(window, output_path: str) -> None:
     """Serialize the current scan results to a JSON plan file.
 
@@ -420,6 +476,31 @@ def main():
         help="Bind port (default: 8787)",
     )
 
+    p_import_tagstudio = subparsers.add_parser(
+        "import-tagstudio",
+        help="Import a TagStudio SQLite library into a UniFile library",
+    )
+    p_import_tagstudio.add_argument("source", help="TagStudio library root or SQLite database")
+    p_import_tagstudio.add_argument("library", help="Target UniFile library root")
+    p_import_tagstudio.add_argument(
+        "--no-thumbnails", action="store_true", help="Do not copy TagStudio's cached thumbnails"
+    )
+    p_import_tagstudio.add_argument("--dry-run", action="store_true", help="Inspect without writing")
+    p_import_tagstudio.add_argument("--json", action="store_true", help="Emit a JSON result")
+
+    p_export_tagstudio = subparsers.add_parser(
+        "export-tagstudio",
+        help="Export a UniFile library to an additive TagStudio SQLite library",
+    )
+    p_export_tagstudio.add_argument("library", help="Source UniFile library root")
+    p_export_tagstudio.add_argument(
+        "output", help="TagStudio library root or output SQLite database path"
+    )
+    p_export_tagstudio.add_argument(
+        "--no-thumbnails", action="store_true", help="Do not copy preserved cached thumbnails"
+    )
+    p_export_tagstudio.add_argument("--json", action="store_true", help="Emit a JSON result")
+
     p_shell = subparsers.add_parser(
         "install-shell",
         help="Install Windows Explorer shell integration (context menu + Send To)",
@@ -471,6 +552,10 @@ def main():
         sys.exit(2)
     if args.subcommand == "serve":
         sys.exit(_cmd_serve(args))
+    if args.subcommand == "import-tagstudio":
+        sys.exit(_cmd_import_tagstudio(args))
+    if args.subcommand == "export-tagstudio":
+        sys.exit(_cmd_export_tagstudio(args))
 
     if args.subcommand == "install-shell":
         from unifile import shell_integration as si

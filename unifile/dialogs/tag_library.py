@@ -279,6 +279,20 @@ class TagLibraryPanel(QWidget):
             "Write TagSpaces .ts sidecar files for entries with tags")
         self.btn_ts_export.clicked.connect(self._export_tagspaces)
         ts_row.addWidget(self.btn_ts_export)
+        self.btn_tagstudio_import = QPushButton("Import from TagStudio")
+        self.btn_tagstudio_import.setProperty("class", "toolbar")
+        self.btn_tagstudio_import.setAccessibleName("Import from TagStudio")
+        self.btn_tagstudio_import.setAccessibleDescription(
+            "Import a TagStudio SQLite library without changing its source files")
+        self.btn_tagstudio_import.clicked.connect(self._import_tagstudio)
+        ts_row.addWidget(self.btn_tagstudio_import)
+        self.btn_tagstudio_export = QPushButton("Export to TagStudio")
+        self.btn_tagstudio_export.setProperty("class", "toolbar")
+        self.btn_tagstudio_export.setAccessibleName("Export to TagStudio")
+        self.btn_tagstudio_export.setAccessibleDescription(
+            "Export this UniFile library to an additive TagStudio SQLite database")
+        self.btn_tagstudio_export.clicked.connect(self._export_tagstudio)
+        ts_row.addWidget(self.btn_tagstudio_export)
         ts_row.addStretch()
         tag_lay.addLayout(ts_row)
 
@@ -1122,6 +1136,78 @@ class TagLibraryPanel(QWidget):
         QMessageBox.information(
             self, "TagSpaces Export",
             f"Wrote {file_count} file sidecar(s) and {folder_count} folder metadata file(s).")
+
+    def _import_tagstudio(self):
+        if not self._lib.is_open:
+            return
+        from PyQt6.QtWidgets import QMessageBox
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select TagStudio SQLite library",
+            "",
+            "TagStudio databases (*.sqlite *.db);;SQLite databases (*.sqlite *.sqlite3 *.db);;All Files (*)",
+        )
+        if not filepath:
+            return
+        from unifile.tagstudio import import_tagstudio, inspect_tagstudio
+        try:
+            info = inspect_tagstudio(filepath)
+        except Exception as exc:
+            QMessageBox.warning(self, "TagStudio Import", f"Could not inspect the database:\n{exc}")
+            return
+        prompt = (
+            f"Found {info['tags']} tag(s), {info['entries']} entr{'y' if info['entries'] == 1 else 'ies'}, "
+            f"and {info['fields']} field(s).\n\n"
+            "The source database is opened read-only. Existing UniFile metadata is retained.\n\n"
+            "Import into this library?"
+        )
+        if QMessageBox.question(
+            self,
+            "TagStudio Import",
+            prompt,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            result = import_tagstudio(filepath, self._lib.library_dir)
+        except Exception as exc:
+            QMessageBox.warning(self, "TagStudio Import", f"Import failed:\n{exc}")
+            return
+        self._refresh_tags()
+        self._refresh_entries()
+        self._update_stats()
+        QMessageBox.information(
+            self,
+            "TagStudio Import",
+            f"Imported {result.tags} tag(s), {result.entries} entr{'y' if result.entries == 1 else 'ies'}, "
+            f"and {result.fields} field(s).\n"
+            f"Merged existing records: {result.merged}",
+        )
+
+    def _export_tagstudio(self):
+        if not self._lib.is_open:
+            return
+        from PyQt6.QtWidgets import QMessageBox
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export TagStudio SQLite library",
+            "ts_library.sqlite",
+            "TagStudio SQLite library (*.sqlite);;SQLite database (*.db);;All Files (*)",
+        )
+        if not filepath:
+            return
+        from unifile.tagstudio import export_tagstudio
+        try:
+            result = export_tagstudio(self._lib.library_dir, filepath)
+        except Exception as exc:
+            QMessageBox.warning(self, "TagStudio Export", f"Export failed:\n{exc}")
+            return
+        QMessageBox.information(
+            self,
+            "TagStudio Export",
+            f"Exported {result.tags} tag(s), {result.entries} entr{'y' if result.entries == 1 else 'ies'}, "
+            f"and {result.fields} field(s) to:\n{result.database}",
+        )
 
     def _on_semantic_search(self):
         query = self.txt_semantic.text().strip()
