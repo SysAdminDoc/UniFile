@@ -22,9 +22,14 @@ from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.metadata_editor import (
     EDITABLE_FIELDS,
+    MetadataField,
     apply_metadata_changes,
+    apply_metadata_field_changes,
+    preview_metadata_changes,
     read_editable_metadata,
+    read_metadata_fields,
     undo_metadata_batch,
+    undo_metadata_field_batch,
 )
 
 
@@ -77,6 +82,14 @@ class BatchMetadataEditorDialog(QDialog):
         self.btn_reload.setProperty("class", "toolbar")
         self.btn_reload.clicked.connect(self._reload)
         controls.addWidget(self.btn_reload)
+        self.btn_inspect = QPushButton("Inspect Raw Metadata…")
+        self.btn_inspect.setProperty("class", "toolbar")
+        self.btn_inspect.setAccessibleName("Inspect raw metadata")
+        self.btn_inspect.setAccessibleDescription(
+            "View and review embedded EXIF, ID3, PDF, and XMP metadata fields"
+        )
+        self.btn_inspect.clicked.connect(self._open_inspector)
+        controls.addWidget(self.btn_inspect)
         controls.addStretch()
         layout.addLayout(controls)
 
@@ -265,4 +278,208 @@ class BatchMetadataEditorDialog(QDialog):
         self._reload()
         self._update_status(
             f"Undid {result['restored']} field change(s); {result['failed']} failed."
+        )
+
+    def _open_inspector(self):
+        dialog = MetadataInspectorDialog(self._paths, self)
+        dialog.exec()
+        self._reload()
+
+
+class MetadataInspectorDialog(QDialog):
+    """Review and edit raw EXIF, XMP, ID3, mutagen, and PDF fields."""
+
+    def __init__(self, file_paths: list[str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Raw Metadata Inspector")
+        self.setMinimumSize(1040, 680)
+        self.setStyleSheet(get_active_stylesheet())
+        self._paths = list(dict.fromkeys(
+            os.path.abspath(path) for path in file_paths
+            if path and os.path.isfile(path)
+        ))
+        self._fields: list[MetadataField] = []
+        self._last_batch_id = ''
+        self._pending_preview: dict | None = None
+        self._updating = False
+        _t = get_active_theme()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(10)
+        layout.addWidget(build_dialog_header(
+            _t,
+            "Metadata",
+            "Raw Metadata Inspector",
+            "Review the exact format-level fields before writing. Source files are backed up first; XMP edits stay in the adjacent UniFile sidecar.",
+        ))
+
+        file_row = QHBoxLayout()
+        file_row.addWidget(QLabel("File"))
+        self.cmb_file = QComboBox()
+        self.cmb_file.setAccessibleName("Metadata inspector file")
+        self.cmb_file.setAccessibleDescription("File whose raw metadata fields are shown")
+        for path in self._paths:
+            self.cmb_file.addItem(os.path.basename(path), path)
+            self.cmb_file.setItemData(self.cmb_file.count() - 1, path, Qt.ItemDataRole.ToolTipRole)
+        self.cmb_file.currentIndexChanged.connect(self._reload)
+        file_row.addWidget(self.cmb_file, 1)
+        self.btn_reload_raw = QPushButton("Reload")
+        self.btn_reload_raw.setProperty("class", "toolbar")
+        self.btn_reload_raw.clicked.connect(self._reload)
+        file_row.addWidget(self.btn_reload_raw)
+        layout.addLayout(file_row)
+
+        self.tbl_fields = QTableWidget(0, 5)
+        self.tbl_fields.setHorizontalHeaderLabels([
+            "Source", "Field", "Current Value", "Proposed Value", "Writable",
+        ])
+        self.tbl_fields.setAccessibleName("Raw metadata fields")
+        self.tbl_fields.setAccessibleDescription(
+            "Review current raw metadata values and edit writable proposed values"
+        )
+        self.tbl_fields.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tbl_fields.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tbl_fields.setAlternatingRowColors(True)
+        self.tbl_fields.verticalHeader().setVisible(False)
+        self.tbl_fields.setWordWrap(False)
+        header = self.tbl_fields.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.tbl_fields.itemChanged.connect(self._invalidate_preview)
+        layout.addWidget(self.tbl_fields, 1)
+
+        self.lbl_status = QLabel()
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setStyleSheet(f"color: {_t['muted']}; font-size: 11px;")
+        layout.addWidget(self.lbl_status)
+
+        actions = QHBoxLayout()
+        self.btn_preview = QPushButton("Preview Changes")
+        self.btn_preview.setProperty("class", "toolbar")
+        self.btn_preview.setAccessibleName("Preview raw metadata changes")
+        self.btn_preview.clicked.connect(self._preview)
+        actions.addWidget(self.btn_preview)
+        self.btn_apply_raw = QPushButton("Apply Preview")
+        self.btn_apply_raw.setProperty("class", "primary")
+        self.btn_apply_raw.setAccessibleName("Apply previewed raw metadata changes")
+        self.btn_apply_raw.clicked.connect(self._apply)
+        actions.addWidget(self.btn_apply_raw)
+        self.btn_undo_raw = QPushButton("Undo Last Write")
+        self.btn_undo_raw.setProperty("class", "toolbar")
+        self.btn_undo_raw.clicked.connect(self._undo)
+        actions.addWidget(self.btn_undo_raw)
+        actions.addStretch()
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(self.reject)
+        actions.addWidget(btn_close)
+        layout.addLayout(actions)
+
+        self._reload()
+
+    def _current_path(self) -> str:
+        return str(self.cmb_file.currentData() or '')
+
+    def _reload(self):
+        if not hasattr(self, 'tbl_fields'):
+            return
+        self._pending_preview = None
+        self._fields = read_metadata_fields(self._current_path())
+        self._updating = True
+        try:
+            self.tbl_fields.setRowCount(0)
+            _t = get_active_theme()
+            for row, field in enumerate(self._fields):
+                self.tbl_fields.insertRow(row)
+                source = QTableWidgetItem(field.source)
+                name = QTableWidgetItem(field.label)
+                current = QTableWidgetItem(field.value)
+                proposed = QTableWidgetItem(field.value)
+                writable = QTableWidgetItem("Yes" if field.writable else "Read-only")
+                for item in (source, name, current, writable):
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                proposed.setData(Qt.ItemDataRole.UserRole, field.key)
+                if not field.writable:
+                    proposed.setFlags(proposed.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    proposed.setBackground(QColor(_t['input_bg']))
+                proposed.setToolTip(
+                    "Edit this cell, then preview before writing."
+                    if field.writable else "This field is visible for inspection only."
+                )
+                self.tbl_fields.setItem(row, 0, source)
+                self.tbl_fields.setItem(row, 1, name)
+                self.tbl_fields.setItem(row, 2, current)
+                self.tbl_fields.setItem(row, 3, proposed)
+                self.tbl_fields.setItem(row, 4, writable)
+        finally:
+            self._updating = False
+        self.lbl_status.setText(
+            f"{len(self._fields)} field(s) loaded. Edit writable proposed values, then preview before applying."
+        )
+
+    def _collect_edits(self) -> dict[str, str]:
+        edits = {}
+        for row, field in enumerate(self._fields):
+            proposed = self.tbl_fields.item(row, 3)
+            if field.writable and proposed and proposed.text() != field.value:
+                edits[field.key] = proposed.text()
+        return edits
+
+    def _invalidate_preview(self, _item=None):
+        if not self._updating:
+            self._pending_preview = None
+
+    def _preview(self):
+        edits = self._collect_edits()
+        self._pending_preview = preview_metadata_changes(self._current_path(), edits)
+        result = self._pending_preview
+        if result['unsupported']:
+            self.lbl_status.setText(
+                f"Preview rejected {len(result['unsupported'])} unsupported field(s); no write is available."
+            )
+            return
+        for row, field in enumerate(self._fields):
+            proposed = self.tbl_fields.item(row, 3)
+            if proposed and field.key in {item['key'] for item in result['changes']}:
+                proposed.setBackground(QColor('#2f5d3b'))
+        self.lbl_status.setText(
+            f"Preview: {len(result['changes'])} field change(s), {result['skipped']} unchanged. "
+            "Apply Preview writes exactly this diff."
+        )
+
+    def _apply(self):
+        if self._pending_preview is None:
+            self.lbl_status.setText("Preview the proposed changes before writing.")
+            return
+        edits = self._collect_edits()
+        current_preview = preview_metadata_changes(self._current_path(), edits)
+        if current_preview != self._pending_preview:
+            self.lbl_status.setText("The proposed values changed; preview again before writing.")
+            self._pending_preview = None
+            return
+        result = apply_metadata_field_changes(self._current_path(), edits)
+        if result['success']:
+            self._last_batch_id = result['batch_id']
+            self._reload()
+        else:
+            self._pending_preview = None
+        self.lbl_status.setText(
+            f"Applied {result['success']} field change(s); "
+            f"failed {result['failed']}; skipped {result['skipped']}. "
+            + ("Backup recorded for undo." if result['success'] else "No source bytes were changed.")
+        )
+
+    def _undo(self):
+        if not self._last_batch_id:
+            self.lbl_status.setText("No raw metadata write is available to undo.")
+            return
+        result = undo_metadata_field_batch(self._last_batch_id)
+        if result['failed'] == 0:
+            self._last_batch_id = ''
+            self._reload()
+        self.lbl_status.setText(
+            f"Undid {result['restored']} artifact(s); {result['failed']} failed."
         )

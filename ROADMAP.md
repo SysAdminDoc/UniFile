@@ -52,7 +52,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Media Metadata
 
-- **EXIF/XMP/ID3 viewer + editor pane** — read/write any metadata field; changes previewed before write; backed by `piexif`, `mutagen`, `pypdf`
 - **Cover art fetcher** — for media files missing embedded artwork: fetch from TMDb poster, MusicBrainz Cover Art Archive, or OpenLibrary; embed into file metadata
 - **NFO file generator** — emit Kodi/Plex-compatible `.nfo` XML alongside media files; field mapping from tag library entry fields
 - **RAW photo family recognition** — CR2, NEF, ARW, ORF, DNG; treat RAW + JPEG pairs as a single logical item; EXIF-first tagging using RAW sidecar when JPEG lacks full EXIF

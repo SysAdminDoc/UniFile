@@ -41,6 +41,11 @@ def _sidecar_path(file_path: str) -> str:
     return file_path + '.xmp'
 
 
+def sidecar_path(file_path: str) -> str:
+    """Return the UniFile XMP sidecar path for *file_path*."""
+    return _sidecar_path(file_path)
+
+
 def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
@@ -254,6 +259,116 @@ def read_sidecar(file_path: str) -> dict:
         result['fields'] = custom_fields
 
     return result
+
+
+def _xmp_element_value(element: ET.Element) -> str:
+    """Flatten a simple XMP text or RDF collection for editor display."""
+    for collection_name in ('Bag', 'Seq', 'Alt'):
+        collection = element.find(f'{_RDF}{collection_name}')
+        if collection is not None:
+            return '; '.join(
+                (child.text or '').strip() for child in collection
+                if child.text and child.text.strip()
+            )
+    return (element.text or '').strip()
+
+
+def read_sidecar_fields(file_path: str) -> dict[str, str]:
+    """Read all scalar and RDF collection fields from a UniFile sidecar.
+
+    Keys are stable ``xmp:<namespace-prefix>:<local-name>`` values.  Unknown
+    namespaces are represented by their URI, which keeps the viewer useful
+    even when a sidecar was authored by another application.  ``Field_*``
+    values use a canonical lower-case suffix so an edit updates the existing
+    UniFile field instead of creating a case-variant duplicate.
+    """
+    sidecar = _sidecar_path(file_path)
+    if not os.path.isfile(sidecar):
+        return {}
+    try:
+        raw = _strip_xpacket(open(sidecar, 'rb').read())
+        root = ET.fromstring(raw)
+        desc = _find_desc(root)
+        if desc is None:
+            return {}
+    except Exception:
+        return {}
+
+    prefix_by_uri = {uri: prefix for prefix, uri in _NS.items()}
+    result: dict[str, str] = {}
+    for element in desc:
+        if not element.tag.startswith('{'):
+            continue
+        uri, local = element.tag[1:].split('}', 1)
+        prefix = prefix_by_uri.get(uri, uri)
+        if local.startswith('Field_'):
+            local = 'Field_' + local[6:].lower()
+        result[f'xmp:{prefix}:{local}'] = _xmp_element_value(element)
+
+    for attribute, value in desc.attrib.items():
+        if not attribute.startswith('{') or attribute.endswith('}about'):
+            continue
+        uri, local = attribute[1:].split('}', 1)
+        prefix = prefix_by_uri.get(uri, uri)
+        result[f'xmp:{prefix}:@{local}'] = str(value).strip()
+    return result
+
+
+def write_sidecar_fields(file_path: str, fields: dict[str, object]) -> bool:
+    """Update arbitrary existing XMP fields while preserving other metadata.
+
+    The editor uses the stable keys returned by :func:`read_sidecar_fields`.
+    Empty values remove an element or attribute.  New fields are limited to
+    namespaces known by UniFile so an accidental typo cannot create arbitrary
+    XML namespaces or mutate the source file.
+    """
+    if not isinstance(fields, dict):
+        return False
+    sidecar = _sidecar_path(file_path)
+    root, desc = _load_sidecar_root(sidecar)
+    uri_by_prefix = {prefix: uri for prefix, uri in _NS.items()}
+    try:
+        for raw_key, raw_value in fields.items():
+            key = str(raw_key).strip()
+            if not key.startswith('xmp:'):
+                return False
+            parts = key.split(':', 2)
+            if len(parts) != 3 or parts[1] not in uri_by_prefix:
+                return False
+            prefix, local = parts[1], parts[2]
+            value = '' if raw_value is None else str(raw_value).strip()
+            if local.startswith('@'):
+                attribute = f'{{{uri_by_prefix[prefix]}}}{local[1:]}'
+                if value:
+                    desc.set(attribute, value)
+                else:
+                    desc.attrib.pop(attribute, None)
+                continue
+
+            tag = f'{{{uri_by_prefix[prefix]}}}{local}'
+            element = desc.find(tag)
+            if not value:
+                if element is not None:
+                    desc.remove(element)
+                continue
+            had_collection = element is not None and any(
+                element.find(f'{_RDF}{name}') is not None
+                for name in ('Bag', 'Seq', 'Alt')
+            )
+            if prefix == 'dc' and local == 'subject':
+                had_collection = True
+            if had_collection:
+                namespace = f'{{{uri_by_prefix[prefix]}}}'
+                _set_bag(desc, namespace, local,
+                         [part.strip() for part in re.split(r'[;,]', value)
+                          if part.strip()])
+            else:
+                namespace = f'{{{uri_by_prefix[prefix]}}}'
+                _set_text(desc, namespace, local, value)
+        _set_text(desc, _XMP, 'ModifyDate', _iso_now())
+        return _write_sidecar_root(sidecar, root)
+    except Exception:
+        return False
 
 
 def write_editable_fields(file_path: str, fields: dict[str, object]) -> bool:

@@ -31,6 +31,7 @@ All notable changes to UniFile will be documented in this file.
 
 ### Added
 - Subtitle and chapter sidecars: review OpenSubtitles `.srt`/`.ass` matches, download selected releases beside local media, and save atomic TMDb-derived `.chapters.json` metadata with explicit OpenSubtitles credential fields.
+- Raw Metadata Inspector: enumerate EXIF, XMP, ID3, mutagen, and PDF fields, preview edits before writing, preserve source bytes with atomic format-specific updates, and restore the last write from a durable backup.
 - Custom Field Schemas: define per-library text, date, currency, status/enum, and checkbox fields with validated entry editing in the Tag Library.
 - Media Lookup parity: add TVDB → TMDb → TVMaze TV fallback, OpenLibrary → Google Books book/audiobook lookup, and MusicBrainz audio search with normalized detail cards, artwork, IDs, and Tag Library payloads.
 - Color Palette Search: index dominant image colors in each Tag Library and search them with `color:<name>` or natural “predominant … tones” phrases, with a reindex action for existing images.
@@ -46,7 +47,7 @@ All notable changes to UniFile will be documented in this file.
 - Existing Tag Library capabilities are now reflected as complete roadmap work: cached Smart Views, XMP sidecars, post-scan category auto-tagging, and persistent 1–5 star/review flags are all available in the live UI and APIs.
 - Archive scans now best-effort populate the semantic embedding index with stable archive/member metadata, while semantic results remain read-only breadcrumbs; Extract + classify uses the configured AI provider chain before the local fallback and reports semantic-vector coverage.
 - Tag implication and sibling rules now persist in the tag library, propagate through tag application and query-time search expansion, round-trip through tag packs, and are manageable from the Tag Library context menu.
-- Batch Metadata Editor: review current XMP/EXIF values, edit checked rows with conflict highlighting, write safe UniFile XMP sidecars for RAW and other formats, and undo whole batches or the active field from the existing embedding log.
+- Batch Metadata Editor: review current XMP/EXIF values, edit checked rows with conflict highlighting, write safe UniFile XMP sidecars for RAW and other formats, and undo whole batches or the active field from the existing embedding log. The Raw Metadata Inspector adds format-level EXIF, XMP, ID3, mutagen, and PDF field editing with preview-first writes and backup-based undo.
 - Collections / Visual Boards: durable non-hierarchical collection columns now show thumbnail and metadata cards, accept the Tag Library selection without moving files, and export collision-safe ZIPs or explicit symlink folders.
 - Multi-root Tag Libraries: attach secondary drives and shares, see online/offline/read-only root status, relink moved secondary roots, and remove only empty roots without touching files.
 - Cloud Remotes: optional rclone profiles provide read-only JSON listings, size/extension-filtered local downloads, and explicit non-overwriting XMP sidecar sync-back; native sync-folder scans report and skip non-hydrated placeholders.

@@ -71,7 +71,7 @@ def _bootstrap():
     }
     required = ['PyQt6>=6.5', 'SQLAlchemy>=2.0']
     optional = [
-        'Pillow>=12.2.0', 'pillow-heif>=1.4.0', 'exifread>=3.5.1',
+        'Pillow>=12.2.0', 'piexif>=1.1.3', 'pillow-heif>=1.4.0', 'exifread>=3.5.1',
         'mutagen>=1.48.1', 'pypdf>=6.14.2', 'python-docx>=1.2.0',
         'python-pptx>=1.0.2', 'openpyxl>=3.1.5', 'psd-tools>=1.17.4',
         'rarfile>=4.2', 'py7zr>=1.1.3', 'rapidfuzz>=3.14.5',

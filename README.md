@@ -114,6 +114,8 @@ TMDb, TVDB, OMDb, and OpenSubtitles use your own API keys via the Media Lookup p
 | Subtitle + Chapter Sidecars | Review `.srt`/`.ass` OpenSubtitles matches and save TMDb-derived `.chapters.json` metadata beside a local video |
 | Cached Requests | API responses cached for 6 days to reduce API calls |
 
+For format-level metadata work, select a file, open **Tools → Batch Metadata Editor**, and choose **Inspect Raw Metadata**. The inspector enumerates EXIF, XMP sidecar, ID3, mutagen audio, and PDF fields, lets you edit writable values in a proposed-value column, and requires an explicit preview before applying. JPEG/TIFF EXIF, ID3, mutagen, and PDF writes are atomic and backed up for undo; XMP changes remain non-destructive adjacent `.xmp` sidecars.
+
 ### Nexa SDK Backend (NEW in v8.0)
 
 Alternative local AI backend using Nexa SDK (adapted from Local-File-Organizer):
