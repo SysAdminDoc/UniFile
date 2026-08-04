@@ -32,6 +32,7 @@ All notable changes to UniFile will be documented in this file.
 ### Added
 - Large PC File Organizer results now use a paged `QAbstractTableModel`/`QTableView`, and the thumbnail grid uses fixed-size `QListView` delegates with visible-item thumbnail loading instead of one widget per result.
 - Shared thumbnail previews now use a bounded SQLite-indexed filesystem cache with read-only `mmap` access, LRU eviction, and a configurable cap under Settings → All Settings → System → Thumbnail Cache; the PC grid, file preview, command palette, Tag Library, Collections, and Duplicate Finder share the store.
+- Rule-based PC scans now fan out local classification across a bounded set of QThread workers while preserving result order, incremental-cache behavior, and cancellation; LLM requests remain on the serialized worker path.
 - Background scanners now share a cancellation-aware I/O throttle with a 2 ms default yield and battery-power pause; pacing, power polling, and the battery policy are configurable in Settings → System.
 - SQLite WAL transaction replay now journals every apply operation, supports newest-first last-N restoration, and exposes the replay control in Undo Timeline while keeping the legacy JSON history synchronized.
 - Checkpointed PC scans now persist completed results to SQLite in 500-item batches, automatically resume matching interrupted scans, and discard the checkpoint after a successful run.

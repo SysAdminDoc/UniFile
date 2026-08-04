@@ -2,10 +2,12 @@
 import base64
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -126,6 +128,79 @@ from unifile.scan_throttle import ScanThrottle
 _OLLAMA_PULL_MODEL_COMPAT = _ollama_pull_model
 
 _SCAN_CHECKPOINT_BATCH_SIZE = 500
+
+
+def _rule_classification_worker_count(job_count: int = 0) -> int:
+    """Choose a bounded number of QThread workers for local classification."""
+    available = max(1, os.cpu_count() or 1)
+    workers = min(8, available)
+    return min(workers, job_count) if job_count else workers
+
+
+class _RuleClassificationThread(QThread):
+    """Run extension, MIME, filename, and fuzzy classification jobs."""
+
+    def __init__(self, tasks, results, result_lock, cancel_event):
+        super().__init__()
+        self._tasks = tasks
+        self._results = results
+        self._result_lock = result_lock
+        self._cancel_event = cancel_event
+
+    def run(self):
+        while True:
+            job = self._tasks.get()
+            try:
+                if job is None:
+                    return
+                index, path, ext_map, is_folder, categories = job
+                if self._cancel_event.is_set():
+                    continue
+                try:
+                    result = _classify_pc_item(path, ext_map, is_folder, categories)
+                except Exception as exc:
+                    result = exc
+                with self._result_lock:
+                    self._results[index] = result
+            finally:
+                self._tasks.task_done()
+
+
+class _RuleClassificationPool:
+    """Small QThread pool that preserves indexed results for the scan worker."""
+
+    def __init__(self, worker_count: int, cancel_event):
+        self._tasks = queue.Queue()
+        self._results = {}
+        self._result_lock = threading.Lock()
+        self._cancel_event = cancel_event
+        self._threads = [
+            _RuleClassificationThread(
+                self._tasks,
+                self._results,
+                self._result_lock,
+                self._cancel_event,
+            )
+            for _ in range(max(1, int(worker_count)))
+        ]
+        for thread in self._threads:
+            thread.start()
+
+    def classify(self, jobs):
+        """Classify all jobs and return a mapping keyed by source index."""
+        for job in jobs:
+            self._tasks.put(job)
+        self._tasks.join()
+        with self._result_lock:
+            return dict(self._results)
+
+    def close(self):
+        """Stop and join every QThread in the pool."""
+        for _ in self._threads:
+            self._tasks.put(None)
+        self._tasks.join()
+        for thread in self._threads:
+            thread.wait()
 
 
 class _ScanCheckpointTracker:
@@ -1627,8 +1702,11 @@ class ScanFilesWorker(QThread):
         self._skip_cloud_placeholders = False
         self._raw_families = {}
         self._cancelled     = False
+        self._classification_cancel = threading.Event()
 
-    def cancel(self): self._cancelled = True
+    def cancel(self):
+        self._cancelled = True
+        self._classification_cancel.set()
 
     def run(self):
         self.phase.emit("Scanning", "Collecting files and folders…")
@@ -1727,6 +1805,7 @@ class ScanFilesWorker(QThread):
         _convert_webp = _conv_settings.get('convert_webp_to_jpg', True)
         throttle = _new_scan_throttle(self.log.emit)
 
+        prepared_items = []
         for idx, (item_path, is_folder) in enumerate(items):
             if self._cancelled:
                 self.log.emit(f"  Scan cancelled at {idx}/{total}"); break
@@ -1781,6 +1860,80 @@ class ScanFilesWorker(QThread):
                 item_path, is_folder, size=fsize, mtime_ns=mtime_ns
             )
             resumed = checkpoint.resume(checkpoint_key)
+
+            # ── Try scan cache first ─────────────────────────────────────────
+            cached = None
+            if resumed is None and not self.force_rescan and not is_folder and fsize > 0:
+                cached = cache.lookup(fpath_str, fmtime, fsize)
+
+            prepared_items.append({
+                'index': idx,
+                'item_path': item_path,
+                'is_folder': is_folder,
+                'name': name,
+                'fsize': fsize,
+                'fmtime': fmtime,
+                'fpath_str': fpath_str,
+                'raw_family': raw_family,
+                'is_dup': is_dup,
+                'dup_group': dup_group,
+                'dup_detail': dup_detail,
+                'dup_is_original': dup_is_original,
+                'checkpoint_key': checkpoint_key,
+                'resumed': resumed,
+                'cached': cached,
+            })
+
+        classification_jobs = [
+            (
+                entry['index'],
+                entry['fpath_str'],
+                ext_map,
+                entry['is_folder'],
+                self.categories,
+            )
+            for entry in prepared_items
+            if entry['resumed'] is None and entry['cached'] is None
+        ]
+        classifications = {}
+        if classification_jobs:
+            self.log.emit(
+                f"  Local classification: {_rule_classification_worker_count(len(classification_jobs))} "
+                "QThread worker(s)"
+            )
+            pool = _RuleClassificationPool(
+                _rule_classification_worker_count(len(classification_jobs)),
+                self._classification_cancel,
+            )
+            try:
+                classifications = pool.classify(classification_jobs)
+            finally:
+                pool.close()
+
+        for entry in prepared_items:
+            idx = entry['index']
+            item_path = entry['item_path']
+            is_folder = entry['is_folder']
+            name = entry['name']
+            fsize = entry['fsize']
+            fmtime = entry['fmtime']
+            fpath_str = entry['fpath_str']
+            raw_family = entry['raw_family']
+            is_dup = entry['is_dup']
+            dup_group = entry['dup_group']
+            dup_detail = entry['dup_detail']
+            dup_is_original = entry['dup_is_original']
+            checkpoint_key = entry['checkpoint_key']
+            resumed = entry['resumed']
+            cached = entry['cached']
+
+            if self._cancelled and (
+                resumed is None
+                and cached is None
+                and idx not in classifications
+            ):
+                break
+
             if resumed:
                 resumed.update({
                     'name': name,
@@ -1799,11 +1952,6 @@ class ScanFilesWorker(QThread):
                 self.result_ready.emit(resumed)
                 continue
 
-            # ── Try scan cache first ─────────────────────────────────────────
-            cached = None
-            if not self.force_rescan and not is_folder and fsize > 0:
-                cached = cache.lookup(fpath_str, fmtime, fsize)
-
             if cached:
                 cat      = cached['category']
                 conf     = cached['confidence']
@@ -1821,9 +1969,18 @@ class ScanFilesWorker(QThread):
                     item_meta = cached_meta
                 cache_hits += 1
             else:
-                # Classify with multi-signal engine
-                cat, conf, method = _classify_pc_item(
-                    fpath_str, ext_map, is_folder, self.categories)
+                # Classify with the bounded local QThread pool.
+                classification = classifications.get(idx)
+                if isinstance(classification, Exception):
+                    self.log.emit(f"    [CLASSIFY] Failed for {name}: {classification}")
+                    cat, conf, method = 'Other', 0, 'classification_error'
+                elif classification is None:
+                    if self._cancelled:
+                        break
+                    cat, conf, method = _classify_pc_item(
+                        fpath_str, ext_map, is_folder, self.categories)
+                else:
+                    cat, conf, method = classification
 
                 # Extract metadata for files (skip folders)
                 item_meta = {}

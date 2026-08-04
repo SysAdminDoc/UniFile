@@ -62,7 +62,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Performance & Scale
 
-- **Parallel classification workers** — spawn N `QThread` workers for rule-based classification (CPU-bound); LLM calls remain single-threaded to respect Ollama's concurrency model
 - **ONNX embeddings** — local sentence-transformer model via `onnxruntime`; 10–50× faster than Ollama embedding endpoint on GPU; falls back to CPU if no GPU
 
 ---

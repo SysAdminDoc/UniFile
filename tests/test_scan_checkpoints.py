@@ -1,11 +1,42 @@
 """Coverage for SQLite-backed scan progress checkpoints."""
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
 
 from unifile.files import _ScanCache, scan_checkpoint_identity
+
+
+def test_rule_classification_pool_runs_indexed_jobs_on_multiple_qthreads(monkeypatch):
+    from unifile import workers
+
+    barrier = threading.Barrier(2, timeout=5)
+    thread_ids = set()
+    thread_lock = threading.Lock()
+
+    def classify(path, ext_map, is_folder, categories):
+        del ext_map, is_folder, categories
+        with thread_lock:
+            thread_ids.add(threading.get_ident())
+        barrier.wait()
+        return (path, 90, 'threaded')
+
+    monkeypatch.setattr(workers, '_classify_pc_item', classify)
+    pool = workers._RuleClassificationPool(2, threading.Event())
+    try:
+        results = pool.classify([
+            (index, f'item-{index}', {}, False, [])
+            for index in range(4)
+        ])
+    finally:
+        pool.close()
+
+    assert len(thread_ids) == 2
+    assert [results[index][0] for index in range(4)] == [
+        f'item-{index}' for index in range(4)
+    ]
 
 
 def test_scan_checkpoint_commits_every_500_items():
