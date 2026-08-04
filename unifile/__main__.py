@@ -5,6 +5,7 @@ Usage:
     python -m unifile --source <path>              Auto-scan a folder.
     python -m unifile --profile <name> --auto-apply
     python -m unifile classify <path> [--json]     Headless classify one path.
+    python -m unifile scan <path> [--apply-rules]  Headless scan and apply.
     python -m unifile list-profiles [--json]       List saved scan profiles.
     python -m unifile list-models [--json]         List installed Ollama models.
     python -m unifile plugin create --name <name>  Generate a plugin scaffold.
@@ -156,6 +157,49 @@ def _cmd_classify(args) -> int:
         if result.get("cleaned_name"):
             print(f"  cleaned:    {result['cleaned_name']}")
     return 0
+
+
+def _cmd_scan(args) -> int:
+    """Build or apply a Qt-free PC file organization plan."""
+    from unifile.cli_scan import scan_directory
+
+    try:
+        result = scan_directory(
+            args.path,
+            destination=getattr(args, "destination", None),
+            limit=getattr(args, "limit", 10_000),
+            apply_rules=bool(getattr(args, "apply_rules", False)),
+            dry_run=bool(getattr(args, "dry_run", False)),
+            min_confidence=getattr(args, "min_confidence", 80),
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"error: scan failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+    output_path = getattr(args, "output_json", None)
+    if output_path:
+        from unifile.config import save_json_safe
+
+        if not save_json_safe(output_path, result):
+            print(f"error: could not write scan plan: {output_path}", file=sys.stderr)
+            return 2
+
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        print(f"Scan: {result['source']}")
+        print(f"  files:       {result['count']}")
+        print(f"  candidates:  {result['selected_count']}")
+        if result["apply_rules"]:
+            action = "would move" if result["dry_run"] else "moved"
+            print(f"  {action}:      {result['would_move'] if result['dry_run'] else result['moved']}")
+        if result["failed"]:
+            print(f"  failed:      {result['failed']}")
+        if output_path:
+            print(f"  plan:        {output_path}")
+        for item in result["errors"]:
+            print(f"  error:       {item['src']}: {item['error']}", file=sys.stderr)
+    return 1 if result["failed"] or result["errors"] else 0
 
 
 def _cmd_validate_rules(args) -> int:
@@ -728,6 +772,34 @@ def main():
     p_classify.add_argument("--json", action="store_true",
                             help="Emit JSON instead of human-readable output")
 
+    p_scan = subparsers.add_parser(
+        "scan",
+        help="Headless scan a directory and optionally apply category rules",
+    )
+    p_scan.add_argument("path", type=str, help="Directory to scan")
+    p_scan.add_argument(
+        "--apply-rules", action="store_true",
+        help="Move high-confidence classified files to their category destinations",
+    )
+    p_scan.add_argument(
+        "--dry-run", action="store_true",
+        help="Show the moves that --apply-rules would perform without changing files",
+    )
+    p_scan.add_argument(
+        "--destination", type=str, default=None,
+        help="Optional destination root; category folders are created beneath it",
+    )
+    p_scan.add_argument(
+        "--min-confidence", type=int, default=80,
+        help="Minimum confidence for an apply candidate (default: 80)",
+    )
+    p_scan.add_argument(
+        "--limit", type=int, default=10_000,
+        help="Maximum files to include (default: 10000)",
+    )
+    p_scan.add_argument("--json", action="store_true", help="Emit the scan plan as JSON")
+    p_scan.add_argument("--output-json", help="Write the scan plan to a JSON file")
+
     p_list_profiles = subparsers.add_parser(
         "list-profiles",
         help="List saved scan profiles (one per line, or --json)",
@@ -1035,6 +1107,8 @@ def main():
     # Headless subcommands — no GUI at all.
     if args.subcommand == "classify":
         sys.exit(_cmd_classify(args))
+    if args.subcommand == "scan":
+        sys.exit(_cmd_scan(args))
     if args.subcommand == "list-profiles":
         sys.exit(_cmd_list_profiles(args))
     if args.subcommand == "list-models":

@@ -90,7 +90,7 @@ from unifile.dialogs.tag_library import TagLibraryPanel
 from unifile.dialogs_mixin import DialogsMixin
 from unifile.duplicates import ConflictResolver
 from unifile.engine import EventGrouper, RenameTemplateEngine, RuleEngine
-from unifile.files import _load_pc_categories, _save_pc_categories
+from unifile.files import _load_pc_categories, _save_pc_categories, default_pc_destination
 from unifile.filter_mixin import FilterMixin
 from unifile.learning import get_learner
 from unifile.library_context import set_active_library_root
@@ -3272,22 +3272,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
     @staticmethod
     def _default_pc_dst_static(cat_name: str) -> str:
         """Return the sensible default destination for a category."""
-        h = os.path.expanduser('~')
-        mapping = {
-            "Documents":   os.path.join(h, 'Documents'),
-            "Images":      os.path.join(h, 'Pictures'),
-            "Videos":      os.path.join(h, 'Videos'),
-            "Audio":       os.path.join(h, 'Music'),
-            "Archives":    os.path.join(h, 'Downloads', 'Archives'),
-            "Code":        os.path.join(h, 'Documents', 'Code'),
-            "Executables": os.path.join(h, 'Downloads', 'Executables'),
-            "Fonts":       os.path.join(h, 'Documents', 'Fonts'),
-            "Data":        os.path.join(h, 'Documents', 'Data'),
-            "Design":      os.path.join(h, 'Documents', 'Design'),
-            "Shortcuts":   os.path.join(h, 'Desktop'),
-            "Other":       os.path.join(h, 'Downloads', 'Other'),
-        }
-        return mapping.get(cat_name, os.path.join(h, 'Downloads', cat_name))
+        return default_pc_destination(cat_name)
 
     def _default_pc_dst(self, cat_name: str) -> str:
         return self._default_pc_dst_static(cat_name)

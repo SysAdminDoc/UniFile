@@ -384,6 +384,9 @@ python -m unifile --version                            # Print version
 # Headless classification (no GUI, no Qt)
 python -m unifile classify path/to/file.pdf --json
 python -m unifile classify path/to/folder --json
+python -m unifile scan path/to/inbox --json --destination path/to/organized
+python -m unifile scan path/to/inbox --apply-rules --destination path/to/organized
+python -m unifile scan path/to/inbox --apply-rules --dry-run --output-json plan.json
 python -m unifile verify path/to/library --json --output health.json
 python -m unifile nfo generate path/to/movie.mkv --metadata-json metadata.json --json
 python -m unifile nfo generate path/to/episode.mkv --kind episode --no-overwrite
@@ -403,6 +406,12 @@ curl http://127.0.0.1:8787/health
 
 The `classify` subcommand is safe to use in cron jobs and CI — it loads
 **zero Qt modules** and runs purely against the rule-based classifier.
+`scan` is also Qt-free and review-first: it prints or exports a versioned move
+plan, and only `--apply-rules` performs collision-safe moves. Use
+`--destination` to place category folders beneath an explicit root; without it,
+the command uses the same configured category destinations as the desktop app.
+Only results at or above the default 80% confidence floor are candidates, and
+`--min-confidence` can adjust that threshold.
 
 ### Headless Docker deployment
 

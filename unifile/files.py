@@ -137,6 +137,26 @@ _DEFAULT_PC_CATEGORIES = [
 ]
 
 
+def default_pc_destination(category_name: str) -> str:
+    """Return the shared default destination for a PC file category."""
+    home = os.path.expanduser('~')
+    mapping = {
+        "Documents":   os.path.join(home, 'Documents'),
+        "Images":      os.path.join(home, 'Pictures'),
+        "Videos":      os.path.join(home, 'Videos'),
+        "Audio":       os.path.join(home, 'Music'),
+        "Archives":    os.path.join(home, 'Downloads', 'Archives'),
+        "Code":        os.path.join(home, 'Documents', 'Code'),
+        "Executables": os.path.join(home, 'Downloads', 'Executables'),
+        "Fonts":       os.path.join(home, 'Documents', 'Fonts'),
+        "Data":        os.path.join(home, 'Documents', 'Data'),
+        "Design":      os.path.join(home, 'Documents', 'Design'),
+        "Shortcuts":   os.path.join(home, 'Desktop'),
+        "Other":       os.path.join(home, 'Downloads', 'Other'),
+    }
+    return mapping.get(category_name, os.path.join(home, 'Downloads', category_name))
+
+
 def _load_pc_categories() -> list:
     """Load user-customized PC categories, falling back to defaults."""
     try:

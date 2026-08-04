@@ -67,7 +67,6 @@ Strategic / aspirational features. Some require significant architecture changes
 
 ## Automation & CLI
 
-- `unifile scan /path --apply-rules` — headless scan + apply in one command
 - `unifile tag --query 'cat AND outdoor'` — query tag library from shell; pipe to `jq`
 - `unifile report --format html --output /tmp/report.html` — export category distribution + file list as HTML/PDF report
 - `unifile verify /path` — re-verify checksums for all files in a directory; print mismatches

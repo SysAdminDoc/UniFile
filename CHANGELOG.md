@@ -30,6 +30,9 @@ All notable changes to UniFile will be documented in this file.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
 
 ### Added
+- Qt-free `unifile scan <path>` command with JSON plans, source-local rule evaluation,
+  collision-safe category moves behind explicit `--apply-rules`, dry-run support,
+  confidence filtering, and configurable destination roots.
 - Large PC File Organizer results now use a paged `QAbstractTableModel`/`QTableView`, and the thumbnail grid uses fixed-size `QListView` delegates with visible-item thumbnail loading instead of one widget per result.
 - Shared thumbnail previews now use a bounded SQLite-indexed filesystem cache with read-only `mmap` access, LRU eviction, and a configurable cap under Settings → All Settings → System → Thumbnail Cache; the PC grid, file preview, command palette, Tag Library, Collections, and Duplicate Finder share the store.
 - Rule-based PC scans now fan out local classification across a bounded set of QThread workers while preserving result order, incremental-cache behavior, and cancellation; LLM requests remain on the serialized worker path.
