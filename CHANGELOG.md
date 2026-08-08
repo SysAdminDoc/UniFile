@@ -32,6 +32,9 @@ All notable changes to UniFile will be documented in this file.
 - Headless scans now use the CLI's canonical action-plan contract, accept explicit
   destination/rule/dry-run/verification options, and keep default scans free of
   hidden file-health writes.
+- Mobile and headless API exposure now defaults to loopback, rejects URL tokens,
+  uses expiring header-only mobile sessions with rotation/revocation, redacts
+  health paths, and enforces security headers and resource/rate limits.
 
 ### Added
 - Shared JSON action-plan validation and transactional apply across natural-language

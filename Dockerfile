@@ -15,4 +15,4 @@ RUN python -m pip install --upgrade pip \
 
 EXPOSE 8787
 
-ENTRYPOINT ["python", "-m", "unifile", "serve", "--host", "0.0.0.0", "--port", "8787"]
+ENTRYPOINT ["python", "-m", "unifile", "serve", "--host", "0.0.0.0", "--allow-remote", "--port", "8787"]

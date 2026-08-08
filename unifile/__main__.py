@@ -446,7 +446,13 @@ def _cmd_plugin_create(args) -> int:
 
 def _cmd_serve(args) -> int:
     """Run the optional Flask API without importing any Qt modules."""
-    from unifile.headless import create_app
+    from unifile.headless import create_app, validate_bind_host
+
+    try:
+        validate_bind_host(args.host, allow_remote=args.allow_remote)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     config = {
         "START_SCHEDULER": True,
@@ -799,7 +805,14 @@ def _cmd_mobile(args) -> int:
     """Start the token-protected, read-only PWA companion server."""
     from unifile.mobile import run_mobile_server
 
-    return run_mobile_server(args.library, host=args.host, port=args.port, token=args.token)
+    return run_mobile_server(
+        args.library,
+        host=args.host,
+        port=args.port,
+        token=args.token,
+        allow_remote=args.allow_remote,
+        session_ttl=args.session_ttl,
+    )
 
 
 def _write_scan_json(window, output_path: str) -> None:
@@ -1084,6 +1097,11 @@ def main():
         action="store_true",
         help="Require library-scoped collaboration users and role permissions",
     )
+    p_serve.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="Acknowledge remote binding; terminate TLS at a reverse proxy",
+    )
 
     p_verify = subparsers.add_parser(
         "verify",
@@ -1267,8 +1285,8 @@ def main():
     )
     p_mobile.add_argument(
         "--host",
-        default=os.environ.get("UNIFILE_MOBILE_HOST", "0.0.0.0"),
-        help="Bind address (default: 0.0.0.0 for LAN access)",
+        default=os.environ.get("UNIFILE_MOBILE_HOST", "127.0.0.1"),
+        help="Bind address (default: 127.0.0.1; use --allow-remote for LAN access)",
     )
     p_mobile.add_argument(
         "--port",
@@ -1279,7 +1297,18 @@ def main():
     p_mobile.add_argument(
         "--token",
         default=None,
-        help="Optional URL token; a random token is generated when omitted",
+        help="Optional bootstrap token; a random short-lived token is generated when omitted",
+    )
+    p_mobile.add_argument(
+        "--session-ttl",
+        type=int,
+        default=int(os.environ.get("UNIFILE_MOBILE_SESSION_TTL", "3600")),
+        help="Mobile session lifetime in seconds (default: 3600)",
+    )
+    p_mobile.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="Acknowledge remote binding; terminate TLS at a reverse proxy",
     )
 
     p_shell = subparsers.add_parser(

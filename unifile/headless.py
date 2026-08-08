@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import mimetypes
 import os
+import secrets
 import threading
+import time
+from collections import deque
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +20,13 @@ DEFAULT_LIBRARY_ROOT = os.path.join(os.path.expanduser("~"), "UniFileLibrary")
 MAX_SCAN_ITEMS = 10_000
 MAX_QUERY_RESULTS = 500
 MOBILE_MAX_ENTRIES = 500
+DEFAULT_MAX_REQUEST_BYTES = 1 * 1024 * 1024
+DEFAULT_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+DEFAULT_RATE_LIMIT_REQUESTS = 120
+DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60
+DEFAULT_MOBILE_BOOTSTRAP_TTL = 300
+DEFAULT_MOBILE_SESSION_TTL = 3600
+DEFAULT_MOBILE_MAX_SESSIONS = 128
 MOBILE_IMAGE_EXTENSIONS = {
     ".avif", ".bmp", ".gif", ".heic", ".heif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp",
 }
@@ -23,6 +34,29 @@ MOBILE_IMAGE_EXTENSIONS = {
 
 def _truthy(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_loopback_host(host: str) -> bool:
+    """Return whether a bind host is provably local-only."""
+    value = str(host or "").strip().lower().strip("[]")
+    if value in {"localhost", "localhost.localdomain"}:
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False
+
+
+def validate_bind_host(host: str, *, allow_remote: bool = False) -> str:
+    """Require an explicit acknowledgement before binding a remote interface."""
+    value = str(host or "").strip()
+    if not value:
+        raise ValueError("bind host must not be empty")
+    if not is_loopback_host(value) and not allow_remote:
+        raise ValueError(
+            "remote binding requires --allow-remote and TLS at a reverse proxy"
+        )
+    return value
 
 
 def _inside(path: str | os.PathLike[str], root: str | os.PathLike[str]) -> bool:
@@ -667,35 +701,173 @@ def create_app(config: dict[str, Any] | None = None, *, service: HeadlessService
         ollama_url=ollama_url,
         scan_interval=float(scan_interval or 0),
     )
+    def _int_setting(name: str, default: int, *, minimum: int = 1, maximum: int = 2**31 - 1) -> int:
+        raw = supplied.get(name, os.environ.get(name, default))
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            value = default
+        return max(minimum, min(maximum, value))
+
+    max_request_bytes = _int_setting(
+        "MAX_CONTENT_LENGTH",
+        DEFAULT_MAX_REQUEST_BYTES,
+        maximum=64 * 1024 * 1024,
+    )
+    max_response_bytes = _int_setting(
+        "MAX_RESPONSE_BYTES",
+        DEFAULT_MAX_RESPONSE_BYTES,
+        maximum=64 * 1024 * 1024,
+    )
+    rate_limit_requests = _int_setting(
+        "RATE_LIMIT_REQUESTS",
+        DEFAULT_RATE_LIMIT_REQUESTS,
+        maximum=100_000,
+    )
+    rate_limit_window = _int_setting(
+        "RATE_LIMIT_WINDOW_SECONDS",
+        DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
+        maximum=86_400,
+    )
+    mobile_bootstrap_ttl = _int_setting(
+        "MOBILE_BOOTSTRAP_TTL",
+        DEFAULT_MOBILE_BOOTSTRAP_TTL,
+        maximum=3_600,
+    )
+    mobile_session_ttl = _int_setting(
+        "MOBILE_SESSION_TTL",
+        DEFAULT_MOBILE_SESSION_TTL,
+        maximum=86_400,
+    )
+    mobile_max_sessions = _int_setting(
+        "MOBILE_MAX_SESSIONS",
+        DEFAULT_MOBILE_MAX_SESSIONS,
+        maximum=10_000,
+    )
+
     app = Flask(__name__)
     app.config.update(
         API_KEY=api_key,
+        MAX_CONTENT_LENGTH=max_request_bytes,
+        MAX_RESPONSE_BYTES=max_response_bytes,
+        RATE_LIMIT_REQUESTS=rate_limit_requests,
+        RATE_LIMIT_WINDOW_SECONDS=rate_limit_window,
         ALLOW_UNAUTHENTICATED=bool(allow_unauthenticated),
         LIBRARY_ROOT=str(service.library_root),
         OLLAMA_URL=service.ollama_url,
         SCAN_INTERVAL=service.scan_interval,
         MOBILE_ONLY=bool(supplied.get("MOBILE_ONLY", False)),
         MOBILE_TOKEN=str(supplied.get("MOBILE_TOKEN", "")),
+        MOBILE_BOOTSTRAP_EXPIRES_AT=float(supplied.get(
+            "MOBILE_BOOTSTRAP_EXPIRES_AT",
+            time.time() + mobile_bootstrap_ttl,
+        )),
+        MOBILE_SESSION_TTL=mobile_session_ttl,
+        MOBILE_MAX_SESSIONS=mobile_max_sessions,
         COLLABORATIVE_MODE=bool(collaborative_mode),
         SCHEDULER_FILE=str(supplied.get("SCHEDULER_FILE", os.path.join(
             os.path.expanduser("~"), "UniFile", "headless_jobs.json"
         ))),
     )
     app.extensions["unifile_service"] = service
+    app.extensions["unifile_mobile_sessions"] = {}
+    app.extensions["unifile_mobile_session_lock"] = threading.RLock()
+    app.extensions["unifile_rate_limits"] = {}
+    app.extensions["unifile_rate_limit_lock"] = threading.RLock()
+
+    def _purge_mobile_sessions(now: float | None = None) -> None:
+        current = time.time() if now is None else now
+        sessions = app.extensions["unifile_mobile_sessions"]
+        for candidate, expires_at in list(sessions.items()):
+            if expires_at <= current:
+                sessions.pop(candidate, None)
+
+    def _issue_mobile_session() -> dict[str, Any]:
+        now = time.time()
+        with app.extensions["unifile_mobile_session_lock"]:
+            sessions = app.extensions["unifile_mobile_sessions"]
+            _purge_mobile_sessions(now)
+            while len(sessions) >= app.config["MOBILE_MAX_SESSIONS"]:
+                sessions.pop(next(iter(sessions)))
+            session_token = secrets.token_urlsafe(32)
+            expires_at = now + app.config["MOBILE_SESSION_TTL"]
+            sessions[session_token] = expires_at
+        return {"token": session_token, "expires_at": int(expires_at)}
+
+    def _mobile_session_expiry(provided: str) -> float | None:
+        if not provided:
+            return None
+        with app.extensions["unifile_mobile_session_lock"]:
+            now = time.time()
+            _purge_mobile_sessions(now)
+            sessions = app.extensions["unifile_mobile_sessions"]
+            for candidate, expires_at in sessions.items():
+                if hmac.compare_digest(candidate, provided):
+                    return expires_at
+        return None
+
+    def _revoke_mobile_session(provided: str) -> bool:
+        if not provided:
+            return False
+        with app.extensions["unifile_mobile_session_lock"]:
+            sessions = app.extensions["unifile_mobile_sessions"]
+            for candidate in list(sessions):
+                if hmac.compare_digest(candidate, provided):
+                    sessions.pop(candidate, None)
+                    return True
+        return False
+
+    app.extensions["unifile_mobile_issue_session"] = _issue_mobile_session
+    app.extensions["unifile_mobile_session_expiry"] = _mobile_session_expiry
+    app.extensions["unifile_mobile_revoke_session"] = _revoke_mobile_session
+
+    def _mobile_header_token() -> str:
+        provided = request.headers.get("X-API-Key", "").strip()
+        if not provided:
+            authorization = request.headers.get("Authorization", "")
+            if authorization.lower().startswith("bearer "):
+                provided = authorization[7:].strip()
+        return provided
 
     def _auth_error():
         if request.path == "/health":
             return None
+        if request.path.startswith("/mobile"):
+            if "token" in request.args:
+                return jsonify({"error": "tokens must be sent in headers, not URLs"}), 400
+            lifecycle = request.path in {"/mobile/api/session", "/mobile/api/session/rotate"}
+            if app.config.get("MOBILE_ONLY") and request.method not in {"GET", "HEAD", "OPTIONS"}:
+                if not (lifecycle and request.method in {"POST", "DELETE"}):
+                    return jsonify({"error": "mobile companion is read-only"}), 405
+            public_paths = {
+                "/mobile",
+                "/mobile/",
+                "/mobile/manifest.json",
+                "/mobile/sw.js",
+                "/mobile/icon.svg",
+            }
+            if request.path in public_paths:
+                return None
+            if request.path == "/mobile/api/session" and request.method == "POST":
+                expected = str(app.config.get("MOBILE_TOKEN", ""))
+                provided = request.headers.get("X-Mobile-Bootstrap", "").strip()
+                if not expected:
+                    return jsonify({"error": "mobile bootstrap is not configured"}), 503
+                if time.time() >= float(app.config.get("MOBILE_BOOTSTRAP_EXPIRES_AT", 0)):
+                    return jsonify({"error": "mobile bootstrap token expired"}), 401
+                if not hmac.compare_digest(provided, expected):
+                    return jsonify({"error": "invalid mobile bootstrap token"}), 401
+                request.environ["unifile_mobile_bootstrap"] = True
+                return None
+            provided = _mobile_header_token()
+            if not app.config.get("MOBILE_TOKEN"):
+                return jsonify({"error": "mobile bootstrap is not configured"}), 503
+            if _mobile_session_expiry(provided) is None:
+                return jsonify({"error": "invalid or expired mobile session"}), 401
+            request.environ["unifile_mobile_session"] = provided
+            return None
         if app.config.get("MOBILE_ONLY") and request.method not in {"GET", "HEAD", "OPTIONS"}:
             return jsonify({"error": "mobile companion is read-only"}), 405
-        if request.path.startswith("/mobile"):
-            expected = str(app.config.get("MOBILE_TOKEN", ""))
-            provided = request.headers.get("X-API-Key", "") or request.args.get("token", "")
-            if not expected:
-                return jsonify({"error": "mobile token is not configured"}), 503
-            if not hmac.compare_digest(provided, expected):
-                return jsonify({"error": "invalid mobile token"}), 401
-            return None
         if app.config.get("COLLABORATIVE_MODE"):
             from unifile.collaboration import ROLE_RANK
 
@@ -727,18 +899,65 @@ def create_app(config: dict[str, Any] | None = None, *, service: HeadlessService
             if app.config.get("ALLOW_UNAUTHENTICATED"):
                 return None
             return jsonify({"error": "API key is not configured"}), 503
-        provided = request.headers.get("X-API-Key", "")
-        if not provided:
-            authorization = request.headers.get("Authorization", "")
-            if authorization.lower().startswith("bearer "):
-                provided = authorization[7:].strip()
+        provided = _mobile_header_token()
         if not hmac.compare_digest(provided, expected):
             return jsonify({"error": "invalid API key"}), 401
         return None
 
     @app.before_request
+    def _limit_requests():
+        if request.path == "/health" or request.method == "OPTIONS":
+            return None
+        now = time.monotonic()
+        client_key = request.remote_addr or "local"
+        with app.extensions["unifile_rate_limit_lock"]:
+            buckets = app.extensions["unifile_rate_limits"]
+            bucket = buckets.setdefault(client_key, deque())
+            window = float(app.config["RATE_LIMIT_WINDOW_SECONDS"])
+            while bucket and bucket[0] <= now - window:
+                bucket.popleft()
+            if len(bucket) >= app.config["RATE_LIMIT_REQUESTS"]:
+                retry_after = max(1, int(window - (now - bucket[0]) + 0.999))
+                response = jsonify({"error": "request rate limit exceeded"})
+                response.status_code = 429
+                response.headers["Retry-After"] = str(retry_after)
+                return response
+            bucket.append(now)
+            while len(buckets) > 2048:
+                buckets.pop(next(iter(buckets)))
+        return None
+
+    @app.before_request
     def _authenticate():
         return _auth_error()
+
+    @app.after_request
+    def _security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Cache-Control"] = "no-store"
+        if response.mimetype == "text/html":
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; base-uri 'none'; form-action 'none'; "
+                "frame-ancestors 'none'; script-src 'unsafe-inline'; "
+                "style-src 'unsafe-inline'; img-src 'self' data:; "
+                "connect-src 'self'; manifest-src 'self'; worker-src 'self'"
+            )
+        if request.is_secure:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        length = response.calculate_content_length()
+        if length is not None and length > app.config["MAX_RESPONSE_BYTES"]:
+            response.set_data(b'{"error":"response exceeds configured size limit"}')
+            response.status_code = 413
+            response.mimetype = "application/json"
+        return response
+
+    @app.errorhandler(413)
+    def _request_too_large(_error):
+        return jsonify({"error": "request body exceeds configured size limit"}), 413
 
     @app.get("/health")
     def health():
@@ -746,8 +965,8 @@ def create_app(config: dict[str, Any] | None = None, *, service: HeadlessService
         return jsonify({
             "status": "ok",
             "version": API_SCHEMA_VERSION,
-            "library_root": str(service.library_root),
-            "ollama_url": service.ollama_url,
+            "library_root_configured": bool(service.library_root),
+            "ollama_configured": bool(service.ollama_url),
             "scan_interval": service.scan_interval,
             "scheduler_running": bool(scheduler and scheduler._thread and scheduler._thread.is_alive()),
             "collaborative_mode": bool(app.config.get("COLLABORATIVE_MODE")),
@@ -1057,7 +1276,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the Qt-free UniFile Flask API")
     parser.add_argument("--host", default=os.environ.get("UNIFILE_API_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("UNIFILE_API_PORT", "8787")))
+    parser.add_argument("--allow-remote", action="store_true",
+                        help="Acknowledge remote binding; terminate TLS at a reverse proxy")
     args = parser.parse_args(argv)
+    validate_bind_host(args.host, allow_remote=args.allow_remote)
     app = create_app({"START_SCHEDULER": True})
     app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
     return 0

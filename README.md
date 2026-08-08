@@ -433,6 +433,9 @@ python -m unifile serve --host 127.0.0.1 --port 8787
 curl http://127.0.0.1:8787/health
 ```
 
+Loopback is the default. Binding `serve` to a LAN or wildcard address requires
+`--allow-remote` and TLS termination at a trusted reverse proxy.
+
 The `classify` subcommand is safe to use in cron jobs and CI — it loads
 **zero Qt modules** and runs purely against the rule-based classifier.
 `scan` is also Qt-free and review-first: it prints or exports a versioned move
@@ -464,8 +467,9 @@ field to save a symmetric manual relationship in UniFile app data.
 ### Headless Docker deployment
 
 `docker-compose.yml` starts `unifile-api` and Ollama with separate library,
-SQLite, and model volumes. Configure `UNIFILE_API_KEY`, `SCAN_INTERVAL` (seconds,
-rounded to a cron minute), and `OLLAMA_URL` before running:
+SQLite, and model volumes. Configure a non-empty `UNIFILE_API_KEY`,
+`SCAN_INTERVAL` (seconds, rounded to a cron minute), and `OLLAMA_URL` before
+running:
 
 ```bash
 docker compose up -d --build
@@ -479,6 +483,12 @@ tag writes are explicit. `/scan` accepts the same destination, apply-rules,
 dry-run, confidence, and limit options as the CLI. Verification is opt-in with
 `{"verify": true}`; ordinary scans do not write the file-health ledger.
 Leave `UNIFILE_ALLOW_UNAUTHENTICATED=0` in shared deployments.
+The container acknowledges its wildcard bind explicitly, but UniFile does not
+terminate TLS; expose it through an HTTPS reverse proxy and do not publish the
+Ollama port beyond the trusted host. API request bodies default to 1 MiB,
+responses to 2 MiB, and each client to 120 requests per 60 seconds. Set
+`MAX_CONTENT_LENGTH`, `MAX_RESPONSE_BYTES`, `RATE_LIMIT_REQUESTS`, and
+`RATE_LIMIT_WINDOW_SECONDS` to tighten those limits.
 
 `unifile verify` and the authenticated `/verify` endpoint maintain a
 library-local `.unifile/file_health.json` ledger. The first verification
@@ -489,13 +499,30 @@ for weekly checks) and set its `health_log` path for persistent log export.
 
 ### Mobile Companion
 
-Start the read-only LAN browser on demand. UniFile prints an authenticated URL with a random token; open it from a phone on the same network and optionally install it as a PWA:
+Start the read-only companion on demand. UniFile defaults to loopback and
+prints a URL with a short-lived bootstrap fragment. Open it from a phone on
+the same network and optionally install it as a PWA:
 
 ```bash
 python -m unifile mobile --library /path/to/unifile-library
 ```
 
-The companion browses entries, tags, fields, search results, and image previews. Mobile mode rejects every non-GET request, does not expose tag/scan/job writes, keeps paths relative to the configured library, and generates thumbnails in memory when Pillow is available. Use `--host 127.0.0.1` for local-only access or set `UNIFILE_MOBILE_HOST` / `UNIFILE_MOBILE_PORT` for a different bind address and port.
+The bootstrap fragment is exchanged once for a short-lived header-only
+session, then removed from the browser address/history. API requests reject
+credential-bearing query URLs; sessions can be rotated or revoked by the
+client. The companion browses entries, tags, fields, search results, and image
+previews. Mobile mode does not expose tag/scan/job writes, keeps paths relative
+to the configured library, and generates thumbnails in memory when Pillow is
+available. Use `--host 127.0.0.1` for local-only access. LAN binding requires
+an explicit acknowledgement and HTTPS reverse proxy:
+
+~~~bash
+python -m unifile mobile --library /path/to/unifile-library \
+  --host 0.0.0.0 --allow-remote
+~~~
+
+`UNIFILE_MOBILE_HOST`, `UNIFILE_MOBILE_PORT`, and
+`UNIFILE_MOBILE_SESSION_TTL` configure the bind and session lifetime.
 
 ### Collaborative LAN Tagging
 

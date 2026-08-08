@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 import secrets
 import socket
 from io import BytesIO
@@ -16,7 +15,7 @@ _MOBILE_PAGE = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0ea5e9">
   <meta name="description" content="Read-only UniFile tag library browser">
-  <link rel="manifest" href="/mobile/manifest.json?token={{TOKEN}}">
+  <link rel="manifest" href="/mobile/manifest.json">
   <title>UniFile Mobile Companion</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
@@ -63,20 +62,54 @@ _MOBILE_PAGE = """<!doctype html>
     <section id="entries" aria-live="polite"></section>
   </main>
   <script>
-    const token = new URL(location.href).searchParams.get('token') || '';
     const queryInput = document.getElementById('query');
     const summary = document.getElementById('summary');
     const tags = document.getElementById('tags');
     const entries = document.getElementById('entries');
+    let sessionToken = '';
+    let sessionExpiresAt = 0;
     let activeTag = '';
     let timer;
-    function apiUrl(path) {
-      const url = new URL('/mobile/api' + path, location.origin);
-      if (token) url.searchParams.set('token', token);
-      return url;
+    function rememberSession(payload) {
+      sessionToken = String(payload.token || '');
+      sessionExpiresAt = Number(payload.expires_at || 0);
+      if (!sessionToken || sessionExpiresAt * 1000 <= Date.now()) throw new Error('Session expired');
+      try { sessionStorage.setItem('unifile-mobile-session', JSON.stringify({
+        token: sessionToken, expires_at: sessionExpiresAt
+      })); } catch (_) {}
     }
-    async function api(path) {
-      const response = await fetch(apiUrl(path), { headers: token ? {'X-API-Key': token} : {} });
+    function restoreSession() {
+      try {
+        const payload = JSON.parse(sessionStorage.getItem('unifile-mobile-session') || '{}');
+        if (payload.token && Number(payload.expires_at) * 1000 > Date.now()) {
+          rememberSession(payload);
+        } else {
+          sessionStorage.removeItem('unifile-mobile-session');
+        }
+      } catch (_) { sessionToken = ''; }
+    }
+    async function bootstrapSession() {
+      const fragment = new URLSearchParams(location.hash.replace(/^#/, ''));
+      const bootstrap = fragment.get('token') || '';
+      if (!bootstrap) { restoreSession(); return; }
+      const response = await fetch('/mobile/api/session', {
+        method: 'POST',
+        headers: {'X-Mobile-Bootstrap': bootstrap},
+        cache: 'no-store'
+      });
+      history.replaceState(null, document.title, location.pathname);
+      if (!response.ok) throw new Error('Bootstrap failed (' + response.status + ')');
+      rememberSession(await response.json());
+    }
+    function apiUrl(path) {
+      return new URL('/mobile/api' + path, location.origin);
+    }
+    async function api(path, options = {}) {
+      const headers = Object.assign({}, options.headers || {});
+      if (sessionToken) headers['X-API-Key'] = sessionToken;
+      const response = await fetch(apiUrl(path), Object.assign({}, options, {
+        headers: headers, cache: 'no-store'
+      }));
       if (!response.ok) throw new Error('Request failed (' + response.status + ')');
       return response.json();
     }
@@ -117,6 +150,11 @@ _MOBILE_PAGE = """<!doctype html>
     }
     async function load() {
       summary.textContent = 'Loading…';
+      if (!sessionToken) {
+        summary.textContent = 'Open the bootstrap link to connect.';
+        entries.innerHTML = '';
+        return;
+      }
       try {
         const params = new URLSearchParams({limit: '80'});
         if (activeTag) params.set('tag', activeTag);
@@ -128,8 +166,12 @@ _MOBILE_PAGE = """<!doctype html>
     }
     queryInput.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 250); });
     document.getElementById('refresh').onclick = load;
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/mobile/sw.js?token=' + encodeURIComponent(token));
-    load();
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/mobile/sw.js');
+    bootstrapSession().then(load).catch(error => {
+      history.replaceState(null, document.title, location.pathname);
+      summary.textContent = error.message;
+      entries.innerHTML = '';
+    });
   </script>
 </body>
 </html>"""
@@ -148,25 +190,24 @@ self.addEventListener('fetch', event => {
 });"""
 
 
-def render_mobile_page(token: str) -> str:
-    """Render the shell with the per-server token carried into PWA requests."""
-    return _MOBILE_PAGE.replace("{{TOKEN}}", html.escape(token, quote=True))
+def render_mobile_page(_token: str | None = None) -> str:
+    """Render a shell that never embeds a bearer token."""
+    return _MOBILE_PAGE
 
 
-def mobile_manifest(token: str) -> dict:
-    """Return an installable manifest whose start URL preserves authentication."""
-    encoded = quote(token, safe="")
+def mobile_manifest(_token: str | None = None) -> dict:
+    """Return an installable manifest with no credential-bearing URLs."""
     return {
         "name": "UniFile Mobile Companion",
         "short_name": "UniFile",
         "description": "Read-only UniFile tag library browser",
-        "start_url": f"/mobile?token={encoded}",
+        "start_url": "/mobile",
         "scope": "/mobile/",
         "display": "standalone",
         "background_color": "#0b1020",
         "theme_color": "#0ea5e9",
         "icons": [{
-            "src": f"/mobile/icon.svg?token={encoded}",
+            "src": "/mobile/icon.svg",
             "type": "image/svg+xml",
             "sizes": "any",
             "purpose": "any maskable",
@@ -178,15 +219,13 @@ def register_mobile_routes(app, service) -> None:
     """Register mobile HTML, PWA, catalog, and thumbnail routes on a Flask app."""
     from flask import Response, abort, jsonify, request, send_file
 
-    token = str(app.config.get("MOBILE_TOKEN", ""))
-
     @app.get("/mobile")
     def mobile_page():
-        return Response(render_mobile_page(token), mimetype="text/html")
+        return Response(render_mobile_page(), mimetype="text/html")
 
     @app.get("/mobile/manifest.json")
     def mobile_manifest_route():
-        return jsonify(mobile_manifest(token))
+        return jsonify(mobile_manifest())
 
     @app.get("/mobile/sw.js")
     def mobile_service_worker():
@@ -201,6 +240,30 @@ def register_mobile_routes(app, service) -> None:
             '</svg>',
             mimetype="image/svg+xml",
         )
+
+    @app.post("/mobile/api/session")
+    def mobile_session():
+        if not request.environ.get("unifile_mobile_bootstrap"):
+            return jsonify({"error": "valid bootstrap header is required"}), 401
+        issue_session = app.extensions["unifile_mobile_issue_session"]
+        return jsonify(issue_session())
+
+    @app.post("/mobile/api/session/rotate")
+    def mobile_session_rotate():
+        current = request.environ.get("unifile_mobile_session", "")
+        if not current:
+            return jsonify({"error": "valid mobile session is required"}), 401
+        issue_session = app.extensions["unifile_mobile_issue_session"]
+        revoke_session = app.extensions["unifile_mobile_revoke_session"]
+        payload = issue_session()
+        revoke_session(current)
+        return jsonify(payload)
+
+    @app.delete("/mobile/api/session")
+    def mobile_session_revoke():
+        current = request.environ.get("unifile_mobile_session", "")
+        revoked = app.extensions["unifile_mobile_revoke_session"](current)
+        return jsonify({"revoked": bool(revoked)})
 
     @app.get("/mobile/api/library")
     def mobile_library():
@@ -263,16 +326,19 @@ def register_mobile_routes(app, service) -> None:
             abort(404)
 
 
-def run_mobile_server(library_root: str | Path, *, host: str = "0.0.0.0", port: int = 8788,
-                      token: str | None = None) -> int:
-    """Start a read-only companion server and print its authenticated URL."""
-    from unifile.headless import create_app
+def run_mobile_server(library_root: str | Path, *, host: str = "127.0.0.1", port: int = 8788,
+                      token: str | None = None, allow_remote: bool = False,
+                      session_ttl: int = 3600) -> int:
+    """Start a read-only companion server with a short-lived bootstrap fragment."""
+    from unifile.headless import create_app, validate_bind_host
 
-    mobile_token = token or secrets.token_urlsafe(18)
+    validate_bind_host(host, allow_remote=allow_remote)
+    mobile_token = token or secrets.token_urlsafe(32)
     app = create_app({
         "LIBRARY_ROOT": str(Path(library_root).expanduser()),
         "MOBILE_ONLY": True,
         "MOBILE_TOKEN": mobile_token,
+        "MOBILE_SESSION_TTL": session_ttl,
         "ALLOW_UNAUTHENTICATED": False,
         "START_SCHEDULER": False,
     })
@@ -283,7 +349,13 @@ def run_mobile_server(library_root: str | Path, *, host: str = "0.0.0.0", port: 
             display_host = next((address for address in addresses if not address.startswith("127.")), "127.0.0.1")
         except OSError:
             display_host = "127.0.0.1"
-    print(f"UniFile Mobile Companion: http://{display_host}:{port}/mobile?token={quote(mobile_token, safe='')}", flush=True)
+    print(
+        f"UniFile Mobile Companion: http://{display_host}:{port}/mobile#token={quote(mobile_token, safe='')}",
+        flush=True,
+    )
+    print("The bootstrap fragment is exchanged for a short-lived header-only session and then cleared.", flush=True)
+    if allow_remote:
+        print("Remote binding acknowledged; place UniFile behind an HTTPS reverse proxy.", flush=True)
     print("The server is read-only; stop it with Ctrl+C.", flush=True)
     app.run(host=host, port=port, debug=False, use_reloader=False)
     return 0

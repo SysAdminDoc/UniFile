@@ -26,8 +26,43 @@ def test_health_is_public_but_mutating_routes_require_api_key(tmp_path):
     health = client.get("/health")
     assert health.status_code == 200
     assert health.get_json()["status"] == "ok"
+    health_payload = health.get_json()
+    assert "library_root" not in health_payload
+    assert "ollama_url" not in health_payload
+    assert health.headers["X-Content-Type-Options"] == "nosniff"
+    assert health.headers["Referrer-Policy"] == "no-referrer"
     assert client.post("/scan", json={}).status_code == 401
     assert client.get("/report").status_code == 401
+
+
+def test_headless_request_response_and_rate_limits_are_bounded(tmp_path):
+    client, app, _library = _client(tmp_path)
+    headers = {"X-API-Key": "secret"}
+
+    app.config["MAX_CONTENT_LENGTH"] = 32
+    oversized = client.post(
+        "/scan",
+        headers=headers,
+        json={"path": "x" * 128},
+    )
+    assert oversized.status_code == 413
+    assert "configured size limit" in oversized.get_json()["error"]
+
+    app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+    app.config["MAX_RESPONSE_BYTES"] = 32
+    oversized_response = client.get("/report", headers=headers)
+    assert oversized_response.status_code == 413
+    assert oversized_response.get_json()["error"] == "response exceeds configured size limit"
+
+    app.config["MAX_RESPONSE_BYTES"] = 2 * 1024 * 1024
+    app.config["RATE_LIMIT_REQUESTS"] = 2
+    app.config["RATE_LIMIT_WINDOW_SECONDS"] = 60
+    app.extensions["unifile_rate_limits"].clear()
+    assert client.get("/report", headers=headers).status_code == 200
+    assert client.get("/report", headers=headers).status_code == 200
+    limited = client.get("/report", headers=headers)
+    assert limited.status_code == 429
+    assert limited.headers["Retry-After"]
 
 
 def test_scan_tag_search_and_report_round_trip(tmp_path):
@@ -86,6 +121,17 @@ def test_headless_path_guard_rejects_outside_scan_and_tag(tmp_path):
         headers=headers,
         json={"path": str(outside_file), "tag": "bad"},
     ).status_code == 403
+
+
+def test_remote_bind_requires_explicit_acknowledgement():
+    from unifile.headless import is_loopback_host, validate_bind_host
+
+    assert is_loopback_host("127.0.0.1")
+    assert is_loopback_host("::1")
+    assert is_loopback_host("localhost")
+    with pytest.raises(ValueError, match="allow-remote"):
+        validate_bind_host("0.0.0.0")
+    assert validate_bind_host("0.0.0.0", allow_remote=True) == "0.0.0.0"
 
 
 def test_scheduled_job_cron_round_trip_and_execution(tmp_path):
