@@ -20,6 +20,7 @@ def unifile_window(qtbot):
     qtbot.addWidget(window)
     yield window
     window.close()
+    assert not window._tag_panel.library.is_open
 
 
 def test_library_profile_store_round_trips_and_never_deletes_folders(tmp_path):

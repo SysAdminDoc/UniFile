@@ -37,7 +37,7 @@ def _test():
     rc = _run(PY, "tools/check_dependency_manifests.py")
     if rc != 0:
         return rc
-    return _run(PY, "-m", "pytest")
+    return _run(PY, "tools/run_tests.py")
 
 
 @task("lint")

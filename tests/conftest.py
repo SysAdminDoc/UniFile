@@ -1,10 +1,86 @@
 """Shared pytest fixtures for UniFile tests."""
+import gc
 import json
 import os
 import shutil
 import tempfile
+import threading
+import time
+from pathlib import Path
 
 import pytest
+
+# Keep every pytest entrypoint pointer-free and windowless, including direct
+# ``python -m pytest`` invocations that do not go through tools/run_tests.py.
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+# UniFile declares PyQt6, while some developer machines also have PySide6;
+# pytest-qt otherwise selects the first importable binding and mismatches the app.
+os.environ["PYTEST_QT_API"] = "pyqt6"
+
+
+def _cleanup_tree(path: str | os.PathLike[str], *, attempts: int = 5) -> str | None:
+    """Remove a test-owned tree, returning a diagnostic instead of masking tests."""
+    last_error = ""
+    for attempt in range(max(1, attempts)):
+        try:
+            shutil.rmtree(path)
+            return None
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            last_error = f"{type(exc).__name__}: {exc}"
+            if attempt + 1 < attempts:
+                time.sleep(0.05 * (attempt + 1))
+    return last_error
+
+
+def pytest_configure(config):
+    """Give direct pytest invocations an isolated Windows temp root."""
+    if config.option.basetemp is not None:
+        config._unifile_owned_basetemp = False
+        return
+    root = Path(tempfile.gettempdir()) / "unifile-pytest"
+    root.mkdir(parents=True, exist_ok=True)
+    config.option.basetemp = tempfile.mkdtemp(
+        prefix=f"run-{os.getpid()}-",
+        dir=str(root),
+    )
+    config._unifile_owned_basetemp = True
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Close registered resources and report cleanup separately from assertions."""
+    diagnostics: list[str] = []
+    try:
+        from unifile.config import _close_all_sqlite_connections
+
+        _close_all_sqlite_connections()
+    except Exception as exc:
+        diagnostics.append(f"SQLite cleanup: {type(exc).__name__}: {exc}")
+    gc.collect()
+
+    alive_threads = [
+        thread.name for thread in threading.enumerate()
+        if thread.is_alive() and thread is not threading.current_thread()
+    ]
+    if alive_threads:
+        diagnostics.append("background threads still alive: " + ", ".join(alive_threads))
+
+    if getattr(session.config, "_unifile_owned_basetemp", False):
+        cleanup_error = _cleanup_tree(session.config.option.basetemp)
+        if cleanup_error:
+            diagnostics.append(
+                "temporary-directory cleanup (environment/resource lock): "
+                f"{session.config.option.basetemp}: {cleanup_error}"
+            )
+
+    if diagnostics:
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter is not None:
+            for diagnostic in diagnostics:
+                reporter.write_line(f"UNIFILE TEST CLEANUP WARNING: {diagnostic}")
+        if session.exitstatus == 0:
+            session.exitstatus = 1
 
 
 @pytest.fixture

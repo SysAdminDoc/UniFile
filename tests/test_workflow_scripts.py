@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 
 import pytest
 
@@ -68,6 +69,7 @@ def on_scan_item(item, classifier, tag_library, file_ops, log):
 def test_workflow_timeout_terminates_child_process():
     from unifile.script import execute_script
 
+    before = {process.pid for process in multiprocessing.active_children() if process.is_alive()}
     source = """\
 def on_scan_item(item, classifier, tag_library, file_ops, log):
     for value in range(10_000_000_000):
@@ -78,6 +80,11 @@ def on_scan_item(item, classifier, tag_library, file_ops, log):
     assert result.success is False
     assert result.timed_out is True
     assert "timed out" in result.error
+    assert [
+        process.pid
+        for process in multiprocessing.active_children()
+        if process.is_alive() and process.pid not in before
+    ] == []
 
 
 def test_apply_workflow_commands_requires_explicit_file_roots(tmp_path):

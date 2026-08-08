@@ -4902,6 +4902,8 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._save_settings()
         if self._watch_manager and self._watch_manager.is_active:
             self._watch_manager.stop()
+        if hasattr(self, "_tag_panel"):
+            self._tag_panel.close_library()
         super().closeEvent(event)
 
 # ── Crash Handler ─────────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@ deps-check:
 	$(PY) tools/check_dependency_manifests.py
 
 test: deps-check
-	$(PY) -m pytest
+	$(PY) tools/run_tests.py
 
 cov:
 	$(PY) -m pytest --cov=unifile.classifier --cov=unifile.engine --cov=unifile.learning --cov=unifile.tagging.library --cov-fail-under=60 --cov-report=term-missing --cov-report=html --cov-report=json:build/core-coverage.json

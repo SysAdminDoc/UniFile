@@ -22,6 +22,7 @@ All notable changes to UniFile will be documented in this file.
 - Undo stack and corrections file writes now use atomic `save_json_safe` (tmp-then-rename) instead of raw `open('w')`.
 - FTS5 migration detects availability before creating virtual tables; falls back to LIKE on SQLite builds without FTS5.
 - Database backup cleans up partial files on failure to prevent corrupt backups from being restored.
+- Windows verification now forces the declared PyQt6 offscreen backend, isolates each pytest temp tree, closes SQLite-backed UI resources before teardown, and reports environment cleanup locks separately.
 - Batch LLM classify `num_predict` capped to 16384 to prevent JSON truncation from unbounded token generation.
 - Button text contrast fixed across all themes: light-background themes (Catppuccin, Dracula, Nord, High Contrast) now use dark text on accent/green buttons instead of invisible white-on-pastel.
 - Danger button uses theme tokens instead of hardcoded dark-theme hex values.

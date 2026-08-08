@@ -460,14 +460,10 @@ def execute_script(
         process.start()
         child.close()
         if not parent.poll(bounded_timeout):
-            process.terminate()
-            process.join(2)
-            if process.is_alive():
-                process.kill()
-                process.join(1)
+            _reap_script_process(process)
             return ScriptResult(False, timed_out=True, error=f"Script timed out after {bounded_timeout:.1f}s")
         response = parent.recv()
-        process.join(2)
+        _reap_script_process(process)
         return ScriptResult(
             bool(response.get("success")),
             error=str(response.get("error", "")),
@@ -475,15 +471,31 @@ def execute_script(
             commands=list(response.get("commands", [])),
         )
     except (EOFError, OSError, RuntimeError) as exc:
-        if process.is_alive():
-            process.terminate()
-        process.join(2)
+        _reap_script_process(process)
         return ScriptResult(False, error=f"Script process failed: {exc}")
     finally:
         parent.close()
+        _reap_script_process(process)
+
+
+def _reap_script_process(process: multiprocessing.Process) -> None:
+    """Terminate, join, and close a workflow child without leaving an orphan."""
+    try:
         if process.is_alive():
             process.terminate()
+        process.join(2)
+        if process.is_alive():
+            process.kill()
             process.join(1)
+    except (AssertionError, OSError, ValueError):
+        # A child that failed before start, or was reaped concurrently, is
+        # already outside the process lifecycle this helper owns.
+        pass
+    finally:
+        try:
+            process.close()
+        except (AssertionError, OSError, ValueError):
+            pass
 
 
 def workflow_template() -> str:
