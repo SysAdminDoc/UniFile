@@ -13,7 +13,16 @@ from enum import Enum
 from typing import Any
 
 from unifile import __version__
-from unifile.config import _APP_DATA_DIR, load_json_safe, save_json_safe
+from unifile.config import _APP_DATA_DIR
+from unifile.credentials import (
+    credential_status,
+    delete_credential,
+    get_credential,
+    keyring_available,
+    migrate_legacy_json,
+    remove_legacy_file,
+    set_credential,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +39,9 @@ _OPTIONAL_KEY_ENV_VARS = {
     "opensubtitles_password": "OPENSUBTITLES_PASSWORD",
 }
 _ALL_KEY_ENV_VARS = {**_KEY_ENV_VARS, **_OPTIONAL_KEY_ENV_VARS}
+_MEDIA_CREDENTIALS = {
+    provider: f"media:{provider}" for provider in _ALL_KEY_ENV_VARS
+}
 _PROVIDER_LABELS = {
     "tmdb": "TMDb",
     "omdb": "OMDb",
@@ -162,31 +174,43 @@ class ProviderNotFound(ProviderError):
 
 
 def load_media_api_keys() -> dict[str, str]:
-    """Load user-owned media API keys from UniFile app data."""
-    raw = load_json_safe(_MEDIA_KEYS_FILE, {}, expected_type=dict)
+    """Load media credentials from the environment or OS keyring."""
+    migrate_legacy_json(_MEDIA_KEYS_FILE, _MEDIA_CREDENTIALS)
     keys: dict[str, str] = {}
     for provider in _ALL_KEY_ENV_VARS:
-        value = raw.get(provider, "")
-        if isinstance(value, str) and value.strip():
+        value = get_credential(
+            _MEDIA_CREDENTIALS[provider],
+            env_var=_ALL_KEY_ENV_VARS[provider],
+        )
+        if value:
             keys[provider] = value.strip()
     return keys
 
 
 def save_media_api_keys(keys: dict[str, str]) -> bool:
-    """Persist user-owned media API keys. Empty values remove saved keys."""
-    payload: dict[str, str] = {}
+    """Persist media credentials in the environment-independent OS keyring."""
+    if not keyring_available():
+        return not any(str(keys.get(provider, "") or "").strip() for provider in _ALL_KEY_ENV_VARS)
     for provider in _ALL_KEY_ENV_VARS:
         value = str(keys.get(provider, "") or "").strip()
         if value:
-            payload[provider] = value
-    return save_json_safe(_MEDIA_KEYS_FILE, payload)
+            if not set_credential(_MEDIA_CREDENTIALS[provider], value):
+                return False
+        elif not delete_credential(_MEDIA_CREDENTIALS[provider]):
+            return False
+    return remove_legacy_file(_MEDIA_KEYS_FILE)
 
 
 def _api_key_source(provider: str) -> str:
     env_var = _ALL_KEY_ENV_VARS.get(provider)
     if env_var and os.environ.get(env_var, "").strip():
         return "environment"
-    if load_media_api_keys().get(provider, ""):
+    credential_name = _MEDIA_CREDENTIALS.get(provider)
+    if credential_name:
+        status = credential_status(credential_name, env_var=env_var or "")
+        if status["configured"]:
+            return "settings"
+    if get_media_api_key(provider):
         return "settings"
     return "missing"
 
@@ -194,12 +218,12 @@ def _api_key_source(provider: str) -> str:
 def get_media_api_key(provider: str) -> str:
     """Return the configured API key for a provider, preferring env vars."""
     provider = provider.lower()
+    migrate_legacy_json(_MEDIA_KEYS_FILE, _MEDIA_CREDENTIALS)
     env_var = _ALL_KEY_ENV_VARS.get(provider)
-    if env_var:
-        value = os.environ.get(env_var, "").strip()
-        if value:
-            return value
-    return load_media_api_keys().get(provider, "")
+    credential_name = _MEDIA_CREDENTIALS.get(provider)
+    if not credential_name:
+        return ""
+    return get_credential(credential_name, env_var=env_var or "")
 
 
 def clear_media_provider_errors() -> None:

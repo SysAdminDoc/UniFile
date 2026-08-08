@@ -12,7 +12,13 @@ import urllib.request
 from datetime import datetime, timezone
 from urllib.parse import quote as _url_quote
 
-from unifile.config import _APP_DATA_DIR
+from unifile.config import _APP_DATA_DIR, save_json_safe
+from unifile.credentials import (
+    delete_credential,
+    get_credential,
+    keyring_available,
+    set_credential,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -340,69 +346,96 @@ _DEFAULT_PROVIDERS = {
 }
 
 
-_KEYRING_SERVICE = 'UniFile'
+_AI_KEY_ENV_VARS = {
+    'openai_compat': 'OPENAI_API_KEY',
+    'groq': 'GROQ_API_KEY',
+    'openai': 'OPENAI_API_KEY',
+    'anthropic': 'ANTHROPIC_API_KEY',
+    'gemini': 'GEMINI_API_KEY',
+}
 
 
 def _load_key_from_keyring(provider_id: str) -> str:
-    try:
-        import keyring as _kr
-        return _kr.get_password(_KEYRING_SERVICE, f'provider_{provider_id}') or ''
-    except Exception:
-        return ''
+    return get_credential(f'ai:{provider_id}')
 
 
 def _save_key_to_keyring(provider_id: str, key: str) -> bool:
-    try:
-        import keyring as _kr
-        if key:
-            _kr.set_password(_KEYRING_SERVICE, f'provider_{provider_id}', key)
-        else:
-            try:
-                _kr.delete_password(_KEYRING_SERVICE, f'provider_{provider_id}')
-            except Exception:
-                pass
-        return True
-    except Exception:
-        return False
+    return set_credential(f'ai:{provider_id}', key) if key else delete_credential(
+        f'ai:{provider_id}'
+    )
 
 
 def load_providers() -> dict:
     """Load provider configurations from disk.
-    API keys are loaded from keyring when available, falling back to the JSON file."""
+    API keys are loaded from the environment-independent OS keyring.
+
+    Legacy JSON API-key fields are migrated when a keyring backend is
+    available. They are never returned to callers when migration is not
+    possible.
+    """
     providers = dict(_DEFAULT_PROVIDERS)
+    migrated_legacy = False
     if os.path.isfile(_PROVIDERS_FILE):
         try:
             with open(_PROVIDERS_FILE, encoding='utf-8') as f:
                 saved = json.load(f)
             for key, val in saved.items():
+                if isinstance(val, dict) and val.get('api_key'):
+                    legacy_key = str(val.get('api_key', ''))
+                    if keyring_available() and _save_key_to_keyring(str(key), legacy_key):
+                        migrated_legacy = True
+                    else:
+                        _log.warning(
+                            "Ignoring legacy plaintext AI credential for provider %s; "
+                            "an OS keyring is required.",
+                            key,
+                        )
+                    val = dict(val)
+                    val['api_key'] = ''
+                    migrated_legacy = True
                 if key in providers:
                     providers[key].update(val)
                 else:
                     providers[key] = val
         except (json.JSONDecodeError, OSError):
             pass
+    if migrated_legacy:
+        save_json_safe(
+            _PROVIDERS_FILE,
+            {str(key): {**dict(value), 'api_key': ''} for key, value in providers.items()},
+        )
     for pid, cfg in providers.items():
-        kr_key = _load_key_from_keyring(pid)
-        if kr_key:
-            cfg['api_key'] = kr_key
+        env_var = _AI_KEY_ENV_VARS.get(str(pid), '')
+        env_key = os.environ.get(env_var, '').strip() if env_var else ''
+        if env_key:
+            cfg['api_key'] = env_key
+        else:
+            kr_key = _load_key_from_keyring(str(pid))
+            if kr_key:
+                cfg['api_key'] = kr_key
     return providers
 
 
-def save_providers(providers: dict):
+def save_providers(providers: dict) -> bool:
     """Save provider configurations to disk.
-    API keys are stored in keyring when available and stripped from the JSON file."""
+    API keys are stored in the OS keyring and stripped from the JSON file.
+    The settings file is not written when a non-empty key cannot be secured.
+    """
     save_copy = {}
     for pid, cfg in providers.items():
         entry = dict(cfg)
         api_key = entry.get('api_key', '')
-        if api_key and _save_key_to_keyring(pid, api_key):
-            entry['api_key'] = ''
+        env_var = _AI_KEY_ENV_VARS.get(str(pid), '')
+        if env_var and os.environ.get(env_var, '').strip():
+            pass
+        elif api_key and str(api_key) != 'not-needed':
+            if not _save_key_to_keyring(str(pid), str(api_key)):
+                return False
+        elif keyring_available() and not _save_key_to_keyring(str(pid), ''):
+            return False
+        entry['api_key'] = ''
         save_copy[pid] = entry
-    try:
-        with open(_PROVIDERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(save_copy, f, indent=2)
-    except OSError:
-        pass
+    return save_json_safe(_PROVIDERS_FILE, save_copy)
 
 
 def get_active_provider(providers: dict | None = None,

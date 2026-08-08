@@ -1,8 +1,24 @@
+from unifile import credentials
 from unifile.media import providers
+
+
+class _MemoryKeyring:
+    def __init__(self):
+        self.values = {}
+
+    def get_password(self, service, username):
+        return self.values.get((service, username))
+
+    def set_password(self, service, username, password):
+        self.values[(service, username)] = password
+
+    def delete_password(self, service, username):
+        self.values.pop((service, username), None)
 
 
 def _isolate_key_store(monkeypatch, tmp_path):
     monkeypatch.setattr(providers, "_MEDIA_KEYS_FILE", str(tmp_path / "media_api_keys.json"))
+    monkeypatch.setattr(credentials, "_KEYRING_OVERRIDE", _MemoryKeyring())
     monkeypatch.delenv("API_KEY_TMDB", raising=False)
     monkeypatch.delenv("API_KEY_OMDB", raising=False)
     providers.clear_media_provider_errors()

@@ -69,7 +69,7 @@ def _bootstrap():
         'tomli-w': 'tomli_w',
         'isbnlib2': 'isbnlib',
     }
-    required = ['PyQt6>=6.5', 'SQLAlchemy>=2.0']
+    required = ['PyQt6>=6.5', 'SQLAlchemy>=2.0', 'keyring>=25.7.0']
     optional = [
         'Pillow>=12.2.0', 'piexif>=1.1.3', 'pillow-heif>=1.4.0', 'exifread>=3.5.1',
         'mutagen>=1.48.1', 'pypdf>=6.14.2', 'python-docx>=1.2.0',

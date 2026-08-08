@@ -40,6 +40,7 @@ from unifile.bootstrap import (  # noqa: E402  -- constants block above needs to
     HAS_RARFILE,
 )
 from unifile.config import _APP_DATA_DIR  # noqa: E402
+from unifile.credentials import get_credential, set_credential  # noqa: E402
 
 try:
     from PIL import Image as _PILImage
@@ -262,46 +263,21 @@ _ENVATO_CAT_MAP = {
 
 # Persistent API key storage path
 _ENVATO_KEY_FILE = os.path.join(_APP_DATA_DIR, 'envato_api_key.txt')
-_KEYRING_SERVICE = 'UniFile'
+_ENVATO_CREDENTIAL = 'metadata:envato'
 
 
 def _load_envato_api_key() -> str:
-    """Load Envato API key. Tries keyring first, falls back to plaintext file."""
-    try:
-        import keyring as _kr
-        val = _kr.get_password(_KEYRING_SERVICE, 'envato_api_key')
-        if val:
-            return val
-    except Exception:
-        pass
-    try:
-        with open(_ENVATO_KEY_FILE) as f:
-            return f.read().strip()
-    except (FileNotFoundError, OSError):
-        return ''
+    """Load Envato API key from the environment or OS keyring."""
+    return get_credential(
+        _ENVATO_CREDENTIAL,
+        env_var='ENVATO_API_KEY',
+        legacy_path=_ENVATO_KEY_FILE,
+    )
 
 
-def _save_envato_api_key(key: str):
-    """Save Envato API key. Stores in keyring when available, plaintext fallback."""
-    key = key.strip()
-    try:
-        import keyring as _kr
-        if key:
-            _kr.set_password(_KEYRING_SERVICE, 'envato_api_key', key)
-        else:
-            _kr.delete_password(_KEYRING_SERVICE, 'envato_api_key')
-        try:
-            os.remove(_ENVATO_KEY_FILE)
-        except OSError:
-            pass
-        return
-    except Exception:
-        pass
-    try:
-        with open(_ENVATO_KEY_FILE, 'w') as f:
-            f.write(key)
-    except OSError:
-        pass
+def _save_envato_api_key(key: str) -> bool:
+    """Save Envato API key in the OS keyring only."""
+    return set_credential(_ENVATO_CREDENTIAL, key.strip())
 
 # Simple in-memory cache for API responses
 _envato_cache = {}
@@ -309,7 +285,7 @@ _envato_cache = {}
 def _envato_api_classify(item_id: str) -> tuple:
     """Query Envato Market API to get item category and tags.
     Returns (category, confidence, detail) or (None, 0, '').
-    Requires API key stored in envato_api_key.txt alongside the script."""
+    Requires ENVATO_API_KEY or an OS-keyring credential."""
     from unifile.classifier import categorize_folder
     if not item_id:
         return (None, 0, '')

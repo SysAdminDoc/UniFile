@@ -8,6 +8,7 @@ All notable changes to UniFile will be documented in this file.
 - Tag Library search: FTS5 MATCH queries strip operator characters (*, OR, AND, NOT, NEAR); LIKE queries escape `%` and `_` wildcards.
 - Profile/preset names sanitized to prevent path traversal via `../` components.
 - Filesystem mount points (drive roots) are now always protected from scan-apply operations.
+- Centralized media, AI-provider, Envato, AcoustID, and scheduler SMTP credentials in the OS keyring with environment precedence; legacy plaintext credentials migrate without backups, and jobs/settings never persist passwords.
 
 ### Fixed
 - Rename templates now render media season/episode numbers with format specs, handle explicit extensions without duplication, use the same engine for live previews, and re-render immediately before file moves.

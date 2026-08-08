@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import smtplib
 import threading
@@ -12,9 +13,16 @@ from email.message import EmailMessage
 from typing import Any
 
 from unifile.config import _APP_DATA_DIR, load_json_safe, save_json_safe
+from unifile.credentials import (
+    delete_credential,
+    get_credential,
+    keyring_available,
+    set_credential,
+)
 
 DEFAULT_SCHEDULE_FILE = os.path.join(_APP_DATA_DIR, "headless_jobs.json")
 CRON_FIELDS = ("minute", "hour", "day", "month", "weekday")
+_log = logging.getLogger(__name__)
 
 
 class CronExpressionError(ValueError):
@@ -100,13 +108,76 @@ def _valid_job(job: Any) -> bool:
     )
 
 
+def _smtp_credential_name(job_id: str) -> str:
+    return f"scheduler:smtp:{job_id}"
+
+
+def _secure_email_settings(
+    raw_email: Any,
+    job_id: str,
+    *,
+    strict: bool,
+) -> dict[str, Any]:
+    """Strip SMTP passwords and move them to the OS keyring."""
+    if not isinstance(raw_email, dict) or not raw_email:
+        return {}
+    email = {
+        key: raw_email[key]
+        for key in ("host", "from", "to", "port", "starttls", "username")
+        if key in raw_email
+    }
+    password = str(raw_email.get("password", ""))
+    password_ref = _smtp_credential_name(job_id)
+    if password:
+        if not set_credential(password_ref, password):
+            if strict:
+                raise ValueError("SMTP password cannot be persisted without an OS keyring")
+            _log.warning(
+                "Discarding an unsecured SMTP password for job %s; OS keyring required.",
+                job_id,
+            )
+    elif "password" in raw_email:
+        if not keyring_available():
+            if strict:
+                raise ValueError("SMTP password cannot be cleared without an OS keyring")
+        elif not delete_credential(password_ref) and strict:
+            raise ValueError("SMTP password could not be cleared from the OS keyring")
+    return email
+
+
+def _sanitize_job_for_storage(job: dict[str, Any], *, strict: bool) -> dict[str, Any]:
+    normalized = dict(job)
+    job_id = str(normalized.get("id", "")).strip()
+    normalized["email"] = _secure_email_settings(
+        normalized.get("email"),
+        job_id,
+        strict=strict,
+    )
+    return normalized
+
+
 def load_jobs(path: str = DEFAULT_SCHEDULE_FILE) -> list[dict[str, Any]]:
     jobs = load_json_safe(path, [], expected_type=list)
-    return [dict(job) for job in jobs if _valid_job(job)]
+    cleaned: list[dict[str, Any]] = []
+    changed = False
+    for job in jobs:
+        if not _valid_job(job):
+            continue
+        normalized = _sanitize_job_for_storage(dict(job), strict=False)
+        cleaned.append(normalized)
+        if normalized != job:
+            changed = True
+    if changed:
+        save_json_safe(path, cleaned)
+    return cleaned
 
 
 def save_jobs(jobs: list[dict[str, Any]], path: str = DEFAULT_SCHEDULE_FILE) -> bool:
-    return save_json_safe(path, jobs)
+    try:
+        cleaned = [_sanitize_job_for_storage(dict(job), strict=True) for job in jobs]
+    except (TypeError, ValueError):
+        return False
+    return save_json_safe(path, cleaned)
 
 
 def validate_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -123,8 +194,9 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
     path = str(job.get("path", "")).strip()
     if not path or "\x00" in path:
         raise ValueError("job path is required")
+    job_id = str(job.get("id") or uuid.uuid4())
     normalized = {
-        "id": str(job.get("id") or uuid.uuid4()),
+        "id": job_id,
         "name": name,
         "schedule": schedule,
         "action": action,
@@ -133,7 +205,6 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
         "tag": str(job.get("tag", "")).strip(),
         "health_log": str(job.get("health_log", "")).strip(),
         "log_format": str(job.get("log_format", "")).strip().lower(),
-        "email": dict(job.get("email", {})) if isinstance(job.get("email"), dict) else {},
         "last_run": str(job.get("last_run", "")),
         "last_status": str(job.get("last_status", "")),
         "created_at": str(job.get("created_at") or datetime.now().isoformat()),
@@ -142,6 +213,11 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("tag jobs require a tag value")
     if action == "verify" and normalized["log_format"] not in {"", "json", "csv", "txt", "text"}:
         raise ValueError("verify log format must be json, csv, or text")
+    normalized["email"] = _secure_email_settings(
+        job.get("email", {}),
+        job_id,
+        strict=True,
+    )
     return normalized
 
 
@@ -173,6 +249,10 @@ def send_digest_email(settings: dict[str, Any], subject: str, body: str) -> bool
             smtp.starttls()
         username = str(settings.get("username", "")).strip()
         password = str(settings.get("password", ""))
+        if not password:
+            job_id = str(settings.get("_job_id", "")).strip()
+            if job_id:
+                password = get_credential(_smtp_credential_name(job_id))
         if username:
             smtp.login(username, password)
         smtp.send_message(message)
@@ -224,7 +304,7 @@ class JobScheduler:
                     if result.get("changed") and job.get("email"):
                         try:
                             send_digest_email(
-                                job["email"],
+                                {**job["email"], "_job_id": job["id"]},
                                 f"UniFile job changed: {job['name']}",
                                 json.dumps(result, indent=2, ensure_ascii=False),
                             )

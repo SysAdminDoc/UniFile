@@ -31,6 +31,7 @@ classifiers = [
 dependencies = [
     "PyQt6>=6.5",
     "SQLAlchemy>=2.0",
+    "keyring>=25.7.0",
 ]
 
 [project.optional-dependencies]

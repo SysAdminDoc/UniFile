@@ -18,28 +18,27 @@ from PyQt6.QtWidgets import (
 )
 
 from unifile.config import _APP_DATA_DIR, get_active_stylesheet, get_active_theme
+from unifile.credentials import get_credential, set_credential
 
 # ── AcoustID API key management ───────────────────────────────────────────────
 # Users must register their own key at https://acoustid.org/applications
 
 _ACOUSTID_KEY_FILE = os.path.join(_APP_DATA_DIR, 'acoustid_key.txt')
+_ACOUSTID_CREDENTIAL = 'music:acoustid'
 
 
 def _load_acoustid_key() -> str:
-    """Load saved AcoustID API key, or return empty string if not configured."""
-    try:
-        if os.path.isfile(_ACOUSTID_KEY_FILE):
-            with open(_ACOUSTID_KEY_FILE, encoding='utf-8') as f:
-                return f.read().strip()
-    except OSError:
-        pass
-    return ''
+    """Load AcoustID API key from the environment or OS keyring."""
+    return get_credential(
+        _ACOUSTID_CREDENTIAL,
+        env_var='ACOUSTID_API_KEY',
+        legacy_path=_ACOUSTID_KEY_FILE,
+    )
 
 
-def _save_acoustid_key(key: str) -> None:
-    os.makedirs(os.path.dirname(_ACOUSTID_KEY_FILE), exist_ok=True)
-    with open(_ACOUSTID_KEY_FILE, 'w', encoding='utf-8') as f:
-        f.write(key.strip())
+def _save_acoustid_key(key: str) -> bool:
+    """Save AcoustID API key in the OS keyring only."""
+    return set_credential(_ACOUSTID_CREDENTIAL, key.strip())
 
 _HAS_ACOUSTID = False
 _HAS_MBZ = False
@@ -351,10 +350,17 @@ class MusicBrainzTaggerDialog(QDialog):
             text=current,
         )
         if ok and key.strip():
-            _save_acoustid_key(key.strip())
-            self._dep_label.hide()
-            if _HAS_ACOUSTID and _HAS_MBZ:
-                self._identify_btn.setEnabled(True)
+            if _save_acoustid_key(key.strip()):
+                self._dep_label.hide()
+                if _HAS_ACOUSTID and _HAS_MBZ:
+                    self._identify_btn.setEnabled(True)
+            else:
+                QMessageBox.warning(
+                    self,
+                    'Credential Storage Unavailable',
+                    'UniFile could not access the OS keyring. '
+                    'The AcoustID key was not saved.',
+                )
         elif ok and not key.strip():
             QMessageBox.warning(
                 self, 'API Key Required',

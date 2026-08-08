@@ -101,6 +101,8 @@ python -m unifile projects audit /path/to/projects --library /path/to/unifile-li
 Unified movie, TV, book, audiobook, and audio metadata lookup powered by TMDb, TVDB, TVMaze, OMDb, OpenLibrary, Google Books, and MusicBrainz (adapted from mnamer):
 TMDb, TVDB, OMDb, and OpenSubtitles use your own API keys via the Media Lookup panel or `API_KEY_TMDB`, `API_KEY_TVDB`, `API_KEY_OMDB`, and `API_KEY_OPENSUBTITLES`; TVDB can also use `API_KEY_TVDB_PIN`. TVMaze, OpenLibrary, Google Books, and MusicBrainz work without a key. OpenSubtitles downloads additionally require the user account credentials accepted by its API.
 
+Saved media, AI-provider, Envato, AcoustID, and OpenSubtitles credentials are stored in the operating-system keyring; environment variables take precedence. UniFile migrates supported legacy plaintext credential files into the keyring and removes the plaintext source without creating a backup copy. If the keyring is unavailable, UniFile does not read or persist plaintext secrets and reports that saving is unavailable.
+
 | Feature | Description |
 |---------|-------------|
 | Video Search | TMDb → OMDb movie fallback and TVDB → TMDb → TVMaze TV fallback with full details and episode lists |
@@ -368,8 +370,9 @@ are redacted before storage.
 
 The **AI Providers** settings also support native Anthropic Messages and
 Google Gemini `generateContent` adapters. They use the configured API key from
-the local keyring, send structured-output requests where supported, and keep
-the existing priority-based fallback chain.
+the operating-system keyring or provider environment variables, send
+structured-output requests where supported, and keep the existing
+priority-based fallback chain.
 
 ### Confidence Tiers
 

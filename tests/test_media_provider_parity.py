@@ -7,7 +7,24 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from unifile import credentials
 from unifile.media import providers
+
+
+class _MemoryKeyring:
+    def get_password(self, service, username):
+        return None
+
+    def set_password(self, service, username, password):
+        return None
+
+    def delete_password(self, service, username):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_credentials(monkeypatch):
+    monkeypatch.setattr(credentials, "_KEYRING_OVERRIDE", _MemoryKeyring())
 
 
 def test_parse_media_filename_preserves_book_audiobook_and_audio_types():
