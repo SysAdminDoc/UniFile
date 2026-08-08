@@ -72,6 +72,21 @@ class HeadlessService:
             raise ValueError(f"file does not exist: {path}")
         return path
 
+    def _allowed_destination(self, value: str | None, source: Path, *, required: bool) -> Path | None:
+        if not value:
+            if required:
+                raise ValueError("headless apply requires an explicit destination")
+            return None
+        raw = Path(value).expanduser()
+        if raw.is_symlink():
+            raise PermissionError("destination must not be a link")
+        destination = raw.resolve()
+        if _inside(destination, source):
+            raise ValueError("destination must be outside the source directory")
+        if not any(_inside(destination, root) for root in self.scan_roots):
+            raise PermissionError("destination is outside configured scan roots")
+        return destination
+
     @contextmanager
     def _tag_library(self):
         from unifile.tagging.library import TagLibrary
@@ -123,74 +138,65 @@ class HeadlessService:
                 report["log_path"] = export_health_log(report, output, fmt=fmt)
             return report
 
-    def scan(self, path: str | None = None, *, limit: int = MAX_SCAN_ITEMS) -> dict[str, Any]:
-        """Return a reviewable rule-based scan plan without changing files."""
-        from unifile.files import _build_ext_map, _classify_pc_item, _load_pc_categories
+    def scan(
+        self,
+        path: str | None = None,
+        *,
+        limit: int = MAX_SCAN_ITEMS,
+        destination: str | None = None,
+        apply_rules: bool = False,
+        dry_run: bool = False,
+        min_confidence: int = 80,
+        verify: bool = False,
+    ) -> dict[str, Any]:
+        """Return the canonical CLI scan contract, optionally verifying or applying."""
+        from unifile.cli_scan import scan_directory
 
         source = self._allowed_directory(path)
-        bounded_limit = max(1, min(MAX_SCAN_ITEMS, int(limit)))
-        categories = _load_pc_categories()
-        ext_map = _build_ext_map(categories)
-        items = []
+        destination_path = self._allowed_destination(
+            destination,
+            source,
+            required=bool(apply_rules),
+        )
         with self._lock:
-            for root, dirs, files in os.walk(source, followlinks=False):
-                dirs[:] = [
-                    name for name in dirs
-                    if not name.startswith((".", "$"))
-                    and not os.path.islink(os.path.join(root, name))
-                ]
-                for name in sorted(files, key=str.casefold):
-                    if name.startswith((".", "$")):
-                        continue
-                    filepath = Path(root) / name
-                    try:
-                        if filepath.is_symlink() or not filepath.is_file():
-                            continue
-                        stat = filepath.stat()
-                        category, confidence, method = _classify_pc_item(
-                            str(filepath), ext_map, is_folder=False, categories=categories
-                        )
-                    except OSError:
-                        continue
-                    items.append({
-                        "name": name,
-                        "src": str(filepath),
-                        "dst": "",
-                        "category": category,
-                        "confidence": confidence,
-                        "method": method,
-                        "size": stat.st_size,
-                        "selected": False,
-                        "status": "Pending",
-                    })
-                    if len(items) >= bounded_limit:
-                        break
-                if len(items) >= bounded_limit:
-                    break
-        signature = hashlib.sha256(
-            "\n".join(
-                f"{item['src']}|{item['size']}|{item['category']}|{item['confidence']}"
-                for item in items
-            ).encode("utf-8")
-        ).hexdigest()
-        key = str(source)
-        changed = self._scan_signatures.get(key) != signature
-        self._scan_signatures[key] = signature
-        try:
-            health = self.verify(str(source))
-        except (OSError, RuntimeError, ValueError) as exc:
-            health = {"status": "error", "error": str(exc), "files_verified": 0,
-                      "changed_unexpectedly": 0, "missing": 0, "diff": []}
-        return {
-            "version": API_SCHEMA_VERSION,
-            "timestamp": datetime.now().isoformat(),
-            "source": str(source),
-            "mode": "headless-rule-based",
-            "items": items,
-            "count": len(items),
-            "changed": changed,
-            "file_health": health,
+            result = scan_directory(
+                source,
+                destination=destination_path,
+                limit=limit,
+                apply_rules=apply_rules,
+                dry_run=dry_run,
+                min_confidence=min_confidence,
+            )
+            items = result.get("items", [])
+            signature = hashlib.sha256(
+                "\n".join(
+                    f"{item['src']}|{item['size']}|{item['category']}|{item['confidence']}"
+                    for item in items
+                ).encode("utf-8")
+            ).hexdigest()
+            key = str(source)
+            result["changed"] = self._scan_signatures.get(key) != signature
+            self._scan_signatures[key] = signature
+
+        result["verification"] = {
+            "requested": bool(verify),
+            "status": "not-requested",
         }
+        if verify:
+            try:
+                health = self.verify(str(source))
+            except (OSError, RuntimeError, ValueError) as exc:
+                health = {
+                    "status": "error",
+                    "error": str(exc),
+                    "files_verified": 0,
+                    "changed_unexpectedly": 0,
+                    "missing": 0,
+                    "diff": [],
+                }
+            result["file_health"] = health
+            result["verification"]["status"] = str(health.get("status", "complete"))
+        return result
 
     @staticmethod
     def _entry_payload(entry) -> dict[str, Any]:
@@ -763,8 +769,33 @@ def create_app(config: dict[str, Any] | None = None, *, service: HeadlessService
     @app.post("/scan")
     def scan():
         payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return jsonify({"error": "scan payload must be a JSON object"}), 400
+        apply_rules = (
+            payload.get("apply_rules", False)
+            if isinstance(payload.get("apply_rules", False), bool)
+            else _truthy(payload.get("apply_rules", False))
+        )
+        dry_run = (
+            payload.get("dry_run", False)
+            if isinstance(payload.get("dry_run", False), bool)
+            else _truthy(payload.get("dry_run", False))
+        )
+        verify = (
+            payload.get("verify", False)
+            if isinstance(payload.get("verify", False), bool)
+            else _truthy(payload.get("verify", False))
+        )
         try:
-            return jsonify(service.scan(payload.get("path"), limit=payload.get("limit", MAX_SCAN_ITEMS)))
+            return jsonify(service.scan(
+                payload.get("path"),
+                limit=payload.get("limit", MAX_SCAN_ITEMS),
+                destination=payload.get("destination"),
+                apply_rules=apply_rules,
+                dry_run=dry_run,
+                min_confidence=payload.get("min_confidence", 80),
+                verify=verify,
+            ))
         except PermissionError as exc:
             return jsonify({"error": str(exc)}), 403
         except (OSError, TypeError, ValueError) as exc:

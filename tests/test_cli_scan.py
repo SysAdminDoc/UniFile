@@ -82,6 +82,36 @@ def test_scan_apply_rules_honors_source_rules_and_dry_run(tmp_path, monkeypatch)
     assert not target.exists()
 
 
+def test_headless_scan_uses_the_cli_contract(tmp_path, monkeypatch):
+    import unifile.cli_scan as cli_scan
+    from unifile.headless import HeadlessService
+
+    source = tmp_path / "library"
+    destination = tmp_path / "organized"
+    source.mkdir()
+    (source / "report.pdf").write_bytes(b"pdf")
+    monkeypatch.setattr(cli_scan, "_load_pc_categories", _categories)
+    monkeypatch.setattr(cli_scan, "is_protected", lambda _path: False)
+
+    cli_result = cli_scan.scan_directory(source, destination=destination)
+    service = HeadlessService(
+        source,
+        scan_roots=[str(source), str(destination)],
+    )
+    api_result = service.scan(
+        destination=str(destination),
+        min_confidence=80,
+    )
+
+    assert api_result["version"] == cli_result["version"]
+    assert api_result["destination"] == cli_result["destination"]
+    assert api_result["apply_rules"] == cli_result["apply_rules"]
+    assert api_result["dry_run"] == cli_result["dry_run"]
+    assert api_result["action_plan"]["plan_type"] == cli_result["action_plan"]["plan_type"]
+    for field in ("src", "dst", "category", "selected", "status"):
+        assert api_result["items"][0][field] == cli_result["items"][0][field]
+
+
 def test_scan_subcommand_runs_without_gui_imports(tmp_path):
     source = tmp_path / "inbox"
     source.mkdir()

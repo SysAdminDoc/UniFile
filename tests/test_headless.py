@@ -40,6 +40,19 @@ def test_scan_tag_search_and_report_round_trip(tmp_path):
     assert payload["version"] == "1"
     assert payload["items"][0]["name"] == "photo.jpg"
     assert payload["items"][0]["category"] == "Images"
+    assert payload["action_plan"]["plan_type"] == "file-actions"
+    assert payload["verification"] == {"requested": False, "status": "not-requested"}
+    assert "file_health" not in payload
+    assert not (library / ".unifile" / "file_health.json").exists()
+
+    verified = client.post(
+        "/scan",
+        headers=headers,
+        json={"path": str(library), "verify": True},
+    )
+    assert verified.status_code == 200
+    assert verified.get_json()["verification"]["requested"] is True
+    assert verified.get_json()["file_health"]["baselined"] == 1
 
     tagged = client.post(
         "/tag",

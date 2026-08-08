@@ -99,7 +99,10 @@ def test_headless_scan_includes_integrity_report_and_cli_returns_alert(tmp_path)
     target.write_bytes(b"baseline")
     service = HeadlessService(library)
     first = service.scan()
-    assert first["file_health"]["baselined"] == 1
+    assert first["verification"] == {"requested": False, "status": "not-requested"}
+    assert "file_health" not in first
+    verified = service.scan(verify=True)
+    assert verified["file_health"]["baselined"] == 1
     target.write_bytes(b"changed")
     cli = subprocess.run(
         [sys.executable, "-m", "unifile", "verify", str(library), "--json"],

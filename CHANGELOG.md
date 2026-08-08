@@ -29,6 +29,9 @@ All notable changes to UniFile will be documented in this file.
 - Extension mismatch scanner expanded to cover `.jar`, `.apk`, `.epub`, `.pptx`, `.odt`, `.cbz` and other ZIP-based formats.
 - Removed dead `_OLLAMA_DEFAULTS` / `_OLLAMA_SETTINGS_FILE` from classifier.py.
 - Removed duplicate `_conn = None` assignment in semantic.py close().
+- Headless scans now use the CLI's canonical action-plan contract, accept explicit
+  destination/rule/dry-run/verification options, and keep default scans free of
+  hidden file-health writes.
 
 ### Added
 - Shared JSON action-plan validation and transactional apply across natural-language

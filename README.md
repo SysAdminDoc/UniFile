@@ -475,8 +475,10 @@ curl -H "X-API-Key: $UNIFILE_API_KEY" http://127.0.0.1:8787/health
 The API exposes authenticated `/scan`, `/tag`, `/search`, `/report`, and
 scheduled-job routes plus a small `/admin` status page. It is review-first:
 scans return the same versioned JSON plan shape used by `--output-json`, while
-tag writes are explicit. Leave `UNIFILE_ALLOW_UNAUTHENTICATED=0` in shared
-deployments.
+tag writes are explicit. `/scan` accepts the same destination, apply-rules,
+dry-run, confidence, and limit options as the CLI. Verification is opt-in with
+`{"verify": true}`; ordinary scans do not write the file-health ledger.
+Leave `UNIFILE_ALLOW_UNAUTHENTICATED=0` in shared deployments.
 
 `unifile verify` and the authenticated `/verify` endpoint maintain a
 library-local `.unifile/file_health.json` ledger. The first verification

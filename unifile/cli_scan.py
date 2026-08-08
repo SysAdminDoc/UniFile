@@ -294,7 +294,6 @@ def scan_directory(
         "failed": failed,
         "errors": errors,
     }
-    action_plan = action_plan_from_scan_result(result)
     if apply_rules:
         planned_keys = {
             os.path.normcase(os.path.realpath(item["dst"]))
@@ -347,6 +346,6 @@ def scan_directory(
         "moved": moved,
         "failed": failed,
         "errors": errors,
-        "action_plan": action_plan,
     })
+    result["action_plan"] = action_plan_from_scan_result(result)
     return result
