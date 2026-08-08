@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import shutil
-import sqlite3
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -20,10 +19,19 @@ except ImportError:  # Python 3.10/3.11 compatibility
         def override(func):
             return func
 
-from sqlalchemy import Dialect, Engine, String, TypeDecorator, create_engine, text
+from sqlalchemy import Dialect, Engine, String, TypeDecorator, create_engine, event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase
+
+from unifile.sqlite_policy import (
+    SQLITE_BUSY_TIMEOUT_MS,
+    SQLITE_TIMEOUT_SECONDS,
+    SQLITE_WAL_AUTOCHECKPOINT,
+    configure_sqlite_connection,
+    connect_sqlite,
+    ensure_supported_storage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +73,27 @@ class Base(DeclarativeBase):
 
 
 def make_engine(db_path: str) -> Engine:
-    return create_engine(f"sqlite:///{db_path}")
+    if db_path != ":memory:":
+        ensure_supported_storage(db_path)
+    engine = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={
+            "timeout": SQLITE_TIMEOUT_SECONDS,
+            "check_same_thread": False,
+        },
+        pool_pre_ping=True,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _configure_connection(dbapi_connection, _connection_record) -> None:
+        configure_sqlite_connection(
+            dbapi_connection,
+            busy_timeout_ms=SQLITE_BUSY_TIMEOUT_MS,
+            wal_autocheckpoint=SQLITE_WAL_AUTOCHECKPOINT,
+            register=False,
+        )
+
+    return engine
 
 
 def _engine_db_path(engine: Engine) -> Path | None:
@@ -224,9 +252,17 @@ def _backup_database(db_path: Path, current_version: int) -> Path:
         f"{db_path.name}.v{current_version}-backup-{timestamp}.bak"
     )
     try:
-        with sqlite3.connect(str(db_path)) as source, \
-             sqlite3.connect(str(backup_path)) as target:
+        source = connect_sqlite(str(db_path), check_same_thread=True)
+        target = connect_sqlite(
+            str(backup_path),
+            check_same_thread=True,
+            journal_mode="DELETE",
+        )
+        try:
             source.backup(target)
+        finally:
+            source.close()
+            target.close()
     except Exception:
         try:
             backup_path.unlink(missing_ok=True)
@@ -340,9 +376,17 @@ def export_library_backup(engine: Engine, dest_path: Path,
     # Snapshot the DB via SQLite backup API (safe against WAL)
     tmp_db = db_path.with_suffix('.backup_tmp')
     try:
-        with sqlite3.connect(str(db_path)) as src, \
-             sqlite3.connect(str(tmp_db)) as dst:
+        src = connect_sqlite(str(db_path), check_same_thread=True)
+        dst = connect_sqlite(
+            str(tmp_db),
+            check_same_thread=True,
+            journal_mode="DELETE",
+        )
+        try:
             src.backup(dst)
+        finally:
+            src.close()
+            dst.close()
 
         manifest = {'version': _BACKUP_MANIFEST_VERSION,
                     'created': datetime.now().isoformat(),
@@ -416,8 +460,11 @@ def restore_library_backup(engine: Engine, zip_path: Path,
     if db_path.exists():
         current_ver = 0
         try:
-            with sqlite3.connect(str(db_path)) as conn:
+            conn = connect_sqlite(str(db_path), check_same_thread=True)
+            try:
                 current_ver = int(conn.execute("PRAGMA user_version").fetchone()[0] or 0)
+            finally:
+                conn.close()
         except Exception:
             pass
         _backup_database(db_path, current_ver)

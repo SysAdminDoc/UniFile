@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from unifile.sqlite_policy import connect_sqlite
 from unifile.tagging.library import TagLibrary
 from unifile.tagging.models import (
     DatetimeField,
@@ -124,12 +125,17 @@ def _readonly_connection(database: Path) -> sqlite3.Connection:
     """Open a database without granting SQLite any write capability."""
     path_uri = database.resolve().as_posix()
     try:
-        connection = sqlite3.connect(f"file:{path_uri}?mode=ro", uri=True, timeout=5)
+        connection = connect_sqlite(
+            f"file:{path_uri}?mode=ro",
+            uri=True,
+            timeout=5,
+            check_same_thread=True,
+            read_only=True,
+            query_only=True,
+        )
     except sqlite3.OperationalError as exc:
         raise TagStudioInteropError(f"Could not open TagStudio database read-only: {database}") from exc
     connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA query_only = ON")
-    connection.execute("PRAGMA busy_timeout = 5000")
     return connection
 
 
@@ -726,11 +732,10 @@ def export_tagstudio(
 
         output_db.parent.mkdir(parents=True, exist_ok=True)
         try:
-            connection = sqlite3.connect(str(output_db), timeout=10)
+            connection = connect_sqlite(str(output_db), check_same_thread=True)
         except sqlite3.OperationalError as exc:
             raise TagStudioInteropError(f"Could not open TagStudio export database: {output_db}") from exc
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout = 10000")
         try:
             _prepare_export_schema(connection)
             connection.execute("BEGIN IMMEDIATE")

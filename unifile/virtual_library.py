@@ -6,10 +6,9 @@ structure and exported to a real structure on demand.
 """
 import os
 import shutil
-import sqlite3
 from datetime import datetime
 
-from unifile.config import register_sqlite_connection
+from unifile.sqlite_policy import connect_sqlite
 
 
 class VirtualLibrary:
@@ -40,9 +39,7 @@ class VirtualLibrary:
         os.makedirs(db_dir, exist_ok=True)
 
         db_path = os.path.join(db_dir, 'library.sqlite')
-        self._conn = sqlite3.connect(db_path, timeout=30)
-        register_sqlite_connection(self._conn)
-        self._conn.execute('PRAGMA journal_mode=WAL')
+        self._conn = connect_sqlite(db_path, timeout=30, check_same_thread=True)
         self._create_tables()
         return True
 

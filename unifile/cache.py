@@ -5,7 +5,6 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -16,8 +15,8 @@ from unifile.config import (
     _CSV_LOG_FILE,
     _UNDO_LOG_FILE,
     _UNDO_STACK_FILE,
-    register_sqlite_connection,
 )
+from unifile.sqlite_policy import connect_sqlite
 
 try:
     from rapidfuzz import fuzz as _rfuzz
@@ -166,8 +165,7 @@ def _get_cache_conn():
     """Get thread-local SQLite connection, creating if needed."""
     conn = getattr(_cache_local, 'conn', None)
     if conn is None:
-        conn = sqlite3.connect(_CACHE_DB, timeout=10)
-        conn.execute('PRAGMA journal_mode=WAL')
+        conn = connect_sqlite(_CACHE_DB, check_same_thread=True)
         conn.execute('CREATE TABLE IF NOT EXISTS cache ('
             'fingerprint TEXT PRIMARY KEY,'
             'category TEXT,'
@@ -180,7 +178,6 @@ def _get_cache_conn():
         ')')
         conn.commit()
         _cache_local.conn = conn
-        register_sqlite_connection(conn)
     return conn
 
 def _close_cache_conn():
@@ -406,11 +403,7 @@ def _open_operation_log(db_path=None):
     path = _operation_log_path(db_path)
     try:
         os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
-        conn = sqlite3.connect(path, timeout=10)
-        register_sqlite_connection(conn)
-        conn.execute('PRAGMA foreign_keys=ON')
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA synchronous=NORMAL')
+        conn = connect_sqlite(path, check_same_thread=True)
         conn.execute('''CREATE TABLE IF NOT EXISTS operation_batches (
             batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL,

@@ -35,6 +35,9 @@ All notable changes to UniFile will be documented in this file.
 - Mobile and headless API exposure now defaults to loopback, rejects URL tokens,
   uses expiring header-only mobile sessions with rotation/revocation, redacts
   health paths, and enforces security headers and resource/rate limits.
+- SQLite connections now share one explicit WAL, timeout, foreign-key,
+  synchronous, checkpoint, thread-ownership, and disposal policy; tag-library
+  migrations/backups and local indexes use the same configured connection path.
 
 ### Added
 - Shared JSON action-plan validation and transactional apply across natural-language

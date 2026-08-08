@@ -62,6 +62,15 @@ Full tag-based file management adapted from TagStudio's SQLAlchemy models:
 | Tag Search | Real-time search across tags and entries |
 
 The tag library stores data in `.unifile/unifile_tags.sqlite` within your library directory — non-destructive, no files are modified.
+Tag Library and local index databases share an explicit SQLite policy: WAL,
+10-second busy timeout, foreign keys enabled, NORMAL synchronous mode, and
+automatic checkpoints every 1,000 pages. ORM sessions are thread-owned;
+long-lived direct connections declare whether they are thread-confined or
+serialized behind a module lock, and all connections are disposed on close or
+process exit. Keep WAL-backed libraries on local storage; UNC/network shares
+are rejected for the Tag Library because their locking and WAL semantics are
+not reliable. Backups use SQLite's online backup API and a DELETE-journal
+snapshot, so restore never copies a live `-wal` file by hand.
 
 TagStudio migration is available from the Tag Library panel and headless CLI. Import accepts a TagStudio library folder or `.TagStudio/ts_library.sqlite`/`.db` file and reads it in SQLite read-only mode. Export writes an additive TagStudio-compatible `.TagStudio/ts_library.sqlite`; existing TagStudio records are retained, and preserved `.TagStudio/thumbs` data is copied without changing the original files.
 

@@ -24,6 +24,8 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
+from unifile.sqlite_policy import connect_sqlite
+
 PROJECT_APPLICATIONS = {
     ".aep": "After Effects",
     ".prproj": "Premiere Pro",
@@ -325,7 +327,13 @@ def _values_from_sqlite(path: Path) -> list[str]:
     """Read text columns from a SQLite library without modifying it."""
     values: list[str] = []
     try:
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        connection = connect_sqlite(
+            f"file:{path.as_posix()}?mode=ro",
+            uri=True,
+            check_same_thread=True,
+            read_only=True,
+            query_only=True,
+        )
         try:
             tables = connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"

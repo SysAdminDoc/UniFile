@@ -10,7 +10,6 @@ while giving users a single discoverable entry point for configuration.
 from __future__ import annotations
 
 import os
-import sqlite3
 
 from PyQt6.QtWidgets import (
     QApplication,
@@ -30,6 +29,7 @@ from PyQt6.QtWidgets import (
 
 from unifile.config import _PC_SCAN_CACHE_DB, get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
+from unifile.sqlite_policy import connect_sqlite
 
 
 def _section(title: str, description: str, actions: list[tuple[str, str, callable]],
@@ -489,7 +489,7 @@ class SettingsHubDialog(QDialog):
         count = 0
         if os.path.isfile(_PC_SCAN_CACHE_DB):
             try:
-                con = sqlite3.connect(_PC_SCAN_CACHE_DB, timeout=3)
+                con = connect_sqlite(_PC_SCAN_CACHE_DB, check_same_thread=True)
                 row = con.execute("SELECT COUNT(*) FROM scan_cache").fetchone()
                 count = row[0] if row else 0
                 con.close()
@@ -510,7 +510,7 @@ class SettingsHubDialog(QDialog):
             return
 
         try:
-            con = sqlite3.connect(_PC_SCAN_CACHE_DB, timeout=5)
+            con = connect_sqlite(_PC_SCAN_CACHE_DB, check_same_thread=True)
             con.execute("DELETE FROM scan_cache")
             con.commit()
             con.close()

@@ -27,11 +27,13 @@ import shutil
 import sqlite3
 import stat
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from unifile.config import _APP_DATA_DIR, register_sqlite_connection
+from unifile.config import _APP_DATA_DIR
+from unifile.sqlite_policy import connect_sqlite
 
 _DB_PATH = os.path.join(_APP_DATA_DIR, "archive_index.sqlite")
 _SUPPORTED_EXTENSIONS = {".zip", ".7z", ".rar", ".tar",
@@ -426,10 +428,7 @@ class ArchiveScanResult:
 
 def _get_db() -> sqlite3.Connection:
     os.makedirs(_APP_DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(_DB_PATH, check_same_thread=False, timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    register_sqlite_connection(conn)
+    conn = connect_sqlite(_DB_PATH, check_same_thread=False)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS archive_meta (
             path        TEXT NOT NULL,
@@ -458,14 +457,15 @@ def _get_db() -> sqlite3.Connection:
 
 
 _db_conn: sqlite3.Connection | None = None
-_db_lock = __import__('threading').Lock()
+_db_init_lock = threading.Lock()
+_db_operation_lock = threading.RLock()
 
 
 def _db() -> sqlite3.Connection:
     global _db_conn
     if _db_conn is not None:
         return _db_conn
-    with _db_lock:
+    with _db_init_lock:
         if _db_conn is None:
             _db_conn = _get_db()
         return _db_conn
@@ -618,14 +618,15 @@ def scan_file(path: str, *, force: bool = False) -> ArchiveScanResult:
     path = os.path.abspath(path)
     conn = _db()
 
-    if not force and _is_cached(conn, path):
-        # Return cached entries
-        rows = conn.execute(
-            "SELECT inner_path, name, size, is_dir FROM archive_entries "
-            "WHERE archive_id = ?", (path,)
-        ).fetchall()
-        entries = [ArchiveEntry(path, r[0], r[1], r[2], bool(r[3])) for r in rows]
-        return ArchiveScanResult(archive_path=path, entries=entries)
+    with _db_operation_lock:
+        if not force and _is_cached(conn, path):
+            # Return cached entries
+            rows = conn.execute(
+                "SELECT inner_path, name, size, is_dir FROM archive_entries "
+                "WHERE archive_id = ?", (path,)
+            ).fetchall()
+            entries = [ArchiveEntry(path, r[0], r[1], r[2], bool(r[3])) for r in rows]
+            return ArchiveScanResult(archive_path=path, entries=entries)
 
     t0 = time.monotonic()
     error = ""
@@ -641,7 +642,8 @@ def scan_file(path: str, *, force: bool = False) -> ArchiveScanResult:
         error=error,
         elapsed=time.monotonic() - t0,
     )
-    _cache_result(conn, result)
+    with _db_operation_lock:
+        _cache_result(conn, result)
     return result
 
 
@@ -705,22 +707,23 @@ def search(
     Returns a list of :class:`ArchiveEntry`.
     """
     conn = _db()
-    if directory:
-        directory = os.path.abspath(directory)
-        rows = conn.execute(
-            "SELECT archive_id, inner_path, name, size, is_dir "
-            "FROM archive_entries "
-            "WHERE name LIKE ? AND archive_id LIKE ? "
-            "AND is_dir = 0 LIMIT ?",
-            (f"%{query}%", f"{directory}%", limit),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT archive_id, inner_path, name, size, is_dir "
-            "FROM archive_entries "
-            "WHERE name LIKE ? AND is_dir = 0 LIMIT ?",
-            (f"%{query}%", limit),
-        ).fetchall()
+    with _db_operation_lock:
+        if directory:
+            directory = os.path.abspath(directory)
+            rows = conn.execute(
+                "SELECT archive_id, inner_path, name, size, is_dir "
+                "FROM archive_entries "
+                "WHERE name LIKE ? AND archive_id LIKE ? "
+                "AND is_dir = 0 LIMIT ?",
+                (f"%{query}%", f"{directory}%", limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT archive_id, inner_path, name, size, is_dir "
+                "FROM archive_entries "
+                "WHERE name LIKE ? AND is_dir = 0 LIMIT ?",
+                (f"%{query}%", limit),
+            ).fetchall()
     return [ArchiveEntry(r[0], r[1], r[2], r[3], bool(r[4])) for r in rows]
 
 
@@ -783,11 +786,14 @@ def index_semantic_entries(entries, classifications=None, *, semantic_index=None
 def index_stats() -> dict:
     """Return statistics about the current index."""
     conn = _db()
-    n_archives = conn.execute("SELECT COUNT(*) FROM archive_meta").fetchone()[0]
-    n_entries  = conn.execute("SELECT COUNT(*) FROM archive_entries WHERE is_dir=0").fetchone()[0]
-    errors     = conn.execute(
-        "SELECT COUNT(*) FROM archive_meta WHERE error IS NOT NULL"
-    ).fetchone()[0]
+    with _db_operation_lock:
+        n_archives = conn.execute("SELECT COUNT(*) FROM archive_meta").fetchone()[0]
+        n_entries = conn.execute(
+            "SELECT COUNT(*) FROM archive_entries WHERE is_dir=0"
+        ).fetchone()[0]
+        errors = conn.execute(
+            "SELECT COUNT(*) FROM archive_meta WHERE error IS NOT NULL"
+        ).fetchone()[0]
     return {
         "indexed_archives": n_archives,
         "indexed_files": n_entries,
@@ -798,9 +804,10 @@ def index_stats() -> dict:
 def clear_index() -> None:
     """Wipe the entire archive index."""
     conn = _db()
-    conn.execute("DELETE FROM archive_entries")
-    conn.execute("DELETE FROM archive_meta")
-    conn.commit()
+    with _db_operation_lock:
+        conn.execute("DELETE FROM archive_entries")
+        conn.execute("DELETE FROM archive_meta")
+        conn.commit()
 
 
 # ── QThread worker for GUI use ────────────────────────────────────────────────

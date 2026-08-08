@@ -26,6 +26,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from unifile.config import _APP_DATA_DIR
+from unifile.sqlite_policy import connect_sqlite
 
 _DB_PATH = os.path.join(_APP_DATA_DIR, "ratings.sqlite")
 _VALID_FLAGS = {"pending", "approved", "rejected", ""}
@@ -35,9 +36,7 @@ _BULK_CHUNK = 500
 
 def _conn() -> sqlite3.Connection:
     os.makedirs(_APP_DATA_DIR, exist_ok=True)
-    con = sqlite3.connect(_DB_PATH, check_same_thread=False, timeout=10)
-    con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA busy_timeout=5000")
+    con = connect_sqlite(_DB_PATH, check_same_thread=True)
     con.execute(
         "CREATE TABLE IF NOT EXISTS ratings ("
         "path TEXT PRIMARY KEY, "

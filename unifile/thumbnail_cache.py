@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from unifile.config import _APP_DATA_DIR
+from unifile.sqlite_policy import connect_sqlite
 
 CACHE_SCHEMA_VERSION = 1
 DEFAULT_MAX_MB = 500
@@ -121,11 +122,7 @@ class ThumbnailCache:
 
     def _connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(str(self.db_path), timeout=10)
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA synchronous=NORMAL")
-        connection.execute("PRAGMA busy_timeout=10000")
-        return connection
+        return connect_sqlite(str(self.db_path), check_same_thread=True)
 
     def _object_path(self, cache_key: str) -> Path:
         return self.objects / f"{cache_key}.bin"

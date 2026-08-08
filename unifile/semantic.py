@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import sqlite3
+import threading
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 
@@ -13,7 +14,6 @@ _log = logging.getLogger(__name__)
 from unifile.config import (  # noqa: E402
     _APP_DATA_DIR,
     load_json_safe,
-    register_sqlite_connection,
     save_json_safe,
 )
 from unifile.embedding_backends import (  # noqa: E402
@@ -21,6 +21,7 @@ from unifile.embedding_backends import (  # noqa: E402
     OnnxEmbeddingBackend,
     default_onnx_model_dir,
 )
+from unifile.sqlite_policy import connect_sqlite  # noqa: E402
 
 _EMBED_DB = os.path.join(_APP_DATA_DIR, 'semantic_embeddings.db')
 _SEMANTIC_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'semantic_settings.json')
@@ -118,6 +119,7 @@ class SemanticIndex:
         self._onnx_backend: OnnxEmbeddingBackend | None = None
         self._onnx_checked = False
         self._backend_error = ''
+        self._db_lock = threading.RLock()
 
     @property
     def backend_name(self) -> str:
@@ -149,9 +151,10 @@ class SemanticIndex:
         }
 
     def _connection(self) -> sqlite3.Connection:
-        self._ensure_db()
-        assert self._conn is not None
-        return self._conn
+        with self._db_lock:
+            self._ensure_db()
+            assert self._conn is not None
+            return self._conn
 
     def _ensure_db(self) -> None:
         """Create/open the embedding database. Uses check_same_thread=False
@@ -160,11 +163,8 @@ class SemanticIndex:
         if self._conn is not None:
             return
         os.makedirs(os.path.dirname(_EMBED_DB), exist_ok=True)
-        conn = sqlite3.connect(_EMBED_DB, check_same_thread=False, timeout=10)
+        conn = connect_sqlite(_EMBED_DB, check_same_thread=False)
         self._conn = conn
-        register_sqlite_connection(conn)
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA busy_timeout=5000')
         conn.execute('''CREATE TABLE IF NOT EXISTS embeddings (
             id TEXT PRIMARY KEY,
             filepath TEXT,
@@ -297,13 +297,14 @@ class SemanticIndex:
             return False
 
         blob = self._pack_vector(vec)
-        conn.execute(
-            'INSERT OR REPLACE INTO embeddings '
-            '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            (file_id, filepath, text, blob, len(vec), 'file', None, None)
-        )
-        conn.commit()
+        with self._db_lock:
+            conn.execute(
+                'INSERT OR REPLACE INTO embeddings '
+                '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (file_id, filepath, text, blob, len(vec), 'file', None, None)
+            )
+            conn.commit()
         return True
 
     def index_archive_entry(self, archive_path: str, inner_path: str,
@@ -330,20 +331,22 @@ class SemanticIndex:
             return False
         member_id = hashlib.md5(
             f"archive\\0{archive_path}\\0{inner_path}".encode()).hexdigest()
-        if not force and conn.execute(
-                'SELECT 1 FROM embeddings WHERE id = ?', (member_id,)).fetchone():
-            return True
+        with self._db_lock:
+            if not force and conn.execute(
+                    'SELECT 1 FROM embeddings WHERE id = ?', (member_id,)).fetchone():
+                return True
         vec = self._get_embedding(text)
         if not vec:
             return False
-        conn.execute(
-            'INSERT OR REPLACE INTO embeddings '
-            '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            (member_id, archive_path, text, self._pack_vector(vec), len(vec),
-             'archive', archive_path, inner_path)
-        )
-        conn.commit()
+        with self._db_lock:
+            conn.execute(
+                'INSERT OR REPLACE INTO embeddings '
+                '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (member_id, archive_path, text, self._pack_vector(vec), len(vec),
+                 'archive', archive_path, inner_path)
+            )
+            conn.commit()
         return True
 
     def index_archive_entries(
@@ -398,15 +401,16 @@ class SemanticIndex:
             vec = vectors[i] if i < len(vectors) else None
             if text and vec:
                 file_id = hashlib.md5(item['filepath'].encode()).hexdigest()
-                conn.execute(
-                    'INSERT OR REPLACE INTO embeddings '
-                    '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    (file_id, item['filepath'], text, self._pack_vector(vec), len(vec),
-                     'file', None, None)
-                )
+                with self._db_lock:
+                    conn.execute(
+                        'INSERT OR REPLACE INTO embeddings '
+                        '(id, filepath, description, embedding, dim, source_type, archive_path, inner_path) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                        (file_id, item['filepath'], text, self._pack_vector(vec), len(vec),
+                         'file', None, None)
+                    )
+                    conn.commit()
                 count += 1
-                conn.commit()
             if callback:
                 callback(i + 1, total)
         return count
@@ -430,10 +434,11 @@ class SemanticIndex:
         if not query_vec:
             return []
 
-        rows = conn.execute(
-            'SELECT filepath, description, embedding, dim, source_type, '
-            'archive_path, inner_path FROM embeddings'
-        ).fetchall()
+        with self._db_lock:
+            rows = conn.execute(
+                'SELECT filepath, description, embedding, dim, source_type, '
+                'archive_path, inner_path FROM embeddings'
+            ).fetchall()
 
         results: list[dict[str, Any]] = []
         for filepath, desc, blob, dim, source_type, archive_path, inner_path in rows:
@@ -463,27 +468,31 @@ class SemanticIndex:
     def get_indexed_count(self) -> int:
         """Return number of indexed files."""
         conn = self._connection()
-        row = conn.execute('SELECT COUNT(*) FROM embeddings').fetchone()
+        with self._db_lock:
+            row = conn.execute('SELECT COUNT(*) FROM embeddings').fetchone()
         return row[0] if row else 0
 
     def remove_file(self, filepath: str) -> None:
         """Remove a file's embedding from the index."""
         conn = self._connection()
         file_id = hashlib.md5(filepath.encode()).hexdigest()
-        conn.execute('DELETE FROM embeddings WHERE id = ?', (file_id,))
-        conn.commit()
+        with self._db_lock:
+            conn.execute('DELETE FROM embeddings WHERE id = ?', (file_id,))
+            conn.commit()
 
     def clear(self) -> None:
         """Clear all embeddings."""
         conn = self._connection()
-        conn.execute('DELETE FROM embeddings')
-        conn.commit()
+        with self._db_lock:
+            conn.execute('DELETE FROM embeddings')
+            conn.commit()
 
     def close(self) -> None:
         """Close the database connection."""
-        if self._conn:
-            try:
-                self._conn.close()
-            except Exception:
-                pass
-            self._conn = None
+        with self._db_lock:
+            if self._conn:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+                self._conn = None
