@@ -41,6 +41,60 @@ hooks:
     }
 
 
+def test_manifest_v2_requires_capabilities_and_bounds_resources():
+    from unifile.plugin_manifest import ManifestError, parse_manifest
+
+    manifest = parse_manifest(
+        """manifest_version: 2
+id: plugin.v2
+name: V2 Plugin
+version: 2.0
+capabilities:
+  - read_metadata
+resources:
+  timeout_ms: 500
+  max_output_bytes: 4096
+  max_items: 20
+isolation: process
+hooks:
+  classify: classify_custom
+"""
+    )
+
+    assert manifest["capabilities"] == ["read_metadata"]
+    assert manifest["resources"] == {
+        "timeout_ms": 500,
+        "max_output_bytes": 4096,
+        "max_items": 20,
+    }
+    assert manifest["isolation"] == "process"
+    assert manifest["legacy_manifest"] is False
+    with pytest.raises(ManifestError, match="capabilities is required"):
+        parse_manifest(
+            """manifest_version: 2
+id: plugin.missing
+name: Missing
+version: 1
+resources: {}
+hooks:
+  classify: classify
+"""
+        )
+    with pytest.raises(ManifestError, match="between 100 and 60000"):
+        parse_manifest(
+            """manifest_version: 2
+id: plugin.bad-resource
+name: Bad Resource
+version: 1
+capabilities: [read_metadata]
+resources:
+  timeout_ms: 50
+hooks:
+  classify: classify
+"""
+        )
+
+
 @pytest.mark.parametrize(
     "source, message",
     [
@@ -108,6 +162,161 @@ def test_manifest_change_invalidates_entrypoint_trust(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     assert plugins.PluginManager.discover()[0]["trust_status"] == "changed"
+
+
+def test_manifest_v2_runs_out_of_process_and_fingerprints_contract(monkeypatch, tmp_path):
+    plugins, plugin_dir = _reset_plugin_state(monkeypatch, tmp_path)
+    package = plugin_dir / "isolated"
+    package.mkdir()
+    marker = tmp_path / "child-import.txt"
+    manifest_path = package / "plugin.yaml"
+    manifest_path.write_text(
+        """manifest_version: 2
+id: plugin.isolated
+name: Isolated
+version: 1
+capabilities:
+  - read_metadata
+resources:
+  timeout_ms: 1000
+  max_output_bytes: 4096
+  max_items: 20
+isolation: process
+hooks:
+  classify: classify
+""",
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('child', encoding='utf-8')\n"
+        "def classify(filepath, metadata):\n"
+        "    return ('Isolated', 96)\n",
+        encoding="utf-8",
+    )
+
+    meta = plugins.PluginManager.discover()[0]
+    assert meta["isolation"] == "process"
+    assert meta["disabled_hooks"] == ["classify"]
+    assert plugins.PluginManager.trust_metadata(meta)
+    assert plugins.PluginManager.discover()[0]["disabled_hooks"] == []
+    plugins.PluginManager.load_all()
+    assert marker.exists() is False
+    assert plugins.PluginManager.run_classifiers("file.txt", {}) == ("Isolated", 96)
+    assert marker.read_text(encoding="utf-8") == "child"
+    record = json.loads((tmp_path / "trusted_plugins.json").read_text(encoding="utf-8"))
+    fingerprint = next(iter(record.values()))["fingerprint"]
+    assert fingerprint["capability_contract"]["capabilities"] == ["read_metadata"]
+    assert fingerprint["capability_sha256"]
+
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8").replace("- read_metadata", "- network"),
+        encoding="utf-8",
+    )
+    assert plugins.PluginManager.discover()[0]["trust_status"] == "changed"
+
+
+def test_high_risk_in_process_manifest_hook_is_disabled(monkeypatch, tmp_path):
+    plugins, plugin_dir = _reset_plugin_state(monkeypatch, tmp_path)
+    package = plugin_dir / "unsafe"
+    package.mkdir()
+    marker = tmp_path / "unsafe-ran.txt"
+    (package / "plugin.yaml").write_text(
+        """manifest_version: 2
+id: plugin.unsafe
+name: Unsafe
+version: 1
+capabilities: [file_ops]
+resources:
+  timeout_ms: 1000
+  max_output_bytes: 4096
+  max_items: 20
+isolation: in_process
+hooks:
+  post_move: post_move
+""",
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('ran', encoding='utf-8')\n"
+        "def post_move(src, dst, category):\n"
+        "    Path(src).write_text('unexpected', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+
+    meta = plugins.PluginManager.discover()[0]
+    assert meta["disabled_hooks"] == ["post_move"]
+    assert plugins.PluginManager.trust_metadata(meta)
+    plugins.PluginManager.load_all()
+    plugins.PluginManager.run_post_move("source", "destination", "Docs")
+    assert marker.exists() is False
+    assert plugins.PluginManager._plugins == []
+
+
+def test_manifest_process_timeout_is_reaped(monkeypatch, tmp_path):
+    plugins, plugin_dir = _reset_plugin_state(monkeypatch, tmp_path)
+    package = plugin_dir / "timeout"
+    package.mkdir()
+    (package / "plugin.yaml").write_text(
+        """manifest_version: 2
+id: plugin.timeout
+name: Timeout
+version: 1
+capabilities: [read_metadata]
+resources:
+  timeout_ms: 100
+  max_output_bytes: 4096
+  max_items: 1
+isolation: process
+hooks:
+  classify: classify
+""",
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text(
+        "def classify(filepath, metadata):\n"
+        "    while True:\n"
+        "        pass\n",
+        encoding="utf-8",
+    )
+
+    meta = plugins.PluginManager.discover()[0]
+    assert plugins.PluginManager.trust_metadata(meta)
+    plugins.PluginManager.load_all()
+    assert plugins.PluginManager.run_classifiers("file.txt", {}) is None
+
+
+def test_legacy_manifest_trust_requires_explicit_migration(monkeypatch, tmp_path):
+    plugins, plugin_dir = _reset_plugin_state(monkeypatch, tmp_path)
+    package = plugin_dir / "legacy"
+    package.mkdir()
+    (package / "plugin.yaml").write_text(
+        """manifest_version: 1
+id: plugin.legacy
+name: Legacy
+version: 1
+hooks:
+  classify: classify
+""",
+        encoding="utf-8",
+    )
+    (package / "plugin.py").write_text(
+        "def classify(filepath, metadata):\n"
+        "    return ('Legacy', 90)\n",
+        encoding="utf-8",
+    )
+    meta = plugins.PluginManager.discover()[0]
+    fingerprint = plugins.PluginManager._fingerprint(meta["path"], [meta["manifest_path"]])
+    assert plugins.save_json_safe(
+        str(tmp_path / "trusted_plugins.json"), {fingerprint["path"]: fingerprint}
+    )
+    assert plugins.PluginManager.discover()[0]["trust_status"] == "migration_required"
+    plugins.PluginManager.load_all()
+    assert plugins.PluginManager._plugins == []
+    migrated = plugins.PluginManager.discover()[0]
+    assert plugins.PluginManager.trust_metadata(migrated)
+    assert plugins.PluginManager.discover()[0]["trust_status"] == "trusted"
 
 
 def test_manifest_workflow_function_alias_runs_in_restricted_process(monkeypatch, tmp_path):

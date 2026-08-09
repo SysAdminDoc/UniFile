@@ -288,7 +288,7 @@ require the dialog's review button.
 | File Preview Panel | Split-view with image preview, text excerpt, metadata |
 | Drag & Drop | Drop folders onto the window to set source |
 | Undo Timeline | Visual timeline of all operations with one-click rollback |
-| Trusted Plugin System | Python plugins are discovered but disabled until explicitly trusted; changed plugins must be re-trusted |
+| Trusted Plugin System | Python plugins are discovered but disabled until explicitly trusted; manifest capabilities and resource limits are reviewed before approval |
 
 ### Safety
 
@@ -596,7 +596,7 @@ For optional semantic duplicate detection, use the same ONNX extra and select th
 
 For workflow scripts, open **Tools → Plugins**, create or edit a script in the embedded editor, validate it, and explicitly choose **Trust & Enable** before it can run. Scripts live under `%APPDATA%\UniFile\plugins` and declare `Workflow-Hook: on_scan_item` or `Workflow-Hook: on_apply` in their module docstring. The restricted `unifile.script` API exposes `item`, `classifier`, `tag_library`/`library`, `file_ops`, and `log`; imports and arbitrary standard-library access are rejected, and each hook runs in a bounded child process. Tag commands are applied only when a Tag Library is open; file-operation commands remain disabled by default unless a host supplies explicit allowed roots.
 
-Manifest-backed plugins live in a folder containing `plugin.yaml` and a Python entrypoint. The manifest declares a stable `id`, display name/version, and a list or mapping of supported hooks to public function names. UniFile validates the YAML and entrypoint path before discovery, includes the manifest in the trust fingerprint, and keeps untrusted or changed packages disabled. **Tools → Plugins → Community Plugin Index** reads a bounded HTTPS JSON catalog for browsing only; it never downloads or executes catalog entries.
+Manifest-backed plugins live in a folder containing `plugin.yaml` and a Python entrypoint. Manifest v2 declares a stable `id`, display name/version, a list or mapping of supported hooks to public function names, bounded `capabilities`, `resources` (`timeout_ms`, `max_output_bytes`, and `max_items`), and an `isolation` mode. v2 entrypoints default to a spawn-isolated process; the supervisor bounds JSON payloads, reaps timed-out children, and keeps high-risk hooks out of in-process execution. **Tools → Plugins** shows the capability/resource contract and the capability diff before Trust & Enable. v1 or unversioned manifests remain readable, but previously trusted packages require an explicit migration approval and high-risk hooks remain disabled unless moved to process isolation. UniFile validates the YAML and entrypoint path before discovery and includes the declared contract in the trust fingerprint. **Tools → Plugins → Community Plugin Index** reads a bounded HTTPS JSON catalog for browsing only; it never downloads or executes catalog entries.
 
 Outbound provider calls share the bounded `unifile.network` policy: HTTP(S) URLs are validated, responses are size-limited, only safe methods retry, and diagnostics redact credentials and payloads. Provider health counters expose request, failure, timeout, cancellation, and latency totals without retaining URLs or request bodies. Local Ollama endpoints are explicitly scoped to the configured local service.
 

@@ -1387,7 +1387,8 @@ class PluginManagerDialog(QDialog):
             hooks = hooks or 'no hooks'
             status = p.get('trust_status', 'untrusted').upper()
             kind = 'WORKFLOW ' if p.get('workflow_hooks') else ''
-            self.lst_plugins.addItem(f"{kind}{p['name']}  [{status}]  [{hooks}]")
+            migration = '  [MIGRATION]' if p.get('migration_required') else ''
+            self.lst_plugins.addItem(f"{kind}{p['name']}  [{status}]{migration}  [{hooks}]")
         count = len(self._discovered)
         trusted = sum(1 for p in self._discovered if p.get('trusted'))
         errors = PluginManager.last_load_errors()
@@ -1412,6 +1413,10 @@ class PluginManagerDialog(QDialog):
                 else ', '.join(p.get('hooks', []))
             hooks = hooks or '(none)'
             trust_status = p.get('trust_status', 'untrusted')
+            contract = PluginManager.approval_summary(p).get('current', {})
+            capabilities = ', '.join(contract.get('capabilities', [])) or '(none declared)'
+            resources = contract.get('resources', {})
+            disabled_hooks = ', '.join(p.get('disabled_hooks', [])) or '(none)'
             error_text = p.get('load_error') or ''
             for err in PluginManager.last_load_errors():
                 if err.get('path') == p.get('path'):
@@ -1422,11 +1427,20 @@ class PluginManagerDialog(QDialog):
                 f"Kind: {p.get('kind', 'legacy')}\n"
                 f"Trust: {trust_status}\n"
                 f"Hooks: {hooks}\n"
+                f"Capabilities: {capabilities}\n"
+                f"Resources: {resources.get('timeout_ms')} ms / "
+                f"{resources.get('max_output_bytes')} bytes / "
+                f"{resources.get('max_items')} items\n"
+                f"Isolation: {contract.get('isolation', p.get('isolation', 'unknown'))}\n"
+                f"Disabled hooks: {disabled_hooks}\n"
                 f"Description: {p['description']}\n"
                 f"Path: {p['path']}"
                 + (f"\nLoad error: {error_text}" if error_text else ""))
-            self.btn_trust.setEnabled(trust_status in ('untrusted', 'changed') and not p.get('load_error'))
-            self.btn_untrust.setEnabled(trust_status in ('trusted', 'changed'))
+            self.btn_trust.setEnabled(
+                trust_status in ('untrusted', 'changed', 'migration_required')
+                and not p.get('load_error')
+            )
+            self.btn_untrust.setEnabled(trust_status in ('trusted', 'changed', 'migration_required'))
             if p.get('workflow_hooks'):
                 self._load_workflow_script(p)
         else:
@@ -1450,7 +1464,18 @@ class PluginManagerDialog(QDialog):
     def _trust_selected(self):
         row = self.lst_plugins.currentRow()
         if 0 <= row < len(self._discovered):
-            PluginManager.trust_metadata(self._discovered[row])
+            meta = self._discovered[row]
+            summary = PluginManager.approval_summary(meta)
+            answer = QMessageBox.question(
+                self,
+                "Approve Plugin Contract",
+                PluginManager.format_approval_summary(summary),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            PluginManager.trust_metadata(meta)
             PluginManager.load_all()
             self._refresh()
 

@@ -20,7 +20,8 @@ from typing import Any
 from unifile.network import request_bytes
 
 MANIFEST_FILENAME = "plugin.yaml"
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
+SUPPORTED_MANIFEST_VERSIONS = (1, MANIFEST_SCHEMA_VERSION)
 MAX_MANIFEST_BYTES = 128 * 1024
 MAX_INDEX_BYTES = 512 * 1024
 DEFAULT_COMMUNITY_INDEX_URL = (
@@ -35,6 +36,25 @@ SUPPORTED_HOOKS = (
     "on_scan_item",
     "on_apply",
 )
+SUPPORTED_CAPABILITIES = (
+    "read_metadata",
+    "read_library",
+    "write_tags",
+    "file_ops",
+    "network",
+    "subprocess",
+)
+DEFAULT_RESOURCES = {
+    "timeout_ms": 3_000,
+    "max_output_bytes": 256 * 1024,
+    "max_items": 500,
+}
+RESOURCE_LIMITS = {
+    "timeout_ms": (100, 60_000),
+    "max_output_bytes": (1_024, 4 * 1024 * 1024),
+    "max_items": (1, 10_000),
+}
+SUPPORTED_ISOLATION_MODES = ("in_process", "process")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _PLUGIN_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,79}$")
 
@@ -99,6 +119,68 @@ def _normalize_entrypoint(value: Any) -> str:
     return "/".join(parts)
 
 
+def _normalize_capabilities(value: Any, *, required: bool = False) -> list[str]:
+    """Normalize the bounded capability vocabulary used by manifest v2."""
+    if value is None:
+        if required:
+            raise ManifestError("capabilities is required for manifest_version 2")
+        return []
+    if not isinstance(value, list):
+        raise ManifestError("capabilities must be a list of strings")
+    if len(value) > len(SUPPORTED_CAPABILITIES):
+        raise ManifestError("capabilities contains too many entries")
+    capabilities = []
+    for item in value:
+        capability = _bounded_text(item, "capability", maximum=40, required=True).lower()
+        if capability not in SUPPORTED_CAPABILITIES:
+            raise ManifestError(
+                f"unsupported capability '{capability}'; choose from "
+                f"{', '.join(SUPPORTED_CAPABILITIES)}"
+            )
+        if capability in capabilities:
+            raise ManifestError(f"capability '{capability}' is declared more than once")
+        capabilities.append(capability)
+    return capabilities
+
+
+def _normalize_resources(value: Any, *, required: bool = False) -> dict[str, int]:
+    """Normalize resource declarations and reject values outside host limits."""
+    if value is None:
+        if required:
+            raise ManifestError("resources is required for manifest_version 2")
+        return dict(DEFAULT_RESOURCES)
+    if not isinstance(value, dict):
+        raise ManifestError("resources must be a mapping")
+    unknown = set(value) - set(DEFAULT_RESOURCES)
+    if unknown:
+        raise ManifestError(f"unsupported resource: {sorted(unknown)[0]}")
+    resources = dict(DEFAULT_RESOURCES)
+    for name, bounds in RESOURCE_LIMITS.items():
+        if name not in value:
+            continue
+        raw = value[name]
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            raise ManifestError(f"resource {name} must be an integer")
+        minimum, maximum = bounds
+        if not minimum <= raw <= maximum:
+            raise ManifestError(f"resource {name} must be between {minimum} and {maximum}")
+        resources[name] = raw
+    return resources
+
+
+def _normalize_isolation(value: Any, *, legacy: bool) -> str:
+    """Return an explicit execution mode, retaining safe v1 compatibility."""
+    default = "in_process" if legacy else "process"
+    if value is None:
+        return default
+    isolation = _bounded_text(value, "isolation", maximum=20, required=True).lower()
+    if isolation not in SUPPORTED_ISOLATION_MODES:
+        raise ManifestError(
+            f"unsupported isolation '{isolation}'; choose from {', '.join(SUPPORTED_ISOLATION_MODES)}"
+        )
+    return isolation
+
+
 def parse_manifest(source: str, *, source_path: str | None = None) -> dict[str, Any]:
     """Parse and validate a plugin manifest without importing its code."""
     if not isinstance(source, str) or not source.strip():
@@ -116,8 +198,10 @@ def parse_manifest(source: str, *, source_path: str | None = None) -> dict[str, 
     if not isinstance(document, dict):
         raise ManifestError("manifest root must be a mapping")
 
-    schema = document.get("manifest_version", MANIFEST_SCHEMA_VERSION)
-    if isinstance(schema, bool) or not isinstance(schema, int) or schema != MANIFEST_SCHEMA_VERSION:
+    # A missing version is the original v1 format.  This keeps existing local
+    # plugins readable while making new scaffolds opt into the v2 contract.
+    schema = document.get("manifest_version", 1)
+    if isinstance(schema, bool) or not isinstance(schema, int) or schema not in SUPPORTED_MANIFEST_VERSIONS:
         raise ManifestError(f"unsupported manifest_version: {schema!r}")
     plugin_id = _bounded_text(document.get("id"), "id", maximum=80, required=True).lower()
     if not _PLUGIN_ID_RE.fullmatch(plugin_id):
@@ -129,6 +213,16 @@ def parse_manifest(source: str, *, source_path: str | None = None) -> dict[str, 
     license_name = _bounded_text(document.get("license"), "license", maximum=80)
     entrypoint = _normalize_entrypoint(document.get("entrypoint", "plugin.py"))
     hooks = _normalize_hooks(document.get("hooks"))
+    legacy_manifest = schema == 1
+    capabilities = _normalize_capabilities(
+        document.get("capabilities"),
+        required=schema >= 2,
+    )
+    resources = _normalize_resources(
+        document.get("resources"),
+        required=schema >= 2,
+    )
+    isolation = _normalize_isolation(document.get("isolation"), legacy=legacy_manifest)
 
     return {
         "manifest_version": schema,
@@ -140,6 +234,13 @@ def parse_manifest(source: str, *, source_path: str | None = None) -> dict[str, 
         "license": license_name,
         "entrypoint": entrypoint,
         "hooks": hooks,
+        "capabilities": capabilities,
+        "resources": resources,
+        "isolation": isolation,
+        "legacy_manifest": legacy_manifest,
+        "capability_source": (
+            "legacy-inferred" if legacy_manifest and "capabilities" not in document else "declared"
+        ),
         "manifest_path": os.path.abspath(source_path) if source_path else "",
     }
 
@@ -233,10 +334,17 @@ def create_plugin_scaffold(name: str, output_dir: str | os.PathLike[str], *, for
 
     plugin_id = f"plugin.{slug.replace('-', '_')}"
     manifest = (
-        "manifest_version: 1\n"
+        "manifest_version: 2\n"
         f"id: {plugin_id}\n"
         f"name: {name.strip()}\n"
         "version: 1.0.0\n"
+        "capabilities:\n"
+        "  - read_metadata\n"
+        "resources:\n"
+        "  timeout_ms: 3000\n"
+        "  max_output_bytes: 262144\n"
+        "  max_items: 500\n"
+        "isolation: process\n"
         "description: Generated UniFile plugin scaffold.\n"
         "entrypoint: plugin.py\n"
         "hooks:\n"
