@@ -426,6 +426,10 @@ python -m unifile tag --library path/to/unifile-library --query "cat AND outdoor
 python -m unifile report --library path/to/unifile-library --format html --output report.html
 python -m unifile report --library path/to/unifile-library --format pdf --output report.pdf
 python -m unifile verify path/to/library --json --output health.json
+python -m unifile backup path/to/unifile-library --dest path/to/backups --json
+python -m unifile backup-verify path/to/backups/unifile-backup-YYYYMMDD-HHMMSS.zip --json
+python -m unifile restore path/to/backup.zip path/to/new-library --dry-run --json
+python -m unifile restore path/to/backup.zip path/to/new-library --json
 python -m unifile nfo generate path/to/movie.mkv --metadata-json metadata.json --json
 python -m unifile nfo generate path/to/episode.mkv --kind episode --no-overwrite
 
@@ -469,6 +473,14 @@ so it can be piped directly to `jq`.
 `report` exports the category-tag distribution and bounded file inventory from a
 Tag Library as a self-contained HTML, dependency-free text PDF, or JSON file;
 use `--limit` when generating a report for a very large library.
+`backup` writes a versioned SQLite snapshot and a SHA-256 manifest. Config JSON
+is allowlisted and credential-like keys are omitted; secrets remain in the OS
+keyring or environment. `backup-verify --json` validates archive member paths,
+checksums, SQLite integrity, and supported schema metadata without writing.
+`restore --dry-run --json` performs the same recovery checks without creating a
+library. A real restore stages all payloads, upgrades supported older schemas,
+and creates a pre-restore snapshot before any replacement; failed DB/config
+writes roll back to that snapshot.
 The file inspector also shows ranked Related Files matches for shared tags,
 photographer, date range, or filename pattern. Enter another path in the Link
 field to save a symmetric manual relationship in UniFile app data.

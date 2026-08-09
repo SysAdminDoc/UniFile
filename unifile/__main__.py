@@ -17,6 +17,10 @@ Usage:
     python -m unifile collab search URL --user ID --token TOKEN
                                                    Search a shared library.
     python -m unifile verify <path> [--json]       Verify stored SHA-256 checksums.
+    python -m unifile backup-verify BACKUP [--json]
+                                                   Verify a tag-library backup.
+    python -m unifile restore BACKUP LIBRARY --dry-run --json
+                                                   Verify a restore without writing.
     python -m unifile import-tagstudio SOURCE LIBRARY
                                                    Import a TagStudio SQLite library.
     python -m unifile export-tagstudio LIBRARY OUTPUT
@@ -1332,6 +1336,14 @@ def main():
     p_backup.add_argument("library", type=str, help="Library root directory")
     p_backup.add_argument("--dest", type=str, default=".",
                           help="Destination directory for the backup ZIP")
+    p_backup.add_argument("--json", action="store_true", help="Emit a machine-readable report")
+
+    p_backup_verify = subparsers.add_parser(
+        "backup-verify",
+        help="Verify a tag-library backup ZIP without modifying any files",
+    )
+    p_backup_verify.add_argument("zip", type=str, help="Path to backup ZIP")
+    p_backup_verify.add_argument("--json", action="store_true", help="Emit a machine-readable report")
 
     p_restore = subparsers.add_parser(
         "restore",
@@ -1339,6 +1351,8 @@ def main():
     )
     p_restore.add_argument("zip", type=str, help="Path to backup ZIP")
     p_restore.add_argument("library", type=str, help="Library root directory")
+    p_restore.add_argument("--dry-run", action="store_true", help="Verify and report without writing")
+    p_restore.add_argument("--json", action="store_true", help="Emit a machine-readable report")
 
     args, qt_args = parser.parse_known_args()
 
@@ -1432,35 +1446,83 @@ def main():
         from pathlib import Path as _Path
 
         from unifile.config import _APP_DATA_DIR
-        from unifile.tagging.db import export_library_backup, make_engine
+        from unifile.tagging.db import export_library_backup, inspect_library_backup, make_engine
 
         db_path = _Path(args.library) / '.unifile' / 'unifile_tags.sqlite'
         if not db_path.is_file():
             print(f"ERROR: No tag library at {db_path}", file=sys.stderr)
             sys.exit(1)
         engine = make_engine(str(db_path))
-        zip_path = export_library_backup(engine, _Path(args.dest),
-                                         config_dir=_Path(_APP_DATA_DIR))
-        engine.dispose()
-        print(f"Backup saved: {zip_path}")
-        sys.exit(0)
+        try:
+            zip_path = export_library_backup(
+                engine, _Path(args.dest), config_dir=_Path(_APP_DATA_DIR)
+            )
+        finally:
+            engine.dispose()
+        report = inspect_library_backup(zip_path)
+        report['backup'] = str(zip_path)
+        if args.json:
+            print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+        else:
+            print(f"Backup saved: {zip_path}")
+        sys.exit(0 if report['ok'] else 1)
+
+    if args.subcommand == "backup-verify":
+        from pathlib import Path as _Path
+
+        from unifile.tagging.db import inspect_library_backup
+
+        report = inspect_library_backup(_Path(args.zip))
+        if args.json:
+            print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+        else:
+            print(report['message'])
+            for warning in report.get('warnings', []):
+                print(f"warning: {warning}")
+        sys.exit(0 if report['ok'] else 1)
 
     if args.subcommand == "restore":
         from pathlib import Path as _Path
 
         from unifile.config import _APP_DATA_DIR
-        from unifile.tagging.db import make_engine, restore_library_backup, verify_library_backup
+        from unifile.tagging.db import inspect_library_backup, make_engine, restore_library_backup
 
-        ok, msg = verify_library_backup(_Path(args.zip))
-        if not ok:
-            print(f"ERROR: {msg}", file=sys.stderr)
+        report = inspect_library_backup(_Path(args.zip))
+        if args.dry_run:
+            if args.json:
+                print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+            else:
+                print(report['message'])
+                for warning in report.get('warnings', []):
+                    print(f"warning: {warning}")
+            sys.exit(0 if report['ok'] else 1)
+        if not report['ok']:
+            if args.json:
+                print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+            else:
+                print(f"ERROR: {report['message']}", file=sys.stderr)
             sys.exit(1)
         db_path = _Path(args.library) / '.unifile' / 'unifile_tags.sqlite'
         db_path.parent.mkdir(parents=True, exist_ok=True)
         engine = make_engine(str(db_path))
-        restore_library_backup(engine, _Path(args.zip),
-                               config_dir=_Path(_APP_DATA_DIR))
-        print(f"Library restored from {args.zip}")
+        try:
+            restore_library_backup(
+                engine, _Path(args.zip), config_dir=_Path(_APP_DATA_DIR)
+            )
+        except Exception as exc:
+            if args.json:
+                report = {**report, 'ok': False, 'message': str(exc)}
+                print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+            else:
+                print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(1)
+        finally:
+            engine.dispose()
+        report = {**report, 'ok': True, 'message': 'Library restored', 'library': str(args.library)}
+        if args.json:
+            print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+        else:
+            print(f"Library restored from {args.zip}")
         sys.exit(0)
 
     # GUI path — install crash handler before touching Qt.

@@ -3,12 +3,17 @@ import hashlib
 import json
 import logging
 import os
+import platform
+import re
 import shutil
+import sqlite3
+import stat
+import tempfile
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
 
 try:
     from typing import override
@@ -24,6 +29,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase
 
+from unifile import __version__
 from unifile.sqlite_policy import (
     SQLITE_BUSY_TIMEOUT_MS,
     SQLITE_TIMEOUT_SECONDS,
@@ -379,7 +385,19 @@ def make_tables(engine: Engine) -> None:
 
 # ── Full Library Backup / Restore ────────────────────────────────────────────
 
-_BACKUP_MANIFEST_VERSION = 1
+_BACKUP_FORMAT = 'unifile.library-backup'
+_BACKUP_MANIFEST_VERSION = 2
+_SUPPORTED_BACKUP_MANIFEST_VERSIONS = frozenset({1, 2})
+_BACKUP_CONFIG_NAMES = ('settings.json', 'ai_providers.json', 'tag_packs.json', 'profiles.json')
+_SENSITIVE_CONFIG_KEY = re.compile(
+    r'(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|credential|authorization|bearer)',
+    re.IGNORECASE,
+)
+_MAX_MANIFEST_BYTES = 1024 * 1024
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
 def _sha256_file(path: Path) -> str:
@@ -390,136 +408,459 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _sha256_stream(stream) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+        digest.update(chunk)
+        size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def _redact_backup_value(value):
+    """Remove credential-like JSON keys before config data enters a backup."""
+    if isinstance(value, dict):
+        return {
+            str(key): _redact_backup_value(item)
+            for key, item in value.items()
+            if not _SENSITIVE_CONFIG_KEY.search(str(key))
+        }
+    if isinstance(value, list):
+        return [_redact_backup_value(item) for item in value]
+    return value
+
+
+def _safe_config_payload(path: Path) -> bytes | None:
+    try:
+        with path.open('r', encoding='utf-8') as handle:
+            data = json.load(handle)
+        return json.dumps(
+            _redact_backup_value(data),
+            indent=2,
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode('utf-8')
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
+def _safe_zip_member(name: str) -> bool:
+    """Reject absolute, parent-traversal, Windows, and directory entries."""
+    if not name or '\x00' in name or '\\' in name or name.startswith('/'):
+        return False
+    if len(name) >= 2 and name[1] == ':' and name[0].isalpha():
+        return False
+    if name.endswith('/'):
+        return False
+    parts = PurePosixPath(name).parts
+    return bool(parts) and all(part not in ('.', '..', '') for part in parts)
+
+
+def _is_zip_symlink(info: zipfile.ZipInfo) -> bool:
+    mode = (info.external_attr >> 16) & 0xFFFF
+    return stat.S_IFMT(mode) == stat.S_IFLNK
+
+
+def _allowed_backup_member(name: str) -> bool:
+    return name == 'unifile_tags.sqlite' or (
+        name.startswith('config/') and name.count('/') == 1 and Path(name).name in _BACKUP_CONFIG_NAMES
+    )
+
+
+def _invalid_backup(report: dict, message: str) -> dict:
+    report['ok'] = False
+    report['message'] = message
+    return report
+
+
+def _validate_sqlite_file(path: Path) -> None:
+    """Fail closed on a payload that is not a readable, internally valid DB."""
+    connection = sqlite3.connect(f'file:{path.as_posix()}?mode=ro', uri=True)
+    try:
+        result = connection.execute('PRAGMA quick_check').fetchone()
+        if not result or result[0] != 'ok':
+            raise MigrationError(f'SQLite integrity check failed: {result[0] if result else "no result"}')
+    finally:
+        connection.close()
+
+
+def _manifest_records(manifest: dict) -> tuple[dict[str, tuple[str, int | None]], list[str]]:
+    raw_files = manifest.get('files')
+    if not isinstance(raw_files, dict):
+        return {}, ['Manifest files must be an object']
+    records: dict[str, tuple[str, int | None]] = {}
+    errors: list[str] = []
+    for name, raw_record in raw_files.items():
+        if not isinstance(name, str) or not _safe_zip_member(name):
+            errors.append(f'Unsafe manifest file name: {name!r}')
+            continue
+        if isinstance(raw_record, str):
+            # Version 1 stored only the checksum; retain read compatibility.
+            checksum, size = raw_record, None
+        elif isinstance(raw_record, dict):
+            checksum, size = raw_record.get('sha256'), raw_record.get('size')
+            if size is not None and (not isinstance(size, int) or size < 0):
+                errors.append(f'Invalid file size: {name}')
+                continue
+        else:
+            errors.append(f'Invalid manifest file record: {name}')
+            continue
+        if not isinstance(checksum, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', checksum):
+            errors.append(f'Invalid SHA-256 checksum: {name}')
+            continue
+        records[name] = (checksum.lower(), size)
+    return records, errors
+
+
+def inspect_library_backup(zip_path: Path) -> dict:
+    """Return a machine-readable integrity and compatibility report."""
+    report = {
+        'ok': False,
+        'format': _BACKUP_FORMAT,
+        'version': None,
+        'message': '',
+        'warnings': [],
+        'manifest': None,
+        'files': [],
+    }
+    try:
+        with zipfile.ZipFile(str(zip_path), 'r') as archive:
+            infos = archive.infolist()
+            names = [info.filename for info in infos]
+            if len(names) != len(set(names)):
+                return _invalid_backup(report, 'Duplicate archive member names are not allowed')
+            if any(not _safe_zip_member(name) for name in names):
+                return _invalid_backup(report, 'Archive contains an unsafe member name')
+            if any(_is_zip_symlink(info) for info in infos):
+                return _invalid_backup(report, 'Archive symlink members are not allowed')
+            if 'manifest.json' not in names:
+                return _invalid_backup(report, 'Missing manifest.json')
+            if any(name != 'manifest.json' and not _allowed_backup_member(name) for name in names):
+                return _invalid_backup(report, 'Archive contains an unexpected member')
+
+            manifest_info = archive.getinfo('manifest.json')
+            if manifest_info.file_size > _MAX_MANIFEST_BYTES:
+                return _invalid_backup(report, 'Manifest exceeds the 1 MiB safety limit')
+            manifest = json.loads(archive.read(manifest_info).decode('utf-8'))
+            if not isinstance(manifest, dict):
+                return _invalid_backup(report, 'Manifest root must be an object')
+            report['manifest'] = manifest
+            version = manifest.get('version')
+            report['version'] = version
+            if not isinstance(version, int) or version not in _SUPPORTED_BACKUP_MANIFEST_VERSIONS:
+                return _invalid_backup(report, f'Unsupported backup manifest version: {version!r}')
+            if version == 1:
+                report['warnings'].append('Legacy v1 manifest: app, schema, feature, and platform metadata unavailable')
+            else:
+                if manifest.get('format') != _BACKUP_FORMAT:
+                    return _invalid_backup(report, 'Manifest format is missing or unsupported')
+                for key in ('app', 'schema', 'features', 'platform'):
+                    if not isinstance(manifest.get(key), dict):
+                        return _invalid_backup(report, f'Manifest metadata field must be an object: {key}')
+                schema_version = manifest['schema'].get('tag_library')
+                if not isinstance(schema_version, int) or schema_version < 0:
+                    return _invalid_backup(report, 'Manifest tag-library schema is invalid')
+                if schema_version > TAG_DB_SCHEMA_VERSION:
+                    return _invalid_backup(
+                        report,
+                        f'Backup tag-library schema v{schema_version} is newer than supported v{TAG_DB_SCHEMA_VERSION}',
+                    )
+
+            records, record_errors = _manifest_records(manifest)
+            if record_errors:
+                return _invalid_backup(report, '; '.join(record_errors))
+            payload_names = set(names) - {'manifest.json'}
+            if 'unifile_tags.sqlite' not in payload_names:
+                return _invalid_backup(report, 'Missing tag library database')
+            if set(records) != payload_names:
+                missing = sorted(payload_names - set(records))
+                extra = sorted(set(records) - payload_names)
+                detail = []
+                if missing:
+                    detail.append(f'unlisted archive members: {", ".join(missing)}')
+                if extra:
+                    detail.append(f'missing archive members: {", ".join(extra)}')
+                return _invalid_backup(report, '; '.join(detail))
+
+            db_info = archive.getinfo('unifile_tags.sqlite')
+            with tempfile.TemporaryDirectory(prefix='unifile-backup-verify-') as temp_dir:
+                temp_db = Path(temp_dir) / 'unifile_tags.sqlite'
+                with archive.open(db_info, 'r') as source, temp_db.open('wb') as target:
+                    shutil.copyfileobj(source, target, length=1024 * 1024)
+                _validate_sqlite_file(temp_db)
+
+            for name, (expected_hash, expected_size) in sorted(records.items()):
+                info = archive.getinfo(name)
+                with archive.open(info, 'r') as source:
+                    actual_hash, actual_size = _sha256_stream(source)
+                if expected_size is not None and expected_size != actual_size:
+                    return _invalid_backup(report, f'Size mismatch: {name}')
+                if expected_hash != actual_hash:
+                    return _invalid_backup(report, f'Checksum mismatch: {name}')
+                report['files'].append({
+                    'name': name,
+                    'size': actual_size,
+                    'sha256': actual_hash,
+                })
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError,
+            ValueError, sqlite3.DatabaseError, zipfile.BadZipFile, MigrationError) as exc:
+        return _invalid_backup(report, f'Corrupt backup: {exc}')
+    report['ok'] = True
+    report['message'] = 'Backup is valid'
+    return report
+
+
+def _backup_zip_path(dest_path: Path) -> Path:
+    destination = Path(dest_path)
+    if (destination.exists() and destination.is_dir()) or destination.suffix.lower() != '.zip':
+        destination.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        candidate = destination / f'unifile-backup-{timestamp}.zip'
+        suffix = 1
+        while candidate.exists():
+            candidate = destination / f'unifile-backup-{timestamp}-{suffix}.zip'
+            suffix += 1
+        return candidate
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    return destination
+
+
+def _backup_file_record(path: Path) -> dict[str, int | str]:
+    return {
+        'sha256': _sha256_file(path),
+        'size': path.stat().st_size,
+    }
+
+
 def export_library_backup(engine: Engine, dest_path: Path,
                           config_dir: Path | None = None) -> Path:
-    """Export a full tag library backup as a timestamped ZIP.
-
-    Contents: tag DB snapshot, config files, SHA-256 manifest.
-    Returns the path of the created ZIP file.
-    """
+    """Export a versioned, checksum-protected, secret-redacted ZIP backup."""
     db_path = _engine_db_path(engine)
     if not db_path or not db_path.exists():
-        raise FileNotFoundError("No tag library database found to back up")
+        raise FileNotFoundError('No tag library database found to back up')
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    zip_name = f"unifile-backup-{timestamp}.zip"
-    zip_path = dest_path / zip_name if dest_path.is_dir() else dest_path
-
-    # Snapshot the DB via SQLite backup API (safe against WAL)
-    tmp_db = db_path.with_suffix('.backup_tmp')
+    zip_path = _backup_zip_path(Path(dest_path))
+    temp_db_fd, temp_db_name = tempfile.mkstemp(
+        prefix=f'.{db_path.name}.', suffix='.backup_tmp', dir=str(db_path.parent)
+    )
+    os.close(temp_db_fd)
+    tmp_db = Path(temp_db_name)
+    tmp_db.unlink(missing_ok=True)
+    temp_zip_fd, temp_zip_name = tempfile.mkstemp(
+        prefix=f'.{zip_path.name}.', suffix='.tmp', dir=str(zip_path.parent)
+    )
+    os.close(temp_zip_fd)
+    tmp_zip = Path(temp_zip_name)
     try:
         src = connect_sqlite(str(db_path), check_same_thread=True)
         dst = connect_sqlite(
             str(tmp_db),
             check_same_thread=True,
-            journal_mode="DELETE",
+            journal_mode='DELETE',
         )
         try:
             src.backup(dst)
+            snapshot_schema = int(dst.execute('PRAGMA user_version').fetchone()[0] or 0)
         finally:
             src.close()
             dst.close()
+        if snapshot_schema > TAG_DB_SCHEMA_VERSION:
+            raise MigrationError(
+                f'Tag DB schema v{snapshot_schema} is newer than supported v{TAG_DB_SCHEMA_VERSION}'
+            )
 
-        manifest = {'version': _BACKUP_MANIFEST_VERSION,
-                    'created': datetime.now().isoformat(),
-                    'files': {}}
+        config_payloads: dict[str, bytes] = {}
+        skipped_config: list[str] = []
+        if config_dir:
+            for name in _BACKUP_CONFIG_NAMES:
+                cfg = Path(config_dir) / name
+                if not cfg.is_file():
+                    continue
+                payload = _safe_config_payload(cfg)
+                if payload is None:
+                    skipped_config.append(name)
+                else:
+                    config_payloads[f'config/{name}'] = payload
 
-        with zipfile.ZipFile(str(zip_path), 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.write(str(tmp_db), 'unifile_tags.sqlite')
-            manifest['files']['unifile_tags.sqlite'] = _sha256_file(tmp_db)
+        manifest = {
+            'format': _BACKUP_FORMAT,
+            'version': _BACKUP_MANIFEST_VERSION,
+            'created': _utc_now(),
+            'app': {'name': 'UniFile', 'version': __version__},
+            'schema': {'tag_library': snapshot_schema, 'supported_max': TAG_DB_SCHEMA_VERSION},
+            'features': {
+                'sqlite_snapshot': 'online-backup-api',
+                'config_files': sorted(config_payloads),
+                'secrets': 'excluded; resolve from OS keyring or environment on restore',
+                'skipped_config_files': skipped_config,
+            },
+            'platform': {
+                'system': platform.system(),
+                'release': platform.release(),
+                'machine': platform.machine(),
+                'python': platform.python_version(),
+            },
+            'files': {},
+        }
+        manifest['files']['unifile_tags.sqlite'] = _backup_file_record(tmp_db)
+        for name, payload in config_payloads.items():
+            manifest['files'][name] = {
+                'sha256': hashlib.sha256(payload).hexdigest(),
+                'size': len(payload),
+            }
 
-            if config_dir:
-                for name in ('settings.json', 'ai_providers.json',
-                             'tag_packs.json', 'profiles.json'):
-                    cfg = config_dir / name
-                    if cfg.is_file():
-                        zf.write(str(cfg), f'config/{name}')
-                        manifest['files'][f'config/{name}'] = _sha256_file(cfg)
-
-            zf.writestr('manifest.json', json.dumps(manifest, indent=2))
-
-        logger.info("Library backup exported to %s", zip_path)
+        with zipfile.ZipFile(str(tmp_zip), 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.write(str(tmp_db), 'unifile_tags.sqlite')
+            for name, payload in sorted(config_payloads.items()):
+                archive.writestr(name, payload)
+            archive.writestr(
+                'manifest.json',
+                json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True),
+            )
+        os.replace(tmp_zip, zip_path)
+        logger.info('Library backup exported to %s', zip_path)
         return zip_path
     finally:
         try:
             tmp_db.unlink(missing_ok=True)
         except OSError:
             pass
+        try:
+            tmp_zip.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def verify_library_backup(zip_path: Path) -> tuple[bool, str]:
-    """Validate a backup ZIP's integrity and manifest checksums.
+    """Validate a backup ZIP while retaining the historical tuple API."""
+    report = inspect_library_backup(Path(zip_path))
+    return bool(report['ok']), str(report['message'])
 
-    Returns (ok, message).
-    """
+
+def _stage_zip_member(archive: zipfile.ZipFile, name: str, directory: Path) -> Path:
+    fd, raw_path = tempfile.mkstemp(prefix='.unifile-restore-', dir=str(directory))
+    staged = Path(raw_path)
     try:
-        with zipfile.ZipFile(str(zip_path), 'r') as zf:
-            names = zf.namelist()
-            if 'manifest.json' not in names:
-                return False, "Missing manifest.json"
-            if 'unifile_tags.sqlite' not in names:
-                return False, "Missing tag library database"
-            manifest = json.loads(zf.read('manifest.json'))
-            if manifest.get('version', 0) > _BACKUP_MANIFEST_VERSION:
-                return False, (f"Backup version {manifest['version']} is "
-                               f"newer than supported v{_BACKUP_MANIFEST_VERSION}")
-            for fname, expected_hash in manifest.get('files', {}).items():
-                if fname not in names:
-                    return False, f"Missing file: {fname}"
-                actual = hashlib.sha256(zf.read(fname)).hexdigest()
-                if actual != expected_hash:
-                    return False, f"Checksum mismatch: {fname}"
-        return True, "Backup is valid"
-    except (zipfile.BadZipFile, KeyError, json.JSONDecodeError) as e:
-        return False, f"Corrupt backup: {e}"
+        with os.fdopen(fd, 'wb') as target, archive.open(name, 'r') as source:
+            shutil.copyfileobj(source, target, length=1024 * 1024)
+        return staged
+    except Exception:
+        try:
+            staged.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def _restore_original_file(path: Path, payload: bytes | None) -> None:
+    if payload is None:
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, raw_path = tempfile.mkstemp(prefix='.unifile-rollback-', dir=str(path.parent))
+    staged = Path(raw_path)
+    try:
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(payload)
+        os.replace(staged, path)
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 def restore_library_backup(engine: Engine, zip_path: Path,
                            config_dir: Path | None = None) -> None:
-    """Restore a full tag library from a backup ZIP.
-
-    Creates a pre-restore backup of the current DB before overwriting.
-    """
-    ok, msg = verify_library_backup(zip_path)
-    if not ok:
-        raise MigrationError(f"Backup verification failed: {msg}")
+    """Restore a backup atomically, migrate older schemas, and roll back on failure."""
+    report = inspect_library_backup(Path(zip_path))
+    if not report['ok']:
+        raise MigrationError(f"Backup verification failed: {report['message']}")
 
     db_path = _engine_db_path(engine)
     if not db_path:
-        raise MigrationError("Cannot restore to in-memory database")
-
-    # Pre-restore safety backup
-    if db_path.exists():
-        current_ver = 0
+        raise MigrationError('Cannot restore to in-memory database')
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    archive_config_names = sorted(
+        item['name'] for item in report['files'] if item['name'].startswith('config/')
+    )
+    config_targets = {
+        name: Path(config_dir) / Path(name).name
+        for name in archive_config_names
+        if config_dir is not None
+    }
+    original_config = {
+        path: path.read_bytes() if path.is_file() else None
+        for path in config_targets.values()
+    }
+    had_database = db_path.is_file()
+    pre_restore_backup: Path | None = None
+    if had_database:
+        current_version = 0
         try:
-            conn = connect_sqlite(str(db_path), check_same_thread=True)
+            connection = connect_sqlite(str(db_path), check_same_thread=True)
             try:
-                current_ver = int(conn.execute("PRAGMA user_version").fetchone()[0] or 0)
+                current_version = int(connection.execute('PRAGMA user_version').fetchone()[0] or 0)
             finally:
-                conn.close()
-        except Exception:
+                connection.close()
+        except (OSError, sqlite3.DatabaseError):
             pass
-        _backup_database(db_path, current_ver)
+        pre_restore_backup = _backup_database(db_path, current_version)
 
-    engine.dispose()
+    staged_paths: list[Path] = []
+    restored_engine = None
+    try:
+        engine.dispose()
+        with zipfile.ZipFile(str(zip_path), 'r') as archive:
+            staged_db = _stage_zip_member(archive, 'unifile_tags.sqlite', db_path.parent)
+            staged_paths.append(staged_db)
+            _validate_sqlite_file(staged_db)
+            staged_configs: dict[str, Path] = {}
+            for name, destination in config_targets.items():
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                staged_config = _stage_zip_member(archive, name, destination.parent)
+                staged_paths.append(staged_config)
+                staged_configs[name] = staged_config
 
-    with zipfile.ZipFile(str(zip_path), 'r') as zf:
-        # Restore DB
-        with open(str(db_path), 'wb') as f:
-            f.write(zf.read('unifile_tags.sqlite'))
-        # Clean WAL/SHM
+        os.replace(staged_db, db_path)
+        staged_paths.remove(staged_db)
+        for name, destination in config_targets.items():
+            os.replace(staged_configs[name], destination)
+            staged_paths.remove(staged_configs[name])
         for suffix in ('-wal', '-shm'):
-            try:
-                Path(str(db_path) + suffix).unlink()
-            except FileNotFoundError:
-                pass
-        # Restore config files
-        if config_dir:
-            config_dir.mkdir(parents=True, exist_ok=True)
-            for name in zf.namelist():
-                if name.startswith('config/'):
-                    dest = config_dir / os.path.basename(name)
-                    with open(str(dest), 'wb') as f:
-                        f.write(zf.read(name))
+            Path(str(db_path) + suffix).unlink(missing_ok=True)
 
-    logger.info("Library restored from %s", zip_path)
+        # Opening through the normal migration path upgrades supported older
+        # backups before callers see the restored library.
+        restored_engine = make_engine(str(db_path))
+        make_tables(restored_engine)
+        restored_engine.dispose()
+        restored_engine = None
+    except Exception as exc:
+        if restored_engine is not None:
+            restored_engine.dispose()
+        rollback_errors: list[str] = []
+        try:
+            if pre_restore_backup is not None:
+                _restore_database(db_path, pre_restore_backup)
+            elif not had_database:
+                db_path.unlink(missing_ok=True)
+                for suffix in ('-wal', '-shm'):
+                    Path(str(db_path) + suffix).unlink(missing_ok=True)
+        except Exception as rollback_exc:
+            rollback_errors.append(f'database: {rollback_exc}')
+        for path, payload in original_config.items():
+            try:
+                _restore_original_file(path, payload)
+            except Exception as rollback_exc:
+                rollback_errors.append(f'{path.name}: {rollback_exc}')
+        detail = f'Restore failed and was rolled back: {exc}'
+        if rollback_errors:
+            detail += '; rollback errors: ' + '; '.join(rollback_errors)
+        raise MigrationError(detail) from exc
+    finally:
+        for staged in staged_paths:
+            try:
+                staged.unlink(missing_ok=True)
+            except OSError:
+                pass
+        engine.dispose()
+
+    logger.info('Library restored from %s', zip_path)

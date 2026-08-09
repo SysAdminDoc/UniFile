@@ -53,6 +53,7 @@ All notable changes to UniFile will be documented in this file.
 ### Added
 - Pointer-free offscreen Qt regression coverage for the main window and major panels across all themes, 8–20 px fonts, RTL, accessibility metadata, geometry, rendering, and Qt-warning checks.
 - Complete English and maintained Spanish Qt catalogs with `pylupdate6` extraction, `lrelease` packaging, runtime locale switching, plural handling, and a release validator for critical action labels and placeholders.
+- Versioned tag-library recovery contract with metadata-rich manifests, streaming checksum/SQLite validation, traversal and symlink rejection, secret-redacted config payloads, schema-upgrading restores, atomic staging, rollback, and JSON `backup-verify`/`restore --dry-run` CLI flows.
 - Shared JSON action-plan validation and transactional apply across natural-language
   rules and `scan --dry-run`, with a GUI diff loader for exported plans.
 - YAML plugin manifests with trust-bound discovery, `unifile plugin create`
