@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import smtplib
 import threading
 import uuid
 from collections.abc import Callable
@@ -19,6 +18,7 @@ from unifile.credentials import (
     keyring_available,
     set_credential,
 )
+from unifile.network import NetworkError, send_smtp
 
 DEFAULT_SCHEDULE_FILE = os.path.join(_APP_DATA_DIR, "headless_jobs.json")
 CRON_FIELDS = ("minute", "hour", "day", "month", "weekday")
@@ -244,18 +244,21 @@ def send_digest_email(settings: dict[str, Any], subject: str, body: str) -> bool
     message["To"] = recipient
     message.set_content(body[:20_000])
     port = int(settings.get("port", 587) or 587)
-    with smtplib.SMTP(host, port, timeout=15) as smtp:
-        if bool(settings.get("starttls", True)):
-            smtp.starttls()
-        username = str(settings.get("username", "")).strip()
-        password = str(settings.get("password", ""))
-        if not password:
-            job_id = str(settings.get("_job_id", "")).strip()
-            if job_id:
-                password = get_credential(_smtp_credential_name(job_id))
-        if username:
-            smtp.login(username, password)
-        smtp.send_message(message)
+    username = str(settings.get("username", "")).strip()
+    password = str(settings.get("password", ""))
+    if not password:
+        job_id = str(settings.get("_job_id", "")).strip()
+        if job_id:
+            password = get_credential(_smtp_credential_name(job_id))
+    send_smtp(
+        host,
+        port,
+        message,
+        username=username,
+        password=password,
+        starttls=bool(settings.get("starttls", True)),
+        provider="smtp",
+    )
     return True
 
 
@@ -308,7 +311,7 @@ class JobScheduler:
                                 f"UniFile job changed: {job['name']}",
                                 json.dumps(result, indent=2, ensure_ascii=False),
                             )
-                        except (OSError, smtplib.SMTPException, ValueError) as exc:
+                        except (NetworkError, OSError, ValueError) as exc:
                             job["last_status"] = f"completed; email failed: {type(exc).__name__}"
                     outcomes.append({"job": job["id"], "status": job["last_status"], "result": result})
                 except Exception as exc:

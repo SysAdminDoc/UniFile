@@ -586,6 +586,8 @@ For workflow scripts, open **Tools → Plugins**, create or edit a script in the
 
 Manifest-backed plugins live in a folder containing `plugin.yaml` and a Python entrypoint. The manifest declares a stable `id`, display name/version, and a list or mapping of supported hooks to public function names. UniFile validates the YAML and entrypoint path before discovery, includes the manifest in the trust fingerprint, and keeps untrusted or changed packages disabled. **Tools → Plugins → Community Plugin Index** reads a bounded HTTPS JSON catalog for browsing only; it never downloads or executes catalog entries.
 
+Outbound provider calls share the bounded `unifile.network` policy: HTTP(S) URLs are validated, responses are size-limited, only safe methods retry, and diagnostics redact credentials and payloads. Provider health counters expose request, failure, timeout, cancellation, and latency totals without retaining URLs or request bodies. Local Ollama endpoints are explicitly scoped to the configured local service.
+
 Developer checks:
 
 ```bash

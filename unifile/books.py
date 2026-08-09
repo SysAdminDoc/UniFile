@@ -15,9 +15,7 @@ import os
 import re
 import shutil
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
@@ -27,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from unifile import __version__
+from unifile.network import request_bytes, request_json
 from unifile.tagging.library import TagLibrary
 
 BOOK_EXTENSIONS = frozenset({".epub", ".pdf", ".mobi", ".azw3"})
@@ -413,10 +412,20 @@ class BookMetadataClient:
                 return self.transport(url, {"User-Agent": self.user_agent}, self.timeout)
             except TypeError:
                 return self.transport(url)
-        request = urllib.request.Request(url, headers={"User-Agent": self.user_agent})
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            payload = response.read()
-        return payload if binary else json.loads(payload.decode("utf-8"))
+        headers = {"User-Agent": self.user_agent}
+        if binary:
+            return request_bytes(
+                url,
+                headers=headers,
+                timeout=self.timeout,
+                provider="books",
+            ).content
+        return request_json(
+            url,
+            headers=headers,
+            timeout=self.timeout,
+            provider="books",
+        )
 
     def request_json(self, url: str) -> dict[str, Any]:
         now = time.time()
@@ -456,7 +465,7 @@ class BookMetadataClient:
         for provider in providers:
             try:
                 candidate = self._lookup_openlibrary(result) if provider == "openlibrary" else self._lookup_google_books(result)
-            except (BookMetadataError, OSError, urllib.error.URLError, ValueError, json.JSONDecodeError):
+            except (BookMetadataError, OSError, ValueError, json.JSONDecodeError):
                 continue
             if candidate is None:
                 continue
@@ -489,7 +498,7 @@ class BookMetadataClient:
                 work = self.request_json(f"https://openlibrary.org{source_key}.json")
                 description = _first(work.get("description"))
                 subjects.extend(_as_list(work.get("subjects")))
-            except (BookMetadataError, OSError, urllib.error.URLError, ValueError, json.JSONDecodeError):
+            except (BookMetadataError, OSError, ValueError, json.JSONDecodeError):
                 pass
         cover_id = _first(doc.get("cover_i"))
         cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg?default=false" if cover_id else None
@@ -662,7 +671,7 @@ def scan_book_library(
                     try:
                         if client.download_cover(metadata, cover_root):
                             result.covers_downloaded += 1
-                    except (BookMetadataError, OSError, urllib.error.URLError) as exc:
+                    except (BookMetadataError, OSError) as exc:
                         metadata.warnings.append(f"cover download failed: {exc}")
                 result.books.append(metadata)
                 if library and apply_book_metadata(library, metadata):

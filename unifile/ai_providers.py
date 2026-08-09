@@ -3,12 +3,9 @@ import base64
 import json
 import logging
 import os
-import re
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from urllib.parse import quote as _url_quote
 
@@ -19,6 +16,7 @@ from unifile.credentials import (
     keyring_available,
     set_credential,
 )
+from unifile.network import NetworkError, redact_text, request_json
 
 _log = logging.getLogger(__name__)
 
@@ -29,10 +27,7 @@ class AIRequestError(Exception):
 
 def _redact(text: str) -> str:
     """Scrub API keys, bearer tokens, and long base64 blobs from diagnostics."""
-    text = re.sub(r'(Bearer\s+)\S+', r'\1<REDACTED>', text)
-    text = re.sub(r'(api[_-]?key["\s:=]+)\S{8,}', r'\1<REDACTED>', text, flags=re.IGNORECASE)
-    text = re.sub(r'[A-Za-z0-9+/]{80,}={0,2}', '<BASE64_REDACTED>', text)
-    return text
+    return redact_text(text)
 
 
 def ai_request(url: str, *, method: str = 'POST', data: bytes | None = None,
@@ -44,35 +39,24 @@ def ai_request(url: str, *, method: str = 'POST', data: bytes | None = None,
     Raises ``AIRequestError`` with redacted diagnostics on failure.
     Retries on 5xx and connection errors; does NOT retry 4xx (client bugs).
     """
-    headers = dict(headers or {})
-    headers.setdefault('Content-Type', 'application/json')
-    last_exc = None
-    for attempt in range(1 + retries):
-        try:
-            req = urllib.request.Request(url, data=data, headers=headers,
-                                         method=method)
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.loads(resp.read())
-        except urllib.error.HTTPError as exc:
-            body = ''
-            try:
-                body = exc.read().decode('utf-8', errors='replace')[:500]
-            except Exception:
-                pass
-            msg = _redact(f"HTTP {exc.code} from {url}: {body}")
-            if exc.code < 500:
-                raise AIRequestError(msg) from exc
-            last_exc = AIRequestError(msg)
-            _log.debug("AI request attempt %d/%d failed: %s",
-                       attempt + 1, 1 + retries, msg)
-        except (urllib.error.URLError, OSError, TimeoutError) as exc:
-            msg = _redact(f"Connection error for {url}: {exc}")
-            last_exc = AIRequestError(msg)
-            _log.debug("AI request attempt %d/%d failed: %s",
-                       attempt + 1, 1 + retries, msg)
-        if attempt < retries:
-            time.sleep(backoff * (2 ** attempt))
-    raise last_exc
+    request_headers = dict(headers or {})
+    request_headers.setdefault('Content-Type', 'application/json')
+    try:
+        return request_json(
+            url,
+            method=method,
+            data=data,
+            headers=request_headers,
+            timeout=timeout,
+            retries=retries,
+            backoff=backoff,
+            provider='ai',
+            allow_local=True,
+        )
+    except NetworkError as exc:
+        msg = _redact(str(exc))
+        _log.debug("AI request failed: %s", msg)
+        raise AIRequestError(msg) from exc
 
 _PROVIDERS_FILE = os.path.join(_APP_DATA_DIR, 'ai_providers.json')
 _PROVIDER_HEALTH_FILE = os.path.join(_APP_DATA_DIR, 'ai_provider_health.json')

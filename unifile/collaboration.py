@@ -8,14 +8,13 @@ import json
 import re
 import secrets
 import threading
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from unifile.config import load_json_safe, save_json_safe
+from unifile.network import NetworkError, NetworkHTTPError, request_json
 
 COLLAB_SCHEMA_VERSION = 1
 COLLAB_FILENAME = "collaboration.json"
@@ -347,19 +346,20 @@ class CollaborationClient:
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                raw = response.read().decode("utf-8")
-                result = json.loads(raw) if raw else {}
-        except urllib.error.HTTPError as exc:
-            raw = exc.read().decode("utf-8", errors="replace")
-            try:
-                detail = json.loads(raw)
-            except (TypeError, ValueError):
-                detail = {"error": raw or exc.reason}
-            raise CollaborationError(f"HTTP {exc.code}: {detail.get('error', detail)}") from exc
-        except (OSError, ValueError) as exc:
+            result = request_json(
+                url,
+                method=method,
+                data=body,
+                headers=headers,
+                timeout=self.timeout,
+                retries=1,
+                provider="collaboration",
+                allow_local=True,
+            )
+        except NetworkHTTPError as exc:
+            raise CollaborationError(f"HTTP {exc.status_code}: {exc}") from exc
+        except (NetworkError, ValueError) as exc:
             raise CollaborationError(f"collaboration request failed: {exc}") from exc
         if not isinstance(result, dict):
             raise CollaborationError("collaboration server returned invalid JSON")

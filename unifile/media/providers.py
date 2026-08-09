@@ -23,6 +23,7 @@ from unifile.credentials import (
     remove_legacy_file,
     set_credential,
 )
+from unifile.network import NetworkHTTPError, NetworkSession, redact_text, redact_url
 
 logger = logging.getLogger(__name__)
 
@@ -257,23 +258,8 @@ def media_provider_statuses() -> dict[str, dict[str, Any]]:
 
 
 def _get_session():
-    """Create a cached requests session (falls back to plain if requests-cache unavailable)."""
-    import requests
-    try:
-        import requests_cache
-        from platformdirs import user_cache_dir
-        cache_dir = user_cache_dir("unifile", ensure_exists=True)
-        session = requests_cache.CachedSession(
-            cache_name=os.path.join(cache_dir, "media_cache"),
-            expire_after=518_400,  # 6 days
-        )
-    except ImportError:
-        session = requests.Session()
-    from requests.adapters import HTTPAdapter
-    adapter = HTTPAdapter(max_retries=3)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
+    """Create the bounded, redacted media network session."""
+    return NetworkSession(provider="media", cache_ttl=518_400)
 
 
 _session = None
@@ -285,15 +271,17 @@ def _get_json(url: str, params: dict | None = None,
         _session = _get_session()
     try:
         resp = _session.get(url, params=params, headers=headers, timeout=10)
-        if resp.status_code in (401, 403):
-            raise ProviderAuthError(f"provider rejected credentials ({resp.status_code})")
         resp.raise_for_status()
         return resp.json()
+    except NetworkHTTPError as exc:
+        if exc.status_code in (401, 403):
+            raise ProviderAuthError(f"provider rejected credentials ({exc.status_code})") from exc
+        raise ProviderError(str(exc)) from exc
     except ProviderAuthError:
         raise
     except Exception as e:
-        logger.warning("API request failed: %s - %s", url, e)
-        raise ProviderError(str(e)) from e
+        logger.warning("API request failed: %s - %s", redact_url(url), redact_text(e))
+        raise ProviderError(redact_text(e)) from e
 
 
 def _post_json(url: str, payload: dict[str, Any],
@@ -304,15 +292,17 @@ def _post_json(url: str, payload: dict[str, Any],
         _session = _get_session()
     try:
         resp = _session.post(url, json=payload, headers=headers, timeout=10)
-        if resp.status_code in (401, 403):
-            raise ProviderAuthError(f"provider rejected credentials ({resp.status_code})")
         resp.raise_for_status()
         return resp.json()
+    except NetworkHTTPError as exc:
+        if exc.status_code in (401, 403):
+            raise ProviderAuthError(f"provider rejected credentials ({exc.status_code})") from exc
+        raise ProviderError(str(exc)) from exc
     except ProviderAuthError:
         raise
     except Exception as e:
-        logger.warning("API request failed: %s - %s", url, e)
-        raise ProviderError(str(e)) from e
+        logger.warning("API request failed: %s - %s", redact_url(url), redact_text(e))
+        raise ProviderError(redact_text(e)) from e
 
 
 # ---------------------------------------------------------------------------

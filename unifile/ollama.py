@@ -35,6 +35,7 @@ from unifile.naming import (
     _is_id_only_folder,
     _smart_name,
 )
+from unifile.network import request_bytes, request_json, stream_request
 
 _OLLAMA_SETTINGS_FILE = os.path.join(_APP_DATA_DIR, 'ollama_settings.json')
 
@@ -412,8 +413,6 @@ class ModelRouter:
 def ollama_test_connection(url: str = None, model: str = None) -> tuple:
     """Test Ollama connection and model availability.
     Returns (success: bool, message: str, models: list)."""
-    import urllib.error
-    import urllib.request
     s = load_ollama_settings()
     url = url or s['url']
     model = model or s['model']
@@ -421,11 +420,14 @@ def ollama_test_connection(url: str = None, model: str = None) -> tuple:
 
     # Test server is running
     try:
-        req = urllib.request.Request(f"{url}/api/tags", method='GET')
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
+        data = request_json(
+            f"{url}/api/tags",
+            timeout=5,
+            provider="ollama",
+            allow_local=True,
+        )
         models = [m['name'] for m in data.get('models', [])]
-    except (urllib.error.URLError, OSError, json.JSONDecodeError) as e:
+    except (OSError, json.JSONDecodeError) as e:
         _record_ollama_health(started, success=False, error=e, operation='availability')
         return (False, f"Cannot reach Ollama at {url}\n{e}", [])
 
@@ -460,8 +462,6 @@ def _ollama_generate(prompt: str, system: str = '', url: str = None,
     produce valid JSON matching that schema (structured outputs).
     Raises on connection/timeout errors.
     """
-    import urllib.error
-    import urllib.request
     started = time.perf_counter()
     s = load_ollama_settings()
     url = url or s['url']
@@ -491,13 +491,6 @@ def _ollama_generate(prompt: str, system: str = '', url: str = None,
     if format is not None:
         payload['format'] = format
 
-    data = json.dumps(payload).encode('utf-8')
-    req = urllib.request.Request(
-        f"{url}/api/chat",
-        data=data,
-        headers={'Content-Type': 'application/json'},
-        method='POST'
-    )
     # Use a thread to enforce a hard total deadline (urlopen timeout only covers
     # socket-level idle, not total transfer time — a slow model can block forever)
     import threading
@@ -505,8 +498,15 @@ def _ollama_generate(prompt: str, system: str = '', url: str = None,
 
     def _do_request():
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                _result_box[0] = json.loads(resp.read().decode())
+            _result_box[0] = request_json(
+                f"{url}/api/chat",
+                method="POST",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={'Content-Type': 'application/json'},
+                timeout=timeout,
+                provider="ollama",
+                allow_local=True,
+            )
         except Exception as exc:
             _result_box[1] = exc
 
@@ -1182,8 +1182,6 @@ def ollama_classify_batch(folders: list, url: str = None, model: str = None,
 
 def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = None) -> list:
     """Classify a single chunk (already bounded to a safe size)."""
-    import urllib.error
-    import urllib.request
     s = load_ollama_settings()
     url = url or s['url']
     model = model or s['model']
@@ -1230,20 +1228,20 @@ def _ollama_classify_batch_chunk(folders: list, url: str = None, model: str = No
     started = time.perf_counter()
 
     try:
-        data = json.dumps(payload).encode('utf-8')
-        req = urllib.request.Request(
-            f"{url}/api/chat",
-            data=data,
-            headers={'Content-Type': 'application/json'},
-            method='POST'
-        )
         import threading
         _result_box = [None, None]
 
         def _do_batch_request():
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    _result_box[0] = json.loads(resp.read().decode())
+                _result_box[0] = request_json(
+                    f"{url}/api/chat",
+                    method="POST",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={'Content-Type': 'application/json'},
+                    timeout=timeout,
+                    provider="ollama",
+                    allow_local=True,
+                )
             except Exception as exc:
                 _result_box[1] = exc
 
@@ -1438,13 +1436,11 @@ def _ollama_classify_vision_batch_chunk(images: list[dict], url: str = None,
 
 def _ollama_list_models(url: str = None) -> list:
     """Fetch list of locally installed Ollama models. Returns list of name strings."""
-    import urllib.error
-    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
-        req = urllib.request.Request(f"{url}/api/tags", method='GET')
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
+        data = request_json(
+            f"{url}/api/tags", timeout=5, provider="ollama", allow_local=True,
+        )
         return sorted(m['name'] for m in data.get('models', []))
     except Exception:
         return []
@@ -1517,26 +1513,21 @@ def _find_ollama_binary() -> str:
 
 def _is_ollama_server_running(url: str = None) -> bool:
     """Check if Ollama server is responding."""
-    import urllib.error
-    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
-        req = urllib.request.Request(f"{url}/api/tags", method='GET')
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            return resp.status == 200
+        request_json(f"{url}/api/tags", timeout=3, provider="ollama", allow_local=True)
+        return True
     except Exception:
         return False
 
 
 def _ollama_has_model(model: str, url: str = None) -> bool:
     """Check if a specific model is already pulled (exact match)."""
-    import urllib.error
-    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
-        req = urllib.request.Request(f"{url}/api/tags", method='GET')
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
+        data = request_json(
+            f"{url}/api/tags", timeout=5, provider="ollama", allow_local=True,
+        )
         models = [m['name'] for m in data.get('models', [])]
         # Exact match: "qwen3.5:9b" in models, or untagged "qwen3.5" matches "qwen3.5:latest"
         return model in models or any(m.startswith(model + ':') or m == model for m in models)
@@ -1546,13 +1537,11 @@ def _ollama_has_model(model: str, url: str = None) -> bool:
 
 def _ollama_list_models_detailed(url: str = None) -> list:
     """Fetch installed models with full metadata (name, size, modified_at, details)."""
-    import urllib.error
-    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
-        req = urllib.request.Request(f"{url}/api/tags", method='GET')
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
+        data = request_json(
+            f"{url}/api/tags", timeout=5, provider="ollama", allow_local=True,
+        )
         return data.get('models', [])
     except Exception:
         return []
@@ -1560,32 +1549,38 @@ def _ollama_list_models_detailed(url: str = None) -> list:
 
 def _ollama_delete_model(model: str, url: str = None) -> bool:
     """Delete a model via Ollama API. Returns True on success."""
-    import urllib.error
-    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
         body = json.dumps({"name": model}).encode()
-        req = urllib.request.Request(f"{url}/api/delete", data=body, method='DELETE',
-                                     headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.status == 200
-    except urllib.error.HTTPError as e:
-        return e.code == 200
+        request_bytes(
+            f"{url}/api/delete",
+            data=body,
+            method="DELETE",
+            headers={'Content-Type': 'application/json'},
+            timeout=30,
+            provider="ollama",
+            allow_local=True,
+        )
+        return True
     except Exception:
         return False
 
 
 def _ollama_pull_model_streaming(model: str, url: str = None, progress_cb=None, log_cb=None) -> bool:
     """Pull a model via Ollama API with streaming progress. Falls back to CLI on failure."""
-    import urllib.error
-    import urllib.request
     url = url or load_ollama_settings()['url']
     try:
         body = json.dumps({"name": model, "stream": True}).encode()
-        req = urllib.request.Request(f"{url}/api/pull", data=body, method='POST',
-                                     headers={'Content-Type': 'application/json'})
         # `with` guarantees connection cleanup even if we raise mid-stream.
-        with urllib.request.urlopen(req, timeout=600) as resp:
+        with stream_request(
+            f"{url}/api/pull",
+            data=body,
+            method="POST",
+            headers={'Content-Type': 'application/json'},
+            timeout=600,
+            provider="ollama",
+            allow_local=True,
+        ) as resp:
             buf = b''
             while True:
                 chunk = resp.read(1)

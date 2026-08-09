@@ -17,6 +17,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from unifile.network import request_bytes
+
 MANIFEST_FILENAME = "plugin.yaml"
 MANIFEST_SCHEMA_VERSION = 1
 MAX_MANIFEST_BYTES = 128 * 1024
@@ -323,14 +325,21 @@ def fetch_community_index(
         raise ManifestError("community index URL must use HTTPS")
     if len(url) > 2048:
         raise ManifestError("community index URL is too long")
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": "UniFile Plugin Index/1", "Accept": "application/json"},
-    )
-    open_url = opener or urllib.request.urlopen
     try:
-        with open_url(request, timeout=max(0.5, min(30.0, float(timeout)))) as response:
-            payload = response.read(MAX_INDEX_BYTES + 1)
+        bounded_timeout = max(0.5, min(30.0, float(timeout)))
+        headers = {"User-Agent": "UniFile Plugin Index/1", "Accept": "application/json"}
+        if opener is not None:
+            request = urllib.request.Request(url, headers=headers)
+            with opener(request, timeout=bounded_timeout) as response:
+                payload = response.read(MAX_INDEX_BYTES + 1)
+        else:
+            payload = request_bytes(
+                url,
+                headers=headers,
+                timeout=bounded_timeout,
+                max_bytes=MAX_INDEX_BYTES,
+                provider="plugin-index",
+            ).content
     except Exception as exc:
         raise ManifestError(f"could not fetch community index: {exc}") from exc
     if len(payload) > MAX_INDEX_BYTES:

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from unifile import __version__
 from unifile.config import _APP_DATA_DIR
+from unifile.network import NetworkSession
 
 MAX_COVER_BYTES = 10 * 1024 * 1024
 SUPPORTED_COVER_ART_EXTENSIONS = frozenset({
@@ -195,8 +196,7 @@ def download_cover_art(url: str, *, cache_dir: str | os.PathLike[str] | None = N
                 pass
 
     if session is None:
-        import requests
-        session = requests.Session()
+        session = NetworkSession(provider="cover-art", cache_ttl=518_400)
     response = session.get(
         source_url,
         headers={'User-Agent': f'UniFile/{__version__} (cover art)', 'Accept': 'image/*'},

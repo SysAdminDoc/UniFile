@@ -12,6 +12,8 @@ from typing import Any
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
 
+from unifile.network import request_bytes
+
 GITHUB_RELEASES_URL = "https://api.github.com/repos/SysAdminDoc/UniFile/releases/latest"
 DISABLE_UPDATE_CHECK_KEY = "disable_update_check"
 UPDATE_CHECK_TIMEOUT_SECONDS = 4.0
@@ -69,18 +71,26 @@ def fetch_latest_release(
     *,
     api_url: str = GITHUB_RELEASES_URL,
     timeout: float = UPDATE_CHECK_TIMEOUT_SECONDS,
-    opener: Callable[..., Any] = urllib.request.urlopen,
+    opener: Callable[..., Any] | None = None,
 ) -> UpdateInfo | None:
     """Fetch and parse the latest stable GitHub release without installing it."""
-    request = urllib.request.Request(
-        api_url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": f"UniFile/{current_version}",
-        },
-    )
-    with opener(request, timeout=timeout) as response:
-        raw = response.read(512 * 1024)
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"UniFile/{current_version}",
+    }
+    if opener is not None:
+        request = urllib.request.Request(api_url, headers=headers)
+        with opener(request, timeout=timeout) as response:
+            raw = response.read(512 * 1024)
+    else:
+        raw = request_bytes(
+            api_url,
+            headers=headers,
+            timeout=timeout,
+            max_bytes=512 * 1024,
+            allowed_hosts={"api.github.com"},
+            provider="update-check",
+        ).content
     return parse_release_payload(json.loads(raw.decode("utf-8")), current_version)
 
 

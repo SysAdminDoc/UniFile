@@ -68,6 +68,7 @@ from unifile.media.subtitles import (
     search_opensubtitles,
     write_chapter_sidecar,
 )
+from unifile.network import request_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -163,10 +164,13 @@ class _DetailWorker(QThread):
             # Fetch poster
             poster_url = getattr(detail, "poster_url", "") or getattr(detail, "cover_url", "")
             if self.fetch_poster and poster_url:
-                import requests
-                resp = requests.get(poster_url, timeout=10)
-                if resp.status_code == 200:
-                    self.poster_ready.emit(resp.content)
+                response = request_bytes(
+                    poster_url,
+                    timeout=10,
+                    max_bytes=10 * 1024 * 1024,
+                    provider="media-poster",
+                )
+                self.poster_ready.emit(response.content)
 
             # Fetch episodes for TV shows
             if self.fetch_episodes and isinstance(detail, EpisodeResult):

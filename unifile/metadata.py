@@ -41,6 +41,7 @@ from unifile.bootstrap import (  # noqa: E402  -- constants block above needs to
 )
 from unifile.config import _APP_DATA_DIR  # noqa: E402
 from unifile.credentials import get_credential, set_credential  # noqa: E402
+from unifile.network import request_json  # noqa: E402
 
 try:
     from PIL import Image as _PILImage
@@ -299,15 +300,16 @@ def _envato_api_classify(item_id: str) -> tuple:
         return _envato_cache[item_id]
 
     try:
-        import urllib.error
-        import urllib.request
         url = f"https://api.envato.com/v3/market/catalog/item?id={item_id}"
-        req = urllib.request.Request(url, headers={
-            'Authorization': f'Bearer {api_key}',
-            'User-Agent': 'UniFile/3.0'
-        })
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
+        data = request_json(
+            url,
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'User-Agent': 'UniFile/3.0',
+            },
+            timeout=5,
+            provider="envato",
+        )
 
         # Extract classification signals
         api_cat = data.get('classification', '')

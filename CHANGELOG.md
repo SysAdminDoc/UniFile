@@ -37,6 +37,10 @@ All notable changes to UniFile will be documented in this file.
 - Mobile and headless API exposure now defaults to loopback, rejects URL tokens,
   uses expiring header-only mobile sessions with rotation/revocation, redacts
   health paths, and enforces security headers and resource/rate limits.
+- Outbound HTTP, Ollama, media, metadata, plugin, update, book, collaboration,
+  installer, and SMTP calls now use one bounded policy with SSRF validation,
+  safe-method retries, response limits, redacted diagnostics, normalized errors,
+  and provider latency/failure counters.
 - SQLite connections now share one explicit WAL, timeout, foreign-key,
   synchronous, checkpoint, thread-ownership, and disposal policy; tag-library
   migrations/backups and local indexes use the same configured connection path.

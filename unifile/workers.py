@@ -70,6 +70,7 @@ from unifile.metadata import (
     MetadataExtractor,
     _extract_file_content,
 )
+from unifile.network import request_bytes
 from unifile.naming import (
     _ASSET_FOLDER_NAMES,
     _beautify_name,
@@ -1413,12 +1414,18 @@ class OllamaSetupWorker(QThread):
 
     def _install_windows(self) -> bool:
         """Download and silently install Ollama on Windows."""
-        import urllib.request
         installer_url = "https://ollama.com/download/OllamaSetup.exe"
         installer_path = os.path.join(os.environ.get('TEMP', '.'), 'OllamaSetup.exe')
         self.log.emit("  Downloading Ollama installer...")
         try:
-            urllib.request.urlretrieve(installer_url, installer_path)
+            installer = request_bytes(
+                installer_url,
+                timeout=120,
+                max_bytes=100 * 1024 * 1024,
+                allowed_hosts={"ollama.com"},
+                provider="ollama-installer",
+            )
+            Path(installer_path).write_bytes(installer.content)
         except Exception as e:
             self.log.emit(f"  Download failed: {e}")
             return False
@@ -2371,7 +2378,6 @@ class VisionRunnable(QRunnable):
         result = {}
         fname = os.path.basename(self.filepath)
         try:
-            import urllib.request
             # ── Vision description via Ollama ────────────────────────────────
             if self.vision_model and self.ollama_url:
                 try:
