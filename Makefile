@@ -3,7 +3,7 @@
 
 PY ?= python
 
-.PHONY: help install dev deps-check test cov lint typecheck docs audit format build build-smoke portable sdk release-audit benchmark-search clean run
+.PHONY: help install dev deps-check test cov lint typecheck docs audit format translations build build-smoke portable sdk release-audit benchmark-search clean run
 
 help:
 	@echo "UniFile developer targets:"
@@ -15,6 +15,7 @@ help:
 	@echo "  lint        Run ruff"
 	@echo "  typecheck   Run strict mypy for public SDK/core engine contracts"
 	@echo "  docs        Build the SDK API and tutorial docs"
+	@echo "  translations Extract the English Qt catalog, compile locale catalogs, and validate safety labels"
 	@echo "  audit       Run pip-audit against the local environment"
 	@echo "  release-audit  Audit current ZIP/MSI/SDK artifacts with SBOM, licenses, vulnerabilities, and hashes"
 	@echo "  benchmark-search  Measure bounded Tag Library search and cancellation on a disposable fixture"
@@ -50,6 +51,9 @@ typecheck:
 
 docs:
 	$(PY) -m sphinx -W --keep-going docs build/docs
+
+translations:
+	$(PY) tools/i18n_catalog.py all
 
 audit:
 	$(PY) -m pip_audit --local

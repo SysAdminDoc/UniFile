@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 
+from PyQt6.QtCore import QEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -29,6 +30,7 @@ from PyQt6.QtWidgets import (
 
 from unifile.config import _PC_SCAN_CACHE_DB, get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
+from unifile.i18n import switch_language, translate
 from unifile.sqlite_policy import connect_sqlite
 
 
@@ -41,7 +43,8 @@ def _section(title: str, description: str, actions: list[tuple[str, str, callabl
     lay.setContentsMargins(20, 18, 20, 18)
     lay.setSpacing(12)
 
-    lbl_title = QLabel(title)
+    lbl_title = QLabel(translate(title))
+    lbl_title.setProperty('_unifile_translation_source', title)
     lbl_title.setStyleSheet(
         f"color: {theme['fg_bright']}; font-size: 15px; font-weight: 700;"
     )
@@ -61,7 +64,8 @@ def _section(title: str, description: str, actions: list[tuple[str, str, callabl
     for label, hint, handler in actions:
         row = QHBoxLayout()
         row.setSpacing(12)
-        btn = QPushButton(label)
+        btn = QPushButton(translate(label))
+        btn.setProperty('_unifile_translation_source', label)
         btn.setProperty("class", "primary")
         btn.setMinimumWidth(220)
         btn.clicked.connect(handler)
@@ -86,7 +90,7 @@ class SettingsHubDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("UniFile Settings")
+        self.setWindowTitle(translate("UniFile Settings"))
         self.setMinimumSize(700, 520)
         self.setStyleSheet(get_active_stylesheet())
         self._parent = parent
@@ -101,7 +105,7 @@ class SettingsHubDialog(QDialog):
         lay.addWidget(build_dialog_header(
             _t,
             "Configuration",
-            "UniFile Settings",
+            translate("UniFile Settings"),
             "One entry point for every configurable surface in UniFile. "
             "Choose a category on the left, then launch the detailed dialog."
         ))
@@ -111,18 +115,41 @@ class SettingsHubDialog(QDialog):
         self.tabs.setDocumentMode(True)
         lay.addWidget(self.tabs, 1)
 
-        self.tabs.addTab(self._tab_ai(_t), "AI")
-        self.tabs.addTab(self._tab_cloud(_t), "Cloud Remotes")
-        self.tabs.addTab(self._tab_photo(_t), "Photo & Media")
-        self.tabs.addTab(self._tab_rules(_t), "Rules & Learning")
-        self.tabs.addTab(self._tab_system(_t), "System")
-        self.tabs.addTab(self._tab_tools(_t), "Tools")
+        self._tab_labels = (
+            "AI", "Cloud Remotes", "Photo & Media", "Rules & Learning", "System", "Tools",
+        )
+        self.tabs.addTab(self._tab_ai(_t), translate(self._tab_labels[0]))
+        self.tabs.addTab(self._tab_cloud(_t), translate(self._tab_labels[1]))
+        self.tabs.addTab(self._tab_photo(_t), translate(self._tab_labels[2]))
+        self.tabs.addTab(self._tab_rules(_t), translate(self._tab_labels[3]))
+        self.tabs.addTab(self._tab_system(_t), translate(self._tab_labels[4]))
+        self.tabs.addTab(self._tab_tools(_t), translate(self._tab_labels[5]))
 
         footer = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         footer.rejected.connect(self.reject)
         # Re-label for clarity
-        footer.button(QDialogButtonBox.StandardButton.Close).setText("Done")
+        done_button = footer.button(QDialogButtonBox.StandardButton.Close)
+        done_button.setText(translate("Done"))
+        done_button.setProperty('_unifile_translation_source', 'Done')
         lay.addWidget(footer)
+
+    def changeEvent(self, event: QEvent):
+        """Keep existing launcher controls in sync with a runtime locale switch."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange:
+            self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        """Refresh controls carrying an explicit source-string property."""
+        if not hasattr(self, 'tabs'):
+            return
+        for widget in self.findChildren((QLabel, QPushButton)):
+            source = widget.property('_unifile_translation_source')
+            if source:
+                widget.setText(translate(str(source)))
+        for index, source in enumerate(getattr(self, '_tab_labels', ())):
+            self.tabs.setTabText(index, translate(source))
+        self.setWindowTitle(translate("UniFile Settings"))
 
     # ── Tab builders ─────────────────────────────────────────────────────────
 
@@ -351,17 +378,26 @@ class SettingsHubDialog(QDialog):
     def _open_shell(self):            self._call('_open_shell_integration')
 
     def _open_language(self):
-        from unifile.i18n import get_available_languages, get_current_language, set_language
+        from unifile.i18n import get_available_languages, get_current_language
         langs = get_available_languages()
         current = get_current_language()
-        from PyQt6.QtWidgets import QInputDialog
         chosen, ok = QInputDialog.getItem(
-            self, "Language", "Select UI language (restart required):",
+            self, translate("Language"), translate("Select UI language"),
             langs, langs.index(current) if current in langs else 0, False)
         if ok and chosen != current:
-            set_language(chosen)
-            QMessageBox.information(self, "Language Changed",
-                                   f"Language set to '{chosen}'. Restart UniFile to apply.")
+            app = QApplication.instance()
+            if app is None or not switch_language(app, chosen):
+                QMessageBox.warning(
+                    self,
+                    translate("Language Changed"),
+                    f"Could not load the '{chosen}' translation catalog.",
+                )
+                return
+            self._retranslate_ui()
+            message = translate(
+                "Language set to '%1'. New dialogs use the selected locale; restart UniFile to refresh all open views."
+            ).replace('%1', chosen)
+            QMessageBox.information(self, translate("Language Changed"), message)
 
     def _open_layout_direction(self):
         from unifile.i18n import (
@@ -379,8 +415,8 @@ class SettingsHubDialog(QDialog):
         current = get_layout_direction_preference()
         chosen, ok = QInputDialog.getItem(
             self,
-            "Layout Direction",
-            "Choose how UniFile lays out text and controls:",
+            translate("Layout Direction"),
+            translate("Choose how UniFile lays out text and controls:"),
             [labels[value] for value in values],
             values.index(current),
             False,

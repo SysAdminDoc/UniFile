@@ -8,7 +8,7 @@ import sys
 import time
 from collections import Counter
 
-from PyQt6.QtCore import QSettings, QStringListModel, Qt, QThread, QTimer, QUrl, pyqtSignal
+from PyQt6.QtCore import QEvent, QSettings, QStringListModel, Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QDesktopServices,
@@ -102,6 +102,7 @@ from unifile.duplicates import ConflictResolver
 from unifile.engine import EventGrouper, RenameTemplateEngine, RuleEngine
 from unifile.files import _load_pc_categories, _save_pc_categories, default_pc_destination
 from unifile.filter_mixin import FilterMixin
+from unifile.i18n import translate
 from unifile.learning import get_learner
 from unifile.library_context import set_active_library_root
 from unifile.library_profiles import LibraryProfileStore
@@ -288,6 +289,18 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                         self._log(f"Failed to add files to tag library: {e}")
                     return
             self._log(f"Dropped {len(files)} file(s)")
+
+    def changeEvent(self, event: QEvent):
+        """Refresh the release-gated action labels after a locale change."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.LanguageChange and hasattr(self, 'btn_scan'):
+            self._refresh_workspace_copy()
+            self.btn_undo.setText(translate('Undo History'))
+            self.btn_replay.setText(translate('Repeat Last Scan'))
+            self.btn_export.setText(translate('Export CSV'))
+            self.btn_export_html.setText(translate('Export HTML'))
+            self.btn_watch.setText(translate('Watch Mode'))
+            self.lbl_workspace_guard.setText(translate('Protected Paths'))
 
     # ═══ SETTINGS PERSISTENCE ═════════════════════════════════════════════════
     def _load_settings(self):
@@ -1009,7 +1022,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         trust_row = QHBoxLayout()
         trust_row.setSpacing(8)
         self.lbl_workspace_trust = QLabel("Preview-first")
-        self.lbl_workspace_guard = QLabel("Protected paths")
+        self.lbl_workspace_guard = QLabel(translate("Protected Paths"))
         for badge in (self.lbl_workspace_trust, self.lbl_workspace_guard):
             badge.setStyleSheet(
                 f"background: {_t['bg_alt']}; color: {_t['fg']}; border: 1px solid {_t['border']}; "
@@ -1862,11 +1875,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         )
         if hasattr(self, 'lbl_action_hint'):
             self.lbl_action_hint.setText(copy["hint"])
-        self.btn_scan.setText(copy["scan"])
-        self.btn_apply.setText(copy["apply"])
-        self.btn_preview.setText(copy["preview"])
-        self.btn_open_dest.setText(copy["open"])
-        self.txt_search.setPlaceholderText(copy["search"])
+        self.btn_scan.setText(translate(copy["scan"]))
+        self.btn_apply.setText(translate(copy["apply"]))
+        self.btn_preview.setText(translate(copy["preview"]))
+        self.btn_open_dest.setText(translate(copy["open"]))
+        self.txt_search.setPlaceholderText(translate(copy["search"]))
         if hasattr(self, 'lbl_empty_actions'):
             self.lbl_empty_actions.setText(copy["next"])
 

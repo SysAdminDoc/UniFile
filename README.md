@@ -600,6 +600,7 @@ make cov         # pytest-cov gate: >=60% in classifier, engine, learning, and t
 make lint        # Ruff
 make typecheck   # strict mypy check for public SDK/core engine contracts
 make docs        # build SDK API and tutorial docs under build/docs
+make translations # extract en.ts, compile maintained .qm catalogs, and validate safety labels
 make audit       # pip-audit --local
 make release-audit  # artifact-scoped SBOM/license/vulnerability gate for current ZIP/MSI/SDK outputs
 make benchmark-search  # reproducible disposable-library search and cancellation benchmark
@@ -609,6 +610,16 @@ python tools/build_msi.py  # build the unsigned per-machine WiX MSI from dist/Un
 python tools/build_portable_zip.py  # build UniFile-portable-vX.Y.Z.zip
 make sdk  # build the PyQt-free unifile-sdk wheel under dist/sdk
 ```
+
+Translation contributors edit the maintained non-English `.ts` catalog under
+`unifile/translations/`, then run `make translations`. The command regenerates
+the English baseline with `pylupdate6`, compiles `.qm` files with `lrelease`,
+and fails on missing/unfinished critical actions, lost placeholders, missing
+plural forms, or suspiciously long labels. If Qt tools are not on `PATH`, set
+`PYLUPDATE6` and `LRELEASE` to their executable paths before running the
+command. The package-data and PyInstaller rules include both `.ts` and `.qm`
+files in release artifacts; the offscreen i18n tests also verify Spanish
+runtime switching, plural output, and RTL direction handling.
 
 The Windows MSI installs the frozen application under `Program Files`, creates
 a Start Menu shortcut, adds the install directory to the system `PATH`,
