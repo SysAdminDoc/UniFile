@@ -598,6 +598,7 @@ make lint        # Ruff
 make typecheck   # strict mypy check for public SDK/core engine contracts
 make docs        # build SDK API and tutorial docs under build/docs
 make audit       # pip-audit --local
+make release-audit  # artifact-scoped SBOM/license/vulnerability gate for current ZIP/MSI/SDK outputs
 make build       # clean PyInstaller build + frozen --version/classify/GUI smoke + SHA-256
 make build-smoke # rerun frozen smoke/checksum against an existing dist/UniFile/UniFile.exe
 python tools/build_msi.py  # build the unsigned per-machine WiX MSI from dist/UniFile

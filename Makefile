@@ -16,6 +16,7 @@ help:
 	@echo "  typecheck   Run strict mypy for public SDK/core engine contracts"
 	@echo "  docs        Build the SDK API and tutorial docs"
 	@echo "  audit       Run pip-audit against the local environment"
+	@echo "  release-audit  Audit current ZIP/MSI/SDK artifacts with SBOM, licenses, vulnerabilities, and hashes"
 	@echo "  format      Auto-fix ruff issues"
 	@echo "  build       Clean, build, smoke-test, and checksum the PyInstaller exe"
 	@echo "  build-smoke Smoke-test dist/UniFile/UniFile.exe and write SHA-256 sidecar"
