@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
 
 from unifile.color_extraction import COLOR_SWATCHES, parse_color_query
 from unifile.config import get_active_theme
-from unifile.tagging.library import TagLibrary
+from unifile.tagging.library import SearchCancelled, TagLibrary
 from unifile.tagging.models import TAG_COLORS
 from unifile.thumbnail_cache import load_thumbnail_pixmap
 from unifile.widgets import KeyboardTreeWidget
@@ -35,13 +35,15 @@ from unifile.widgets import KeyboardTreeWidget
 
 class _EntrySearchWorker(QThread):
     """Run tag library search off the GUI thread using its own Session."""
-    results_ready = pyqtSignal(str, list, list)  # (query, entries, archive_entries)
+    results_ready = pyqtSignal(int, str, list, list)  # (request_id, query, entries, archives)
+    error = pyqtSignal(int, str, str)  # (request_id, query, message)
 
-    def __init__(self, engine, library_dir, query, parent=None):
+    def __init__(self, engine, library_dir, query, request_id=0, parent=None):
         super().__init__(parent)
         self._engine = engine
         self._library_dir = library_dir
         self._query = query
+        self._request_id = request_id
         self._cancelled = False
 
     def cancel(self):
@@ -62,8 +64,16 @@ class _EntrySearchWorker(QThread):
                 entries = lib.search_entries(self._query)
             finally:
                 lib._session.close()
-        except Exception:
-            entries = []
+        except SearchCancelled:
+            return
+        except Exception as exc:
+            if not self._cancelled:
+                self.error.emit(
+                    self._request_id,
+                    self._query,
+                    f"{type(exc).__name__}: {exc}",
+                )
+            return
         archive_entries = []
         from unifile.color_extraction import parse_color_query
         is_color_query = parse_color_query(self._query) is not None
@@ -77,10 +87,18 @@ class _EntrySearchWorker(QThread):
             try:
                 from unifile.archive_indexer import search as search_archives
                 archive_entries = search_archives(self._query, limit=100)
-            except Exception:
-                archive_entries = []
+            except Exception as exc:
+                if not self._cancelled:
+                    self.error.emit(
+                        self._request_id,
+                        self._query,
+                        f"Archive search failed: {type(exc).__name__}: {exc}",
+                    )
+                return
         if not self._cancelled:
-            self.results_ready.emit(self._query, entries, archive_entries)
+            self.results_ready.emit(
+                self._request_id, self._query, entries, archive_entries
+            )
 
 
 class _ColorIndexWorker(QThread):
@@ -116,6 +134,7 @@ class TagLibraryPanel(QWidget):
         self._lib = TagLibrary()
         self._current_tag_id = None
         self._search_worker = None
+        self._search_generation = 0
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(300)
@@ -137,6 +156,7 @@ class TagLibraryPanel(QWidget):
         return result
 
     def close_library(self):
+        self._cancel_search()
         self._lib.close()
         self.btn_manage_roots.setEnabled(False)
         self.btn_index_colors.setEnabled(False)
@@ -1496,6 +1516,7 @@ class TagLibraryPanel(QWidget):
 
     def _cancel_search(self):
         self._search_timer.stop()
+        self._search_generation += 1
         if self._search_worker and self._search_worker.isRunning():
             self._search_worker.cancel()
             self._search_worker = None
@@ -1505,9 +1526,11 @@ class TagLibraryPanel(QWidget):
         if not query or not self._lib.is_open:
             return
         self._cancel_search()
+        request_id = self._search_generation
         self._search_worker = _EntrySearchWorker(
-            self._lib.engine, self._lib.library_dir, query)
+            self._lib.engine, self._lib.library_dir, query, request_id=request_id)
         self._search_worker.results_ready.connect(self._on_search_results)
+        self._search_worker.error.connect(self._on_search_error)
         self._search_worker.start()
 
     def _select_color_swatch(self, color_name: str) -> None:
@@ -1529,8 +1552,8 @@ class TagLibraryPanel(QWidget):
         for name, button in self._color_swatch_buttons.items():
             button.setChecked(name == selected)
 
-    def _on_search_results(self, query, entries, archive_entries=None):
-        if query != self._pending_search:
+    def _on_search_results(self, request_id, query, entries, archive_entries=None):
+        if request_id != self._search_generation or query != self._pending_search:
             return
         archive_entries = archive_entries or []
         self.tbl_entries.setRowCount(len(entries) + len(archive_entries))
@@ -1579,6 +1602,12 @@ class TagLibraryPanel(QWidget):
             if entries or archive_entries else
             "No matching files found"
         )
+
+    def _on_search_error(self, request_id, query, message):
+        if request_id != self._search_generation or query != self._pending_search:
+            return
+        self.tbl_entries.setRowCount(0)
+        self.lbl_selection_info.setText(f"Search failed: {message}")
 
     def _on_add_files(self):
         if not self._lib.is_open:

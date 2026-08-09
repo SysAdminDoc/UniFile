@@ -1,15 +1,23 @@
 """UniFile — Tag Library Manager (core API for tag operations)."""
+from __future__ import annotations
+
 import json
 import logging
 import os
+import re
+import sqlite3
+import time
 import uuid
 import zipfile
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime as dt
 from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import and_, delete, false, func, or_, select, text, true
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload
 
 # Sentinel for "not passed" (distinct from None, which means "clear the field")
@@ -43,10 +51,33 @@ from unifile.tagging.models import (  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-import re as _re
+_FTS5_SPECIAL = re.compile(r'[*():\-\^]')
+_FTS5_KEYWORDS = re.compile(r'\b(AND|OR|NOT|NEAR)\b')
+MAX_SEARCH_PAGE_SIZE = 1000
 
-_FTS5_SPECIAL = _re.compile(r'[*():\-\^]')
-_FTS5_KEYWORDS = _re.compile(r'\b(AND|OR|NOT|NEAR)\b')
+
+class SearchError(RuntimeError):
+    """Base class for deterministic, user-visible search failures."""
+
+
+class SearchIndexError(SearchError):
+    """The configured FTS/index path is unavailable or corrupt."""
+
+
+class SearchCancelled(SearchError):
+    """A search was interrupted by its caller."""
+
+
+@dataclass(frozen=True)
+class SearchPage:
+    """One bounded search page plus stable count and planner diagnostics."""
+
+    entries: list[Any]
+    total: int
+    offset: int
+    limit: int
+    index_mode: str
+    elapsed_ms: float
 
 
 def _sanitize_fts(query: str) -> str:
@@ -76,6 +107,7 @@ class TagLibrary:
         self._session: Session = cast(Session, None)
         self._folder: Folder = cast(Folder, None)
         self.last_field_error: str | None = None
+        self.last_search_diagnostic: dict[str, Any] = {}
 
     @property
     def is_open(self) -> bool:
@@ -1362,96 +1394,105 @@ class TagLibrary:
             statement.order_by(EntryColor.rank, Entry.filename).limit(limit)
         ).unique().scalars().all())
 
-    def search_entries(self, query: str, limit: int = 100) -> list[Entry]:
-        """Search entries with query language support.
+    def _search_index_exists(self) -> bool:
+        """Return whether the entry FTS table is available for this library."""
+        try:
+            return bool(self._session.execute(text(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'entries_fts'"
+            )).scalar())
+        except OperationalError as exc:
+            raise SearchIndexError("Unable to inspect the Tag Library search index") from exc
 
-        Supported syntax:
-            tag:TagName          — entries with a specific tag
-            -tag:TagName         — entries WITHOUT a tag (NOT)
-            ext:pdf              — entries with specific extension
-            field:key=value      — entries with a field matching value
-            special:untagged     — entries with no tags
-            special:tagged       — entries with at least one tag
-            rating:3             — entries with rating >= 3
-            inbox:true/false     — filter by inbox state
-            ns:namespace         — entries with at least one tag in namespace
-            group:name           — entries in the named group
-            color:blue           — entries with blue in their indexed palette
-            show me files with predominant blue tones — natural color search
-            tag:A AND tag:B      — boolean AND (intersection)
-            tag:A OR tag:B       — boolean OR (union)
-            plain text           — filename search (ilike)
-        """
+    @staticmethod
+    def _check_search_cancel(cancel) -> None:
+        if cancel and cancel():
+            raise SearchCancelled("Tag Library search cancelled")
+
+    @contextmanager
+    def _search_progress_handler(self, cancel):
+        """Interrupt SQLite work without touching the caller's Qt thread."""
+        if not cancel:
+            yield
+            return
+        self._check_search_cancel(cancel)
+        connection = self._session.connection()
+        raw = getattr(connection.connection, "driver_connection", connection.connection)
+        set_progress_handler = getattr(raw, "set_progress_handler", None)
+        if not callable(set_progress_handler):
+            yield
+            return
+        set_progress_handler(lambda: 1 if cancel() else 0, 1000)
+        try:
+            yield
+        finally:
+            set_progress_handler(None, 0)
+
+    def _filename_search_predicate(self, query: str):
+        if self._search_index_exists():
+            self.last_search_diagnostic["index_mode"] = "fts5"
+            fts_rows = (
+                select(text("rowid"))
+                .select_from(text("entries_fts"))
+                .where(text("entries_fts.filename MATCH :fts_query"))
+                .params(fts_query=_sanitize_fts(query))
+            )
+            return Entry.id.in_(fts_rows)
+        self.last_search_diagnostic["index_mode"] = "like-fallback"
+        self.last_search_diagnostic["fallback_reason"] = "entries_fts is unavailable"
+        escaped = _escape_like(query)
+        return Entry.filename.ilike(f"%{escaped}%", escape='\\')
+
+    def _entry_search_predicate(self, query: str):
+        """Build one SQL predicate; boolean branches never materialize IDs."""
         q = query.strip()
         if not q:
-            return self.get_all_entries(limit=limit)
+            return true()
 
-        # Boolean AND/OR
-        if ' AND ' in q:
-            parts = [p.strip() for p in q.split(' AND ')]
-            result_sets = [set(e.id for e in self.search_entries(p, limit=10000)) for p in parts]
-            if not result_sets:
-                return []
-            common_ids = result_sets[0]
-            for s in result_sets[1:]:
-                common_ids &= s
-            if not common_ids:
-                return []
-            return list(self._session.execute(
-                select(Entry).where(Entry.id.in_(common_ids))
-                .order_by(Entry.filename).limit(limit)
-            ).scalars().all())
+        and_parts = re.split(r"\s+AND\s+", q, flags=re.IGNORECASE)
+        if len(and_parts) > 1:
+            return and_(*(self._entry_search_predicate(part) for part in and_parts))
+        or_parts = re.split(r"\s+OR\s+", q, flags=re.IGNORECASE)
+        if len(or_parts) > 1:
+            return or_(*(self._entry_search_predicate(part) for part in or_parts))
+        if q.upper().startswith("NOT "):
+            return ~self._entry_search_predicate(q[4:])
 
-        if ' OR ' in q:
-            parts = [p.strip() for p in q.split(' OR ')]
-            all_ids: set[int] = set()
-            for p in parts:
-                all_ids.update(e.id for e in self.search_entries(p, limit=10000))
-            if not all_ids:
-                return []
-            return list(self._session.execute(
-                select(Entry).where(Entry.id.in_(all_ids))
-                .order_by(Entry.filename).limit(limit)
-            ).scalars().all())
-
-        # NOT tag — use SQL subquery instead of loading all entries into Python
         if q.startswith("-tag:"):
             tag_name = q[5:].strip().strip('"')
             tag = self.get_tag_by_name(tag_name)
             if not tag:
-                return self.get_all_entries(limit=limit)
+                return true()
             related_ids = self.get_tag_search_ids(tag.id)
-            tagged_subq = select(TagEntry.entry_id).where(TagEntry.tag_id.in_(related_ids))
-            return list(self._session.execute(
-                select(Entry).where(~Entry.id.in_(tagged_subq))
-                .order_by(Entry.filename).limit(limit)
-            ).scalars().all())
+            tagged_subquery = select(TagEntry.entry_id).where(
+                TagEntry.tag_id.in_(related_ids)
+            )
+            return ~Entry.id.in_(tagged_subquery)
 
-        # Tag search (with transitive inheritance)
         if q.startswith("tag:"):
             tag_name = q[4:].strip().strip('"')
             tag = self.get_tag_by_name(tag_name)
-            if tag:
-                return self.get_entries_by_tag_recursive(tag.id)[:limit]
-            return []
+            if not tag:
+                return false()
+            related_ids = self.get_tag_search_ids(tag.id)
+            return Entry.id.in_(select(TagEntry.entry_id).where(
+                TagEntry.tag_id.in_(related_ids)
+            ))
 
         from unifile.color_extraction import parse_color_query
 
         color_query = parse_color_query(q)
         if color_query:
             color_name, dominant_only = color_query
-            return self.search_color_entries(
-                color_name, limit=limit, dominant_only=dominant_only)
+            conditions = [EntryColor.color_name == color_name]
+            if dominant_only:
+                conditions.append(EntryColor.rank == 0)
+            return Entry.id.in_(select(EntryColor.entry_id).where(and_(*conditions)))
 
-        # Extension search
         if q.startswith("ext:"):
             ext = q[4:].strip().lower().lstrip('.')
-            return list(self._session.execute(
-                select(Entry).where(Entry.suffix == ext)
-                .order_by(Entry.filename).limit(limit)
-            ).scalars().all())
+            return Entry.suffix == ext
 
-        # Field search
         if q.startswith("field:"):
             field_query = q[6:].strip()
             if '=' in field_query:
@@ -1459,108 +1500,130 @@ class TagLibrary:
                 key = key.strip()
                 val = val.strip().strip('"')
                 escaped_val = _escape_like(val)
-                matching_ids = set(self._session.execute(
+                field_predicates = [
                     select(TextField.entry_id).where(
                         TextField.type_key == key,
                         TextField.value.ilike(f"%{escaped_val}%", escape='\\'),
-                    )
-                ).scalars().all())
-                matching_ids.update(self._session.execute(
+                    ),
                     select(DatetimeField.entry_id).where(
                         DatetimeField.type_key == key,
                         DatetimeField.value.ilike(f"%{escaped_val}%", escape='\\'),
-                    )
-                ).scalars().all())
-                boolean_value = val.casefold() in {"true", "yes", "1", "on"}
+                    ),
+                ]
                 if val.casefold() in {
                     "true", "false", "yes", "no", "1", "0", "on", "off",
                 }:
-                    matching_ids.update(self._session.execute(
-                        select(BooleanField.entry_id).where(
-                            BooleanField.type_key == key,
-                            BooleanField.value.is_(boolean_value),
-                        )
-                    ).scalars().all())
-                if not matching_ids:
-                    return []
-                return list(self._session.execute(
-                    select(Entry).where(Entry.id.in_(matching_ids))
-                    .order_by(Entry.filename).limit(limit)
-                ).scalars().all())
+                    boolean_value = val.casefold() in {"true", "yes", "1", "on"}
+                    field_predicates.append(select(BooleanField.entry_id).where(
+                        BooleanField.type_key == key,
+                        BooleanField.value.is_(boolean_value),
+                    ))
+                return or_(*(Entry.id.in_(predicate) for predicate in field_predicates))
 
-        # Special queries
         if q == "special:untagged":
-            return self.get_untagged_entries()[:limit]
+            return ~Entry.id.in_(select(TagEntry.entry_id))
         if q == "special:tagged":
-            subq = select(TagEntry.entry_id)
-            return list(self._session.execute(
-                select(Entry).where(Entry.id.in_(subq))
-                .order_by(Entry.filename).limit(limit)
-            ).scalars().all())
+            return Entry.id.in_(select(TagEntry.entry_id))
 
-        # Rating filter
         if q.startswith("rating:"):
             try:
-                min_r = int(q[7:].strip())
+                min_rating = int(q[7:].strip())
             except ValueError:
-                return []
-            return list(self._session.execute(
-                select(Entry).where(Entry.rating >= min_r)
-                .order_by(Entry.filename).limit(limit)
-            ).scalars().all())
+                return false()
+            return Entry.rating >= min_rating
 
-        # Inbox filter
         if q.startswith("inbox:"):
-            val = q[6:].strip().lower()
-            is_inbox = val == "true"
-            return list(self._session.execute(
-                select(Entry).where(Entry.is_inbox == is_inbox)
-                .order_by(Entry.filename).limit(limit)
-            ).scalars().all())
+            return Entry.is_inbox.is_(q[6:].strip().lower() == "true")
 
-        # Namespace filter
         if q.startswith("ns:"):
-            ns = q[3:].strip()
-            matching_ids = self._session.execute(
-                select(TagEntry.entry_id).join(Tag, Tag.id == TagEntry.tag_id)
-                .where(Tag.namespace == ns)
-            ).scalars().all()
-            return list(self._session.execute(
-                select(Entry).where(Entry.id.in_(matching_ids))
-                .order_by(Entry.filename).limit(limit)
-            ).scalars().all())
+            namespace = q[3:].strip().strip('"')
+            return Entry.id.in_(select(TagEntry.entry_id).join(
+                Tag, Tag.id == TagEntry.tag_id
+            ).where(Tag.namespace == namespace))
 
-        # Group filter
         if q.startswith("group:"):
-            group_name = q[6:].strip()
-            group = self._session.execute(
-                select(EntryGroup).where(
-                    func.lower(EntryGroup.name) == group_name.lower()
-                )
-            ).scalar_one_or_none()
-            if not group:
-                return []
-            return self.get_group_entries(group.id)[:limit]
+            group_name = q[6:].strip().strip('"')
+            group_id = self._session.execute(select(EntryGroup.id).where(
+                func.lower(EntryGroup.name) == group_name.lower()
+            )).scalar_one_or_none()
+            if group_id is None:
+                return false()
+            return Entry.id.in_(select(EntryGroupMember.entry_id).where(
+                EntryGroupMember.group_id == group_id
+            ))
 
-        # Default: filename search (FTS5 with ilike fallback)
+        return self._filename_search_predicate(q)
+
+    def search_entries_page(
+        self,
+        query: str,
+        limit: int = 100,
+        offset: int = 0,
+        *,
+        cancel=None,
+    ) -> SearchPage:
+        """Return one SQL-paginated page and deterministic planner diagnostics."""
+        bounded_limit = min(MAX_SEARCH_PAGE_SIZE, max(0, int(limit)))
+        bounded_offset = max(0, int(offset))
+        self.last_search_diagnostic = {
+            "query": query.strip(),
+            "index_mode": "btree",
+            "fallback_reason": "",
+        }
+        started = time.perf_counter()
+        self._check_search_cancel(cancel)
+        predicate = self._entry_search_predicate(query)
         try:
-            rows = self._session.execute(
-                text("SELECT rowid FROM entries_fts WHERE filename MATCH :q LIMIT :lim"),
-                {"q": _sanitize_fts(q), "lim": limit},
-            ).fetchall()
-            if rows:
-                ids = [r[0] for r in rows]
-                return list(self._session.execute(
-                    select(Entry).where(Entry.id.in_(ids))
-                    .order_by(Entry.filename).limit(limit)
-                ).scalars().all())
-        except Exception:
-            pass
-        escaped = _escape_like(q)
-        return list(self._session.execute(
-            select(Entry).where(Entry.filename.ilike(f"%{escaped}%", escape='\\'))
-            .order_by(Entry.filename).limit(limit)
-        ).scalars().all())
+            with self._search_progress_handler(cancel):
+                total = int(self._session.execute(
+                    select(func.count(Entry.id)).where(predicate)
+                ).scalar() or 0)
+                self._check_search_cancel(cancel)
+                entries = list(self._session.execute(
+                    select(Entry)
+                    .options(joinedload(Entry.tags))
+                    .where(predicate)
+                    .order_by(Entry.filename, Entry.id)
+                    .limit(bounded_limit)
+                    .offset(bounded_offset)
+                ).unique().scalars().all())
+        except SearchCancelled:
+            raise
+        except (OperationalError, sqlite3.OperationalError) as exc:
+            if cancel and "interrupt" in str(exc).lower():
+                raise SearchCancelled("Tag Library search cancelled") from exc
+            self.last_search_diagnostic["error"] = type(exc).__name__
+            raise SearchIndexError(
+                "Tag Library search failed; check the database and search indexes"
+            ) from exc
+        self.last_search_diagnostic["elapsed_ms"] = round(
+            (time.perf_counter() - started) * 1000.0, 2)
+        return SearchPage(
+            entries=entries,
+            total=total,
+            offset=bounded_offset,
+            limit=bounded_limit,
+            index_mode=self.last_search_diagnostic["index_mode"],
+            elapsed_ms=self.last_search_diagnostic["elapsed_ms"],
+        )
+
+    def search_entries(
+        self,
+        query: str,
+        limit: int = 100,
+        offset: int = 0,
+        *,
+        cancel=None,
+    ) -> list[Entry]:
+        """Search entries with SQL boolean composition and bounded pagination.
+
+        Supported syntax includes ``tag:``, ``-tag:``/``NOT``, ``ext:``,
+        ``field:``, ``special:``, ``rating:``, ``inbox:``, ``ns:``, ``group:``,
+        ``color:``, ``AND``, ``OR``, and plain filename text.
+        """
+        return self.search_entries_page(
+            query, limit=limit, offset=offset, cancel=cancel
+        ).entries
 
     # ── Tag Inheritance (transitive parent search) ──────────────────────────
 

@@ -222,13 +222,41 @@ def _migration_4(conn: Connection) -> None:
         _add_column_if_missing(conn, "value_type", "schema_json", "schema_json TEXT")
 
 
-TAG_DB_SCHEMA_VERSION = 4
+def _migration_5(conn: Connection) -> None:
+    """Add covering indexes used by bounded Tag Library search plans."""
+    indexes = (
+        ("entries", "CREATE INDEX IF NOT EXISTS ix_entries_filename ON entries(filename)"),
+        ("entries", "CREATE INDEX IF NOT EXISTS ix_entries_suffix_filename ON entries(suffix, filename)"),
+        ("entries", "CREATE INDEX IF NOT EXISTS ix_entries_rating_filename ON entries(rating, filename)"),
+        ("entries", "CREATE INDEX IF NOT EXISTS ix_entries_inbox_filename ON entries(is_inbox, filename)"),
+        ("entries", "CREATE INDEX IF NOT EXISTS ix_entries_modified_filename "
+         "ON entries(date_modified, filename)"),
+        ("tags", "CREATE INDEX IF NOT EXISTS ix_tags_namespace_name ON tags(namespace, name)"),
+        ("tag_entries", "CREATE INDEX IF NOT EXISTS ix_tag_entries_entry_tag ON tag_entries(entry_id, tag_id)"),
+        ("entry_group_members", "CREATE INDEX IF NOT EXISTS ix_group_members_entry_group "
+         "ON entry_group_members(entry_id, group_id)"),
+        ("text_fields", "CREATE INDEX IF NOT EXISTS ix_text_fields_key_value_entry "
+         "ON text_fields(type_key, value, entry_id)"),
+        ("datetime_fields", "CREATE INDEX IF NOT EXISTS ix_datetime_fields_key_value_entry "
+         "ON datetime_fields(type_key, value, entry_id)"),
+        ("boolean_fields", "CREATE INDEX IF NOT EXISTS ix_boolean_fields_key_value_entry "
+         "ON boolean_fields(type_key, value, entry_id)"),
+        ("entry_colors", "CREATE INDEX IF NOT EXISTS ix_entry_colors_name_rank_entry "
+         "ON entry_colors(color_name, rank, entry_id)"),
+    )
+    for table, statement in indexes:
+        if _table_exists(conn, table):
+            conn.execute(text(statement))
+
+
+TAG_DB_SCHEMA_VERSION = 5
 
 MIGRATIONS = (
     Migration(1, "legacy tag and entry metadata columns", _migration_1),
     Migration(2, "FTS5 search indexes for tags and entries", _migration_2),
     Migration(3, "normalized image palette color index", _migration_3),
     Migration(4, "custom field schema validation rules", _migration_4),
+    Migration(5, "bounded search planner indexes", _migration_5),
 )
 
 
@@ -324,6 +352,10 @@ def make_tables(engine: Engine) -> None:
     if existing_db:
         migrate_db(engine, create_backup=True)
     Base.metadata.create_all(engine)
+    with engine.begin() as conn:
+        # Legacy databases may have reached v5 before their missing ORM tables
+        # were created.  Re-running this idempotent pass completes those indexes.
+        _migration_5(conn)
     if not existing_db:
         migrate_db(engine, create_backup=False)
     with engine.connect() as conn:

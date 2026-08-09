@@ -21,6 +21,7 @@ import time
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import Counter
+from contextlib import redirect_stdout
 from functools import lru_cache
 from importlib import metadata as importlib_metadata
 
@@ -281,8 +282,11 @@ except ImportError:
     HAS_CV2 = False
 
 try:
-    import face_recognition as _face_recognition
-    import numpy as _np
+    # face_recognition prints a missing-model installation hint to stdout
+    # before raising SystemExit.  Keep headless JSON stdout machine-readable.
+    with redirect_stdout(io.StringIO()):
+        import face_recognition as _face_recognition
+        import numpy as _np
     HAS_FACE_RECOGNITION = True
 except (ImportError, SystemExit):
     # face_recognition calls quit() (SystemExit) when face_recognition_models is not installed

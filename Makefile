@@ -3,7 +3,7 @@
 
 PY ?= python
 
-.PHONY: help install dev deps-check test cov lint typecheck docs audit format build build-smoke portable sdk release-audit clean run
+.PHONY: help install dev deps-check test cov lint typecheck docs audit format build build-smoke portable sdk release-audit benchmark-search clean run
 
 help:
 	@echo "UniFile developer targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  docs        Build the SDK API and tutorial docs"
 	@echo "  audit       Run pip-audit against the local environment"
 	@echo "  release-audit  Audit current ZIP/MSI/SDK artifacts with SBOM, licenses, vulnerabilities, and hashes"
+	@echo "  benchmark-search  Measure bounded Tag Library search and cancellation on a disposable fixture"
 	@echo "  format      Auto-fix ruff issues"
 	@echo "  build       Clean, build, smoke-test, and checksum the PyInstaller exe"
 	@echo "  build-smoke Smoke-test dist/UniFile/UniFile.exe and write SHA-256 sidecar"
@@ -72,6 +73,9 @@ sdk:
 
 release-audit:
 	$(PY) tools/release_audit.py
+
+benchmark-search:
+	$(PY) tools/benchmark_search.py
 
 run:
 	$(PY) run.py

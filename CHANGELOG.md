@@ -44,6 +44,11 @@ All notable changes to UniFile will be documented in this file.
 - SQLite connections now share one explicit WAL, timeout, foreign-key,
   synchronous, checkpoint, thread-ownership, and disposal policy; tag-library
   migrations/backups and local indexes use the same configured connection path.
+- Tag Library search now composes AND/OR/NOT predicates in SQL, uses explicit
+  reverse-junction/field/metadata indexes, paginates with stable totals, reports
+  FTS fallback/index errors, and cancels SQLite work without stale Qt results;
+  `make benchmark-search` provides a reproducible 10,000-entry latency/memory
+  and cancellation report.
 
 ### Added
 - Shared JSON action-plan validation and transactional apply across natural-language
