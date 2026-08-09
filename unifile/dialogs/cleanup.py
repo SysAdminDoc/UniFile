@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 
@@ -74,6 +75,7 @@ class CleanupToolsDialog(QDialog):
         self._results = []
         self._worker = None
         self._build_ui()
+        ensure_accessible_metadata(self, "Cleanup Tools")
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -114,14 +116,14 @@ class CleanupToolsDialog(QDialog):
         btn_browse.clicked.connect(lambda: self._browse(self.txt_empty_path))
         row.addWidget(btn_browse)
         vb.addLayout(row)
-        opts = QHBoxLayout()
+        opts = QVBoxLayout()
+        opts.setSpacing(6)
         self.chk_empty_hidden = QCheckBox("Ignore hidden folders")
         self.chk_empty_hidden.setChecked(True)
         opts.addWidget(self.chk_empty_hidden)
         self.chk_empty_system = QCheckBox("Ignore system folders (.git, node_modules, etc)")
         self.chk_empty_system.setChecked(True)
         opts.addWidget(self.chk_empty_system)
-        opts.addStretch()
         vb.addLayout(opts)
         self.tabs.addTab(tab_empty, "Empty Folders")
 
@@ -269,7 +271,8 @@ class CleanupToolsDialog(QDialog):
         btn_sweep_browse.clicked.connect(lambda: self._browse(self.txt_sweep_path))
         fb8.addWidget(btn_sweep_browse)
         vb8.addLayout(fb8)
-        sweep_opts = QHBoxLayout()
+        sweep_opts = QVBoxLayout()
+        sweep_opts.setSpacing(6)
         self.chk_sweep_hidden = QCheckBox("Ignore hidden folders")
         self.chk_sweep_hidden.setChecked(True)
         sweep_opts.addWidget(self.chk_sweep_hidden)
@@ -278,7 +281,6 @@ class CleanupToolsDialog(QDialog):
         )
         self.chk_sweep_system.setChecked(True)
         sweep_opts.addWidget(self.chk_sweep_system)
-        sweep_opts.addStretch()
         vb8.addLayout(sweep_opts)
         self.tabs.addTab(tab_sweep, "Sweep")
 
@@ -539,6 +541,7 @@ class CleanupPanel(QWidget):
         self._results = []
         self._worker = None
         self._build_ui()
+        ensure_accessible_metadata(self, "Cleanup")
         if initial_tab > 0:
             self.tabs.setCurrentIndex(initial_tab)
 
@@ -585,14 +588,14 @@ class CleanupPanel(QWidget):
         btn_browse.clicked.connect(lambda: self._browse(self.txt_empty_path))
         row.addWidget(btn_browse)
         vb.addLayout(row)
-        opts = QHBoxLayout()
+        opts = QVBoxLayout()
+        opts.setSpacing(6)
         self.chk_empty_hidden = QCheckBox("Ignore hidden folders")
         self.chk_empty_hidden.setChecked(True)
         opts.addWidget(self.chk_empty_hidden)
         self.chk_empty_system = QCheckBox("Ignore system folders (.git, node_modules, etc)")
         self.chk_empty_system.setChecked(True)
         opts.addWidget(self.chk_empty_system)
-        opts.addStretch()
         vb.addLayout(opts)
         self.tabs.addTab(tab_empty, "Empty Folders")
 
@@ -741,7 +744,8 @@ class CleanupPanel(QWidget):
         btn_sweep_browse.clicked.connect(lambda: self._browse(self.txt_sweep_path))
         fb8.addWidget(btn_sweep_browse)
         vb8.addLayout(fb8)
-        sweep_opts = QHBoxLayout()
+        sweep_opts = QVBoxLayout()
+        sweep_opts.setSpacing(6)
         self.chk_sweep_hidden = QCheckBox("Ignore hidden folders")
         self.chk_sweep_hidden.setChecked(True)
         sweep_opts.addWidget(self.chk_sweep_hidden)
@@ -750,7 +754,6 @@ class CleanupPanel(QWidget):
         )
         self.chk_sweep_system.setChecked(True)
         sweep_opts.addWidget(self.chk_sweep_system)
-        sweep_opts.addStretch()
         vb8.addLayout(sweep_opts)
         self.tabs.addTab(tab_sweep, "Sweep")
 

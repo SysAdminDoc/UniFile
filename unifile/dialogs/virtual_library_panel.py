@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.config import get_active_theme
 from unifile.virtual_library import VirtualLibrary
 from unifile.widgets import KeyboardTreeWidget
@@ -51,6 +52,7 @@ class VirtualLibraryPanel(QWidget):
         super().__init__(parent)
         self._lib = VirtualLibrary()
         self._build_ui()
+        ensure_accessible_metadata(self, "Virtual Library")
 
     def _build_ui(self):
         layout = QVBoxLayout(self)

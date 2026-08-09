@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.config import (
     THEMES,
     get_active_stylesheet,
@@ -239,6 +240,7 @@ class ThemePickerDialog(QDialog):
         self._card_status = {}
         self.setStyleSheet(get_active_stylesheet())
         self._build_ui()
+        ensure_accessible_metadata(self, "Theme Picker")
 
     def _build_ui(self):
         lay = QVBoxLayout(self)

@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.saved_searches import (
@@ -78,6 +79,7 @@ class SavedSearchesDialog(QDialog):
         self.setStyleSheet(get_active_stylesheet())
         self._build_ui()
         self._populate()
+        ensure_accessible_metadata(self, "Saved Searches")
 
     # ── UI ────────────────────────────────────────────────────────────────────
 

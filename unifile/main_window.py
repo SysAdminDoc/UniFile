@@ -54,6 +54,7 @@ from PyQt6.QtWidgets import (
 )
 
 from unifile import __version__
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.apply_mixin import ApplyMixin
 from unifile.cache import (
     _load_undo_stack,
@@ -230,6 +231,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.setAcceptDrops(True)
 
         self._build_ui()
+        ensure_accessible_metadata(self, "UniFile")
         self._load_settings()
         self._setup_voice_shortcut()
         self._setup_shortcuts()
@@ -563,7 +565,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.cmb_library.setStyleSheet(
             f"QComboBox {{ background: {_t['sidebar_profile_bg']}; color: {_t['sidebar_profile_fg']}; "
             f"border: 1px solid {_t['sidebar_profile_border']}; border-radius: 4px; "
-            "padding: 5px 7px; font-size: 10px; font-weight: bold; }}"
+            "padding: 5px 7px; font-size: 10px; font-weight: bold; }"
             f"QComboBox:hover {{ border-color: {_t['sidebar_profile_fg']}; }}"
             f"QComboBox QAbstractItemView {{ background: {_t['sidebar_profile_bg']}; color: {_t['fg']}; "
             f"selection-background-color: {_t['selection']}; }}"
@@ -659,7 +661,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.cmb_archive_mode.setStyleSheet(
             f"QComboBox {{ background: {_t['sidebar_profile_bg']}; color: {_t['sidebar_profile_fg']}; "
             f"border: 1px solid {_t['sidebar_profile_border']}; border-radius: 4px; "
-            "padding: 5px 8px; font-size: 10px; }}"
+            "padding: 5px 8px; font-size: 10px; }"
         )
         self.cmb_archive_mode.currentIndexChanged.connect(self._on_archive_mode_changed)
         self._set_archive_mode_combo(get_archive_mode())
@@ -699,7 +701,13 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             section.set_collapsed(collapsed.get(key, False))
             section.collapse_changed.connect(self._on_sidebar_section_collapsed)
         self._sidebar_sections_host.order_changed.connect(self._on_sidebar_order_changed)
-        sb_lay.insertWidget(1, self._sidebar_sections_host, 1)
+        self._sidebar_scroll = QScrollArea()
+        self._sidebar_scroll.setObjectName("sidebar_scroll")
+        self._sidebar_scroll.setWidgetResizable(True)
+        self._sidebar_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._sidebar_scroll.setWidget(self._sidebar_sections_host)
+        sb_lay.insertWidget(1, self._sidebar_scroll, 1)
         self._sidebar_section_headers = [section.header for section in sections.values()]
         self._nav_section_labels = [lbl_archive_mode]
 
@@ -830,8 +838,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         action_meta.addWidget(self.lbl_action_hint, 1)
         action_wrap.addLayout(action_meta)
 
-        ab_lay = QHBoxLayout()
-        ab_lay.setSpacing(10)
+        ab_lay = QVBoxLayout()
+        ab_lay.setSpacing(6)
+        primary_actions = QHBoxLayout()
+        primary_actions.setSpacing(10)
 
         self.btn_scan = QPushButton("Scan")
         self.btn_scan.setProperty("class", "primary")
@@ -840,7 +850,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_scan.clicked.connect(self._on_scan)
         self.btn_scan.setAccessibleName("Scan")
         self.btn_scan.setAccessibleDescription("Analyse the source folder and generate an organisation plan")
-        ab_lay.addWidget(self.btn_scan)
+        primary_actions.addWidget(self.btn_scan)
 
         self.btn_apply = QPushButton("Apply Changes")
         self.btn_apply.setProperty("class", "apply")
@@ -849,7 +859,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_apply.clicked.connect(self._on_apply)
         self.btn_apply.setAccessibleName("Apply Changes")
         self.btn_apply.setAccessibleDescription("Execute the checked items in the results table")
-        ab_lay.addWidget(self.btn_apply)
+        primary_actions.addWidget(self.btn_apply)
 
         self.btn_preview = QPushButton("Preview Plan")
         self.btn_preview.setFixedHeight(38)
@@ -857,7 +867,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_preview.setAccessibleDescription("Review planned file changes before applying them")
         self.btn_preview.clicked.connect(self._show_preview)
         self.btn_preview.setEnabled(False)
-        ab_lay.addWidget(self.btn_preview)
+        primary_actions.addWidget(self.btn_preview)
 
         self.btn_undo = QPushButton("Undo History")
         self.btn_undo.setFixedHeight(38)
@@ -865,11 +875,11 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_undo.setAccessibleDescription("Review and reverse previous file operations")
         self.btn_undo.clicked.connect(self._show_undo_timeline)
         self.btn_undo.setEnabled(bool(load_undo_log()))
-        ab_lay.addWidget(self.btn_undo)
+        primary_actions.addWidget(self.btn_undo)
 
         sep_ab = QFrame(); sep_ab.setFrameShape(QFrame.Shape.VLine)
         sep_ab.setStyleSheet(f"QFrame{{background-color:{_t['btn_bg']};}}"); sep_ab.setFixedHeight(22)
-        ab_lay.addWidget(sep_ab)
+        primary_actions.addWidget(sep_ab)
 
         self.btn_replay = QPushButton("Repeat Last Scan")
         self.btn_replay.setFixedHeight(32)
@@ -879,7 +889,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_replay.setStyleSheet(_SEC_BTN)
         self.btn_replay.setEnabled(os.path.isfile(_LAST_CONFIG_FILE))
         self.btn_replay.clicked.connect(self._replay_last_config)
-        ab_lay.addWidget(self.btn_replay)
+        secondary_actions = QHBoxLayout()
+        secondary_actions.setSpacing(10)
+        secondary_actions.addWidget(self.btn_replay)
 
         self.btn_export = QPushButton("Export CSV")
         self.btn_export.setFixedHeight(32); self.btn_export.setEnabled(False)
@@ -888,7 +900,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_export.setToolTip("Export the classification plan as CSV")
         self.btn_export.setStyleSheet(_SEC_BTN)
         self.btn_export.clicked.connect(self._export_plan)
-        ab_lay.addWidget(self.btn_export)
+        secondary_actions.addWidget(self.btn_export)
 
         self.btn_export_html = QPushButton("Export HTML")
         self.btn_export_html.setFixedHeight(32); self.btn_export_html.setEnabled(False)
@@ -897,7 +909,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_export_html.setToolTip("Export scan results as a styled HTML report")
         self.btn_export_html.setStyleSheet(_SEC_BTN)
         self.btn_export_html.clicked.connect(self._export_html)
-        ab_lay.addWidget(self.btn_export_html)
+        secondary_actions.addWidget(self.btn_export_html)
 
         self.btn_open_dest = QPushButton("Open Folder")
         self.btn_open_dest.setFixedHeight(32)
@@ -906,9 +918,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_open_dest.setToolTip("Open the current destination folder in Explorer")
         self.btn_open_dest.setStyleSheet(_SEC_BTN)
         self.btn_open_dest.clicked.connect(self._open_destination)
-        ab_lay.addWidget(self.btn_open_dest)
+        secondary_actions.addWidget(self.btn_open_dest)
 
-        ab_lay.addStretch()
+        secondary_actions.addStretch()
 
         # Watch Mode toggle (right side of action bar)
         self.btn_watch = QPushButton("Watch Mode")
@@ -919,7 +931,9 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self.btn_watch.setToolTip("Auto-organize watched folders")
         self.btn_watch.setStyleSheet(_TOGGLE_BTN)
         self.btn_watch.clicked.connect(self._toggle_watch_mode)
-        ab_lay.addWidget(self.btn_watch)
+        secondary_actions.addWidget(self.btn_watch)
+        ab_lay.addLayout(primary_actions)
+        ab_lay.addLayout(secondary_actions)
         action_wrap.addLayout(ab_lay)
 
         # ══════════════════════════════════════════════════════════════

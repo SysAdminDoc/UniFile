@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.thumbnail_cache import load_thumbnail_pixmap
@@ -356,6 +357,7 @@ class DuplicateFinderDialog(QDialog):
         self._groups = {}  # group_id -> [paths]
         self._worker = None
         self._build_ui()
+        ensure_accessible_metadata(self, "Duplicate Finder")
 
     def _build_ui(self):
         _t = get_active_theme()
@@ -388,8 +390,8 @@ class DuplicateFinderDialog(QDialog):
         lay.addLayout(row1)
 
         # ── Options row ───────────────────────────────────────────────────
-        opts = QHBoxLayout()
-        opts.setSpacing(16)
+        opts = QVBoxLayout()
+        opts.setSpacing(8)
         self.chk_perceptual = QCheckBox("Similar images (perceptual hash)")
         self.chk_perceptual.setChecked(True)
         self.chk_perceptual.setToolTip("Find images that look the same even if resized, "
@@ -839,6 +841,7 @@ class DuplicatePanel(QWidget):
         self._groups = {}
         self._worker = None
         self._build_ui()
+        ensure_accessible_metadata(self, "Duplicate Finder")
 
     def _build_ui(self):
         _t = get_active_theme()
@@ -873,8 +876,8 @@ class DuplicatePanel(QWidget):
         lay.addLayout(row1)
 
         # ── Options row ───────────────────────────────────────────────────
-        opts = QHBoxLayout()
-        opts.setSpacing(16)
+        opts = QVBoxLayout()
+        opts.setSpacing(8)
         self.chk_perceptual = QCheckBox("Similar images (perceptual hash)")
         self.chk_perceptual.setChecked(True)
         self.chk_perceptual.setToolTip("Find images that look the same even if resized, "
@@ -907,7 +910,10 @@ class DuplicatePanel(QWidget):
             "model below; no model is downloaded automatically."
         )
         opts.addWidget(self.chk_semantic)
-        opts.addWidget(QLabel("Threshold:"))
+
+        option_values = QHBoxLayout()
+        option_values.setSpacing(10)
+        option_values.addWidget(QLabel("Threshold:"))
         from unifile.clip_duplicates import load_clip_settings
         clip_settings = load_clip_settings()
         self.spn_semantic_threshold = QDoubleSpinBox()
@@ -919,15 +925,16 @@ class DuplicatePanel(QWidget):
         self.spn_semantic_threshold.setToolTip(
             "Cosine similarity required for a semantic duplicate; higher values are stricter."
         )
-        opts.addWidget(self.spn_semantic_threshold)
+        option_values.addWidget(self.spn_semantic_threshold)
 
-        opts.addWidget(QLabel("Min size:"))
+        option_values.addWidget(QLabel("Min size:"))
         self.spn_min = QComboBox()
         self.spn_min.addItems(["No minimum", "1 KB", "64 KB", "1 MB", "10 MB", "100 MB"])
         self.spn_min.setCurrentIndex(1)
         self.spn_min.setFixedWidth(110)
-        opts.addWidget(self.spn_min)
-        opts.addStretch()
+        option_values.addWidget(self.spn_min)
+        option_values.addStretch()
+        opts.addLayout(option_values)
         lay.addLayout(opts)
 
         semantic_model_row = QHBoxLayout()

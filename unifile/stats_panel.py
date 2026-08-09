@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.config import DARK_STYLE, get_active_stylesheet, get_active_theme  # noqa: F401
 
 # ── Stats worker ───────────────────────────────────────────────────────────────
@@ -312,6 +313,7 @@ class StatsPanel(QWidget):
         self._worker: _StatsWorker | None = None
         self.setStyleSheet(get_active_stylesheet())
         self._build_ui()
+        ensure_accessible_metadata(self, "Statistics")
 
     def set_library(self, lib):
         self._library = lib

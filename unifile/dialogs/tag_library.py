@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -25,6 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.color_extraction import COLOR_SWATCHES, parse_color_query
 from unifile.config import get_active_theme
 from unifile.tagging.library import SearchCancelled, TagLibrary
@@ -141,6 +143,7 @@ class TagLibraryPanel(QWidget):
         self._search_timer.timeout.connect(self._run_entry_search)
         self._pending_search = ''
         self._build_ui()
+        ensure_accessible_metadata(self, "Tag Library")
 
     @property
     def library(self) -> TagLibrary:
@@ -175,9 +178,9 @@ class TagLibraryPanel(QWidget):
         # ── Header ────────────────────────────────────────────────────────
         self.header = QFrame()
         self.header.setProperty("class", "card")
-        h_lay = QHBoxLayout(self.header)
+        h_lay = QVBoxLayout(self.header)
         h_lay.setContentsMargins(18, 16, 18, 16)
-        h_lay.setSpacing(16)
+        h_lay.setSpacing(10)
 
         header_copy = QVBoxLayout()
         header_copy.setSpacing(4)
@@ -190,17 +193,22 @@ class TagLibraryPanel(QWidget):
         )
         self.lbl_header_subtitle.setWordWrap(True)
         header_copy.addWidget(self.lbl_header_subtitle)
-        h_lay.addLayout(header_copy)
-        h_lay.addStretch()
-
+        top_row = QHBoxLayout()
+        top_row.setSpacing(16)
+        top_row.addLayout(header_copy, 1)
         self.lbl_stats = QLabel("")
         self.lbl_stats.setMinimumWidth(260)
         self.lbl_stats.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        h_lay.addWidget(self.lbl_stats)
+        top_row.addWidget(self.lbl_stats)
+        h_lay.addLayout(top_row)
+
+        action_grid = QGridLayout()
+        action_grid.setHorizontalSpacing(8)
+        action_grid.setVerticalSpacing(6)
         self.btn_open_library = QPushButton("Open Library Folder")
         self.btn_open_library.setProperty("class", "primary")
         self.btn_open_library.clicked.connect(self._on_open_library)
-        h_lay.addWidget(self.btn_open_library)
+        action_grid.addWidget(self.btn_open_library, 0, 0)
         self.btn_manage_roots = QPushButton("Manage Roots")
         self.btn_manage_roots.setProperty("class", "toolbar")
         self.btn_manage_roots.setAccessibleName("Manage library roots")
@@ -208,7 +216,7 @@ class TagLibraryPanel(QWidget):
             "View root status and relink secondary library roots")
         self.btn_manage_roots.setEnabled(False)
         self.btn_manage_roots.clicked.connect(self._open_roots)
-        h_lay.addWidget(self.btn_manage_roots)
+        action_grid.addWidget(self.btn_manage_roots, 0, 1)
         self.btn_index_colors = QPushButton("Index Colors")
         self.btn_index_colors.setProperty("class", "toolbar")
         self.btn_index_colors.setAccessibleName("Index image colors")
@@ -218,7 +226,7 @@ class TagLibraryPanel(QWidget):
             "Rebuild the color index for existing image entries")
         self.btn_index_colors.setEnabled(False)
         self.btn_index_colors.clicked.connect(self._on_index_colors)
-        h_lay.addWidget(self.btn_index_colors)
+        action_grid.addWidget(self.btn_index_colors, 1, 0)
         self.btn_field_schemas = QPushButton("Field Schemas")
         self.btn_field_schemas.setProperty("class", "toolbar")
         self.btn_field_schemas.setAccessibleName("Manage field schemas")
@@ -226,7 +234,9 @@ class TagLibraryPanel(QWidget):
             "Define and remove custom validated fields for this library")
         self.btn_field_schemas.setEnabled(False)
         self.btn_field_schemas.clicked.connect(self._open_field_schemas)
-        h_lay.addWidget(self.btn_field_schemas)
+        action_grid.addWidget(self.btn_field_schemas, 1, 1)
+        action_grid.setColumnStretch(2, 1)
+        h_lay.addLayout(action_grid)
 
         lay.addWidget(self.header)
 
@@ -264,19 +274,20 @@ class TagLibraryPanel(QWidget):
         tag_lay.addLayout(tag_search_row)
 
         # Namespace filter
-        ns_row = QHBoxLayout()
-        ns_row.setSpacing(6)
+        ns_row = QGridLayout()
+        ns_row.setHorizontalSpacing(6)
+        ns_row.setVerticalSpacing(4)
         self.lbl_ns_filter = QLabel("Namespace:")
         self.lbl_ns_filter.setFixedWidth(70)
-        ns_row.addWidget(self.lbl_ns_filter)
+        ns_row.addWidget(self.lbl_ns_filter, 0, 0, 1, 2)
         self.cmb_ns_filter = QComboBox()
         self.cmb_ns_filter.addItem("All namespaces")
         self.cmb_ns_filter.currentTextChanged.connect(self._on_ns_filter_changed)
-        ns_row.addWidget(self.cmb_ns_filter, 1)
+        ns_row.addWidget(self.cmb_ns_filter, 1, 0)
         self.chk_show_hidden = QCheckBox("Hidden")
         self.chk_show_hidden.setToolTip("Show hidden tags")
         self.chk_show_hidden.stateChanged.connect(lambda _: self._refresh_tags())
-        ns_row.addWidget(self.chk_show_hidden)
+        ns_row.addWidget(self.chk_show_hidden, 2, 0)
         tag_lay.addLayout(ns_row)
 
         # Tag tree (hierarchical)
@@ -293,74 +304,75 @@ class TagLibraryPanel(QWidget):
         tag_lay.addWidget(self.tag_tree, 1)
 
         # Quick tag buttons
-        quick_row = QHBoxLayout()
-        quick_row.setSpacing(4)
+        quick_row = QGridLayout()
+        quick_row.setHorizontalSpacing(4)
+        quick_row.setVerticalSpacing(4)
         self.lbl_quick = QLabel("Quick tags")
-        quick_row.addWidget(self.lbl_quick)
+        quick_row.addWidget(self.lbl_quick, 0, 0, 1, 2)
         self._quick_tag_buttons = []
         for preset_name in ["Favorite", "Important", "Review", "Archive"]:
             btn = QPushButton(preset_name)
             btn.setProperty("class", "toolbar")
             btn.clicked.connect(lambda checked, n=preset_name: self._quick_create_tag(n))
-            quick_row.addWidget(btn)
+            index = len(self._quick_tag_buttons)
+            quick_row.addWidget(btn, 1 + index // 2, index % 2)
             self._quick_tag_buttons.append(btn)
-        quick_row.addStretch()
         tag_lay.addLayout(quick_row)
 
         # Tag Pack import/export buttons
-        pack_row = QHBoxLayout()
-        pack_row.setSpacing(4)
+        pack_row = QGridLayout()
+        pack_row.setHorizontalSpacing(4)
+        pack_row.setVerticalSpacing(4)
         self.btn_import = QPushButton("Import Tag Pack")
         self.btn_import.setProperty("class", "toolbar")
         self.btn_import.clicked.connect(self._import_tag_pack)
-        pack_row.addWidget(self.btn_import)
+        pack_row.addWidget(self.btn_import, 0, 0)
         self.btn_export_pack = QPushButton("Export Tag Pack")
         self.btn_export_pack.setProperty("class", "toolbar")
         self.btn_export_pack.clicked.connect(self._export_tag_pack)
-        pack_row.addWidget(self.btn_export_pack)
+        pack_row.addWidget(self.btn_export_pack, 0, 1)
         self.btn_collections = QPushButton("Collections / Boards")
         self.btn_collections.setProperty("class", "toolbar")
         self.btn_collections.setAccessibleName("Open collections and visual boards")
         self.btn_collections.clicked.connect(self._open_collections)
-        pack_row.addWidget(self.btn_collections)
+        pack_row.addWidget(self.btn_collections, 1, 0)
         self.btn_broken_links = QPushButton("Scan Broken Links")
         self.btn_broken_links.setProperty("class", "toolbar")
         self.btn_broken_links.clicked.connect(self._on_scan_broken_links)
-        pack_row.addWidget(self.btn_broken_links)
-        pack_row.addStretch()
+        pack_row.addWidget(self.btn_broken_links, 1, 1)
         tag_lay.addLayout(pack_row)
 
-        ts_row = QHBoxLayout()
-        ts_row.setSpacing(4)
+        ts_row = QGridLayout()
+        ts_row.setHorizontalSpacing(4)
+        ts_row.setVerticalSpacing(4)
         self.btn_ts_import = QPushButton("Import from TagSpaces")
         self.btn_ts_import.setProperty("class", "toolbar")
         self.btn_ts_import.setAccessibleName("Import from TagSpaces")
         self.btn_ts_import.setAccessibleDescription(
             "Import tags from TagSpaces .ts sidecar files in a folder")
         self.btn_ts_import.clicked.connect(self._import_tagspaces)
-        ts_row.addWidget(self.btn_ts_import)
+        ts_row.addWidget(self.btn_ts_import, 0, 0)
         self.btn_ts_export = QPushButton("Export to TagSpaces")
         self.btn_ts_export.setProperty("class", "toolbar")
         self.btn_ts_export.setAccessibleName("Export to TagSpaces")
         self.btn_ts_export.setAccessibleDescription(
             "Write TagSpaces .ts sidecar files for entries with tags")
         self.btn_ts_export.clicked.connect(self._export_tagspaces)
-        ts_row.addWidget(self.btn_ts_export)
+        ts_row.addWidget(self.btn_ts_export, 0, 1)
         self.btn_tagstudio_import = QPushButton("Import from TagStudio")
         self.btn_tagstudio_import.setProperty("class", "toolbar")
         self.btn_tagstudio_import.setAccessibleName("Import from TagStudio")
         self.btn_tagstudio_import.setAccessibleDescription(
             "Import a TagStudio SQLite library without changing its source files")
         self.btn_tagstudio_import.clicked.connect(self._import_tagstudio)
-        ts_row.addWidget(self.btn_tagstudio_import)
+        ts_row.addWidget(self.btn_tagstudio_import, 1, 0)
         self.btn_tagstudio_export = QPushButton("Export to TagStudio")
         self.btn_tagstudio_export.setProperty("class", "toolbar")
         self.btn_tagstudio_export.setAccessibleName("Export to TagStudio")
         self.btn_tagstudio_export.setAccessibleDescription(
             "Export this UniFile library to an additive TagStudio SQLite database")
         self.btn_tagstudio_export.clicked.connect(self._export_tagstudio)
-        ts_row.addWidget(self.btn_tagstudio_export)
-        ts_row.addStretch()
+        ts_row.addWidget(self.btn_tagstudio_export, 1, 1)
         tag_lay.addLayout(ts_row)
 
         splitter.addWidget(self.tag_panel)
@@ -379,11 +391,11 @@ class TagLibraryPanel(QWidget):
         entry_lay.addWidget(self.lbl_entry_hint)
 
         # Entry header
-        entry_header = QHBoxLayout()
-        entry_header.setSpacing(6)
+        entry_header = QGridLayout()
+        entry_header.setHorizontalSpacing(6)
+        entry_header.setVerticalSpacing(6)
         self.lbl_entry_title = QLabel("All Files")
-        entry_header.addWidget(self.lbl_entry_title)
-        entry_header.addStretch()
+        entry_header.addWidget(self.lbl_entry_title, 0, 0)
 
         self.txt_entry_search = QLineEdit()
         self.txt_entry_search.setPlaceholderText(
@@ -392,29 +404,32 @@ class TagLibraryPanel(QWidget):
         self.txt_entry_search.setAccessibleName("Entry search")
         self.txt_entry_search.setAccessibleDescription(
             "Filter entries by tag, color, extension, rating, or other query syntax")
-        self.txt_entry_search.setFixedWidth(250)
+        self.txt_entry_search.setMinimumWidth(120)
+        self.txt_entry_search.setMaximumWidth(300)
         self.txt_entry_search.textChanged.connect(self._on_entry_search)
-        entry_header.addWidget(self.txt_entry_search)
+        entry_header.addWidget(self.txt_entry_search, 0, 1)
 
         self.txt_semantic = QLineEdit()
         self.txt_semantic.setPlaceholderText("Semantic search in natural language…")
         self.txt_semantic.setAccessibleName("Semantic search")
         self.txt_semantic.setAccessibleDescription(
             "Search entries using natural language via AI embeddings")
-        self.txt_semantic.setFixedWidth(200)
+        self.txt_semantic.setMinimumWidth(120)
+        self.txt_semantic.setMaximumWidth(240)
         self.txt_semantic.returnPressed.connect(self._on_semantic_search)
-        entry_header.addWidget(self.txt_semantic)
+        entry_header.addWidget(self.txt_semantic, 0, 2)
 
         self.btn_add_files = QPushButton("Add Files")
         self.btn_add_files.setProperty("class", "primary")
         self.btn_add_files.setAccessibleName("Add files to library")
         self.btn_add_files.clicked.connect(self._on_add_files)
-        entry_header.addWidget(self.btn_add_files)
+        entry_header.addWidget(self.btn_add_files, 1, 0)
 
         self.btn_scan_dir = QPushButton("Scan Folder")
         self.btn_scan_dir.setProperty("class", "success")
         self.btn_scan_dir.clicked.connect(self._on_scan_directory)
-        entry_header.addWidget(self.btn_scan_dir)
+        entry_header.addWidget(self.btn_scan_dir, 1, 1)
+        entry_header.setColumnStretch(2, 1)
 
         entry_lay.addLayout(entry_header)
 
@@ -480,24 +495,30 @@ class TagLibraryPanel(QWidget):
 
         # Entry detail / tag assignment bar
         self.detail_bar = QFrame()
-        db_lay = QHBoxLayout(self.detail_bar)
+        db_lay = QVBoxLayout(self.detail_bar)
         db_lay.setContentsMargins(12, 8, 12, 8)
-        db_lay.setSpacing(8)
+        db_lay.setSpacing(6)
+        assignment_row = QHBoxLayout()
+        assignment_row.setSpacing(8)
         self.lbl_assign = QLabel("Assign tag")
-        db_lay.addWidget(self.lbl_assign)
+        assignment_row.addWidget(self.lbl_assign)
         self.cmb_assign_tag = QComboBox()
         self.cmb_assign_tag.setMinimumWidth(160)
         self.cmb_assign_tag.setEditable(True)
         self.cmb_assign_tag.setPlaceholderText("Select or type tag...")
-        db_lay.addWidget(self.cmb_assign_tag)
+        assignment_row.addWidget(self.cmb_assign_tag, 1)
+        db_lay.addLayout(assignment_row)
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(8)
         self.btn_assign = QPushButton("Apply Tag")
         self.btn_assign.setProperty("class", "primary")
         self.btn_assign.clicked.connect(self._on_apply_tag_to_selected)
-        db_lay.addWidget(self.btn_assign)
+        action_row.addWidget(self.btn_assign)
         self.btn_remove_tag = QPushButton("Remove Tag")
         self.btn_remove_tag.setProperty("class", "danger")
         self.btn_remove_tag.clicked.connect(self._on_remove_tag_from_selected)
-        db_lay.addWidget(self.btn_remove_tag)
+        action_row.addWidget(self.btn_remove_tag)
         self.btn_edit_fields = QPushButton("Edit Fields")
         self.btn_edit_fields.setProperty("class", "toolbar")
         self.btn_edit_fields.setAccessibleName("Edit selected entry fields")
@@ -505,19 +526,22 @@ class TagLibraryPanel(QWidget):
             "Edit validated custom and built-in fields for exactly one selected file")
         self.btn_edit_fields.setEnabled(False)
         self.btn_edit_fields.clicked.connect(self._open_entry_fields)
-        db_lay.addWidget(self.btn_edit_fields)
-        db_lay.addStretch()
+        action_row.addWidget(self.btn_edit_fields)
+        action_row.addStretch()
+        db_lay.addLayout(action_row)
 
         # Rating stars
+        rating_row = QHBoxLayout()
+        rating_row.setSpacing(4)
         self.lbl_rating = QLabel("Rating:")
-        db_lay.addWidget(self.lbl_rating)
+        rating_row.addWidget(self.lbl_rating)
         self._rating_btns = []
         for star_i in range(5):
             sb = QPushButton("☆")
             sb.setFixedSize(22, 22)
             sb.setProperty("class", "toolbar")
             sb.clicked.connect(lambda checked, si=star_i: self._set_rating(si + 1))
-            db_lay.addWidget(sb)
+            rating_row.addWidget(sb)
             self._rating_btns.append(sb)
 
         # Inbox toggle
@@ -526,10 +550,12 @@ class TagLibraryPanel(QWidget):
         self.btn_inbox.setCheckable(True)
         self.btn_inbox.setToolTip("Toggle Inbox/Archive state for selected entries")
         self.btn_inbox.clicked.connect(self._on_toggle_inbox)
-        db_lay.addWidget(self.btn_inbox)
+        rating_row.addWidget(self.btn_inbox)
 
         self.lbl_selection_info = QLabel("")
-        db_lay.addWidget(self.lbl_selection_info)
+        rating_row.addWidget(self.lbl_selection_info)
+        rating_row.addStretch()
+        db_lay.addLayout(rating_row)
         entry_lay.addWidget(self.detail_bar)
 
         splitter.addWidget(self.entry_panel)
@@ -882,10 +908,12 @@ class TagLibraryPanel(QWidget):
             color = COLOR_SWATCHES[name]
             button.setStyleSheet(
                 f"QPushButton#color_swatch {{ background: {color}; "
+                "min-width: 0px; min-height: 0px; max-width: 24px; max-height: 24px; "
+                "padding: 0px; font-size: 1px; "
                 f"border: 2px solid {theme['border']}; border-radius: 12px; }}"
                 f"QPushButton#color_swatch:hover {{ border-color: {theme['accent']}; }}"
                 f"QPushButton#color_swatch:checked {{ border-color: {theme['fg_bright']}; "
-                "padding: 0px; }}"
+                "padding: 0px; }"
             )
 
     # ── Library Operations ────────────────────────────────────────────────

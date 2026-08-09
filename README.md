@@ -595,6 +595,7 @@ make dev         # install runtime + dev extras
 make deps-check  # verify pyproject/requirements/bootstrap alignment
 make test        # deps-check + isolated full pytest; cleans its owned temp tree
 python tools/run_tests.py  # direct Windows-safe pytest run (forces Qt offscreen)
+python -m pytest tests/test_ui_matrix.py -q  # 190-case pointer-free Qt theme/font/RTL matrix
 make cov         # pytest-cov gate: >=60% in classifier, engine, learning, and tag library
 make lint        # Ruff
 make typecheck   # strict mypy check for public SDK/core engine contracts

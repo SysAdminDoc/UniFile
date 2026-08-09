@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.cloud_storage import (
     CloudRemoteConfig,
     RcloneAdapter,
@@ -170,6 +171,7 @@ class CloudRemotesDialog(QDialog):
         self._refresh_table()
         self._new_remote()
         self._refresh_local_status()
+        ensure_accessible_metadata(self, "Cloud Remotes")
 
     def _refresh_table(self):
         self.tbl_remotes.blockSignals(True)

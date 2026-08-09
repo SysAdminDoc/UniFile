@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.cache import (
     _load_undo_stack,
     _save_undo_stack,
@@ -1166,6 +1167,7 @@ class PluginManagerDialog(QDialog):
         self.lst_plugins.currentRowChanged.connect(self._on_selected)
         self._new_workflow_script()
         self._refresh()
+        ensure_accessible_metadata(self, "Plugin Manager")
 
     def _new_workflow_script(self):
         self._workflow_path = None

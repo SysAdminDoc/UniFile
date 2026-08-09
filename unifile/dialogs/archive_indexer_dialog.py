@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.config import get_active_stylesheet, get_active_theme
 from unifile.dialogs.common import build_dialog_header
 from unifile.profiles import ARCHIVE_MODE_EXTRACT, ARCHIVE_MODE_LABELS
@@ -41,6 +42,7 @@ class ArchiveIndexerDialog(QDialog):
         self._archive_mode = parent_mode if parent_mode in ARCHIVE_MODE_LABELS else "index"
         self._build_ui()
         self._refresh_stats()
+        ensure_accessible_metadata(self, "Archive Indexer")
 
     def _build_ui(self) -> None:
         t = self._t

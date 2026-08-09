@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from unifile.accessibility import ensure_accessible_metadata
 from unifile.config import get_active_theme
 from unifile.media.cover_art import (
     CoverArtResult,
@@ -274,6 +275,7 @@ class MediaLookupPanel(QWidget):
         self._cover_art_worker = None
         self._last_cover_art_result: CoverArtResult | None = None
         self._build_ui()
+        ensure_accessible_metadata(self, "Media Lookup")
 
     def _build_ui(self):
         _t = get_active_theme()
@@ -491,7 +493,7 @@ class MediaLookupPanel(QWidget):
 
         # Poster
         self.lbl_poster = QLabel()
-        self.lbl_poster.setFixedSize(200, 300)
+        self.lbl_poster.setFixedSize(200, 280)
         self.lbl_poster.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_poster.setText("Select a result")
         dp_lay.addWidget(self.lbl_poster, 0, Qt.AlignmentFlag.AlignHCenter)

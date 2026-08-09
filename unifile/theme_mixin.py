@@ -98,7 +98,7 @@ class ThemeMixin:
             self.cmb_library.setStyleSheet(
                 f"QComboBox {{ background: {t['sidebar_profile_bg']}; color: {t['sidebar_profile_fg']}; "
                 f"border: 1px solid {t['sidebar_profile_border']}; border-radius: 4px; "
-                "padding: 5px 7px; font-size: 10px; font-weight: bold; }}"
+                "padding: 5px 7px; font-size: 10px; font-weight: bold; }"
                 f"QComboBox:hover {{ border-color: {t['sidebar_profile_fg']}; }}"
                 f"QComboBox QAbstractItemView {{ background: {t['sidebar_profile_bg']}; color: {t['fg']}; "
                 f"selection-background-color: {t['selection']}; }}"
