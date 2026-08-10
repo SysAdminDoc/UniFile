@@ -13,6 +13,14 @@ from unifile.workers import ApplyAepWorker, ApplyCatWorker, ApplyFilesWorker
 class ApplyMixin:
     """Mixin containing all apply-related methods for UniFile."""
 
+    def _start_apply_worker(self, worker):
+        """Start an apply worker through the shared lifecycle owner."""
+        controller = getattr(self, '_worker_controller', None)
+        if controller is not None:
+            return controller.start('apply', worker)
+        worker.start()
+        return worker
+
     # ═══ DISK SPACE GUARD ════════════════════════════════════════════════════
 
     def _check_disk_space(self, work: list) -> list[str]:
@@ -74,7 +82,7 @@ class ApplyMixin:
         self.apply_worker.item_done.connect(self._on_aep_item_done)
         self.apply_worker.finished.connect(
             lambda ok, err, ops: self._on_aep_apply_done(ok, err, ops, dry_run))
-        self.apply_worker.start()
+        self._start_apply_worker(self.apply_worker)
 
     def _on_aep_item_done(self, row_idx, status):
         it = self.aep_items[row_idx]
@@ -126,7 +134,7 @@ class ApplyMixin:
         self.apply_worker.progress.connect(self._update_progress)
         self.apply_worker.item_done.connect(self._on_cat_item_done)
         self.apply_worker.finished.connect(self._on_cat_apply_done)
-        self.apply_worker.start()
+        self._start_apply_worker(self.apply_worker)
 
     def _on_cat_item_done(self, row_idx, status):
         it = self.cat_items[row_idx]
@@ -186,7 +194,7 @@ class ApplyMixin:
         self.apply_worker.item_done.connect(self._on_files_item_done)
         self.apply_worker.finished.connect(
             lambda ok, err, ops: self._on_files_apply_done(ok, err, ops, dry_run))
-        self.apply_worker.start()
+        self._start_apply_worker(self.apply_worker)
 
     def _on_files_item_done(self, list_idx: int, status: str):
         it = self.file_items[list_idx]

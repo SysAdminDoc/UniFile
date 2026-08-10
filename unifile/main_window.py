@@ -152,6 +152,7 @@ from unifile.widgets import (
     PhotoMapWidget,
     _load_watch_settings,
 )
+from unifile.window_controllers import WindowControllers
 from unifile.workers import (
     OllamaSetupWorker,
     format_size,
@@ -220,6 +221,10 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._ollama_ready = False
         self._command_palette = None
         self._library_store = LibraryProfileStore()
+        self._controllers = WindowControllers(self)
+        self._worker_controller = self._controllers.lifecycle
+        self._scan_controller = self._controllers.scan
+        self._apply_controller = self._controllers.apply
         self._active_library_profile = self._library_store.active_profile()
         self._library_switching = False
         self._library_switch_ready = False
@@ -341,7 +346,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._update_check_worker = UpdateCheckWorker(__version__, parent=self)
         self._update_check_worker.result_ready.connect(self._on_update_available)
         self._update_check_worker.error.connect(self._on_update_check_error)
-        self._update_check_worker.start()
+        self._worker_controller.start("update", self._update_check_worker)
 
     def _on_update_check_error(self, _message: str) -> None:
         """Ignore transient release-check failures so startup remains quiet."""
@@ -388,7 +393,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._ollama_worker.log.connect(self._log)
         self._ollama_worker.status.connect(self._on_ollama_status)
         self._ollama_worker.finished.connect(self._on_ollama_ready)
-        self._ollama_worker.start()
+        self._worker_controller.start("ollama", self._ollama_worker)
 
     def _on_ollama_status(self, msg):
         self.lbl_llm_status.setText(msg)
@@ -2310,7 +2315,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._reclassify_worker = _ReclassifyWorker(items_to_reclassify, s['url'], s['model'])
         self._reclassify_worker.result.connect(_on_result)
         self._reclassify_worker.done.connect(_on_done)
-        self._reclassify_worker.start()
+        self._worker_controller.start("reclassify", self._reclassify_worker)
 
     def _rename_from_file_picker(self, row):
         """Open a file browser showing all files inside the source folder.

@@ -161,15 +161,30 @@ class ScanMixin:
 
     def _cancel_scan(self):
         """Signal the worker to stop."""
+        controller = getattr(self, '_worker_controller', None)
+        if controller and controller.cancel('scan'):
+            self._log("Cancelling scan...")
+            return
         if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
             self.worker.cancel()
             self._log("Cancelling scan...")
+
+    def _start_managed_worker(self, name: str, worker):
+        """Start a worker through the window lifecycle facade when available."""
+        controller = getattr(self, '_worker_controller', None)
+        if controller is not None:
+            return controller.start(name, worker)
+        worker.start()
+        return worker
 
     def _disconnect_worker(self):
         """Disconnect signals from the previous worker to prevent ghost callbacks."""
         if hasattr(self, 'worker') and self.worker:
             try: self.worker.disconnect()
             except (TypeError, RuntimeError): pass
+            controller = getattr(self, '_worker_controller', None)
+            if controller is not None:
+                controller.release('scan', self.worker)
             self.worker = None
 
     def _reset_scan_ui(self):
@@ -258,14 +273,19 @@ class ScanMixin:
         self.lbl_prog_phase.setText("AEP Scan")
         self.lbl_prog_method.setText("Locating After Effects project files…")
         self.pbar.setValue(0); self.prog_panel.setVisible(True)
-        self.worker = ScanAepWorker(src, scan_depth=self.spn_depth.value())
+        scan_factory = getattr(self, '_scan_controller', None)
+        self.worker = (
+            scan_factory.aep(src, scan_depth=self.spn_depth.value())
+            if scan_factory is not None
+            else ScanAepWorker(src, scan_depth=self.spn_depth.value())
+        )
         self.worker.log.connect(self._log)
         self.worker.progress.connect(self._update_progress)
         if hasattr(self.worker, 'current_item'):
             self.worker.current_item.connect(self._set_current_scan_item)
         self.worker.result_ready.connect(self._on_aep_result)
         self.worker.finished.connect(self._on_aep_scan_done)
-        self.worker.start()
+        self._start_managed_worker('scan', self.worker)
 
     def _deduplicate_aep_path(self, dest_path):
         """Auto-suffix AEP rename paths that collide."""
@@ -359,11 +379,21 @@ class ScanMixin:
         op = self.cmb_op.currentIndex()
         if self.chk_llm.isChecked():
             self._log("  Mode: LLM-powered (all folders processed through Ollama)")
-            self.worker = ScanLLMWorker(src, dst, scan_depth=depth)
+            scan_factory = getattr(self, '_scan_controller', None)
+            self.worker = (
+                scan_factory.category(src, dst, scan_depth=depth, use_llm=True)
+                if scan_factory is not None
+                else ScanLLMWorker(src, dst, scan_depth=depth)
+            )
             self.lbl_prog_phase.setText("AI Classify")
             self.lbl_prog_method.setText("Classifying via Ollama LLM…")
         else:
-            self.worker = ScanCategoryWorker(src, dst, scan_depth=depth)
+            scan_factory = getattr(self, '_scan_controller', None)
+            self.worker = (
+                scan_factory.category(src, dst, scan_depth=depth, use_llm=False)
+                if scan_factory is not None
+                else ScanCategoryWorker(src, dst, scan_depth=depth)
+            )
             if op == self.OP_SMART:
                 self._log("  Mode: Categorize + Smart Rename from project files")
                 self.lbl_prog_phase.setText("Smart Scan")
@@ -380,7 +410,7 @@ class ScanMixin:
             self.worker.current_item.connect(self._set_current_scan_item)
         self.worker.result_ready.connect(self._on_cat_result)
         self.worker.finished.connect(self._on_cat_scan_done)
-        self.worker.start()
+        self._start_managed_worker('scan', self.worker)
 
     def _deduplicate_dest_path(self, dest_path):
         """If dest_path already claimed by another item (or exists on disk),
@@ -617,17 +647,41 @@ class ScanMixin:
         use_llm = self.chk_llm.isChecked()
         if use_llm:
             self._log("  Mode: LLM-powered file classification")
-            self.worker = ScanFilesLLMWorker(
-                src, "", self._pc_categories, depth,
-                self.chk_hash.isChecked(), inc_folders, inc_files,
-                ext_filter=ext_filter, force_rescan=self.chk_force_rescan.isChecked())
+            scan_factory = getattr(self, '_scan_controller', None)
+            self.worker = (
+                scan_factory.files(
+                    src, self._pc_categories, scan_depth=depth,
+                    check_hashes=self.chk_hash.isChecked(),
+                    include_folders=inc_folders, include_files=inc_files,
+                    ext_filter=ext_filter,
+                    force_rescan=self.chk_force_rescan.isChecked(),
+                    use_llm=True,
+                )
+                if scan_factory is not None
+                else ScanFilesLLMWorker(
+                    src, "", self._pc_categories, depth,
+                    self.chk_hash.isChecked(), inc_folders, inc_files,
+                    ext_filter=ext_filter, force_rescan=self.chk_force_rescan.isChecked())
+            )
             self.lbl_prog_phase.setText("AI Classify")
             self.lbl_prog_method.setText("LLM classifying files…")
         else:
-            self.worker = ScanFilesWorker(
-                src, "", self._pc_categories, depth,
-                self.chk_hash.isChecked(), inc_folders, inc_files,
-                ext_filter=ext_filter, force_rescan=self.chk_force_rescan.isChecked())
+            scan_factory = getattr(self, '_scan_controller', None)
+            self.worker = (
+                scan_factory.files(
+                    src, self._pc_categories, scan_depth=depth,
+                    check_hashes=self.chk_hash.isChecked(),
+                    include_folders=inc_folders, include_files=inc_files,
+                    ext_filter=ext_filter,
+                    force_rescan=self.chk_force_rescan.isChecked(),
+                    use_llm=False,
+                )
+                if scan_factory is not None
+                else ScanFilesWorker(
+                    src, "", self._pc_categories, depth,
+                    self.chk_hash.isChecked(), inc_folders, inc_files,
+                    ext_filter=ext_filter, force_rescan=self.chk_force_rescan.isChecked())
+            )
             self.lbl_prog_phase.setText("Scanning")
             self.lbl_prog_method.setText("Multi-signal classification…")
 
@@ -642,7 +696,7 @@ class ScanMixin:
             self.worker.current_item.connect(self._set_current_scan_item)
         self.worker.result_ready.connect(self._on_files_result)
         self.worker.finished.connect(self._on_files_scan_done)
-        self.worker.start()
+        self._start_managed_worker('scan', self.worker)
 
     def _on_files_result(self, r: dict):
         """Process a single file/folder result from the scanner."""
@@ -935,7 +989,7 @@ class ScanMixin:
         self._workflow_worker.log.connect(self._log)
         self._workflow_worker.result_ready.connect(self._on_workflow_scan_results)
         self._workflow_worker.finished.connect(self._workflow_worker.deleteLater)
-        self._workflow_worker.start()
+        self._start_managed_worker('workflow', self._workflow_worker)
 
     def _on_workflow_scan_results(self, results):
         """Apply serializable workflow commands after the worker completes."""
