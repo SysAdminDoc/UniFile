@@ -1551,3 +1551,172 @@ zero results.
 - Added: Add Nexa SDK as alternative AI backend alongside Ollama
 - Added: Add Media Lookup panel with TMDb, OMDb, and TVMaze providers
 - UniFile v8.0.0 — unified AI-powered file organization platform
+
+## Roadmap archive — 2026-08-10 — ROADMAP.md
+
+<details>
+<summary>Original roadmap snapshot</summary>
+
+```markdown
+# Roadmap
+
+Forward-looking plans for UniFile — unified AI-powered file organizer (PyQt6 + SQLAlchemy + Ollama).  
+Current version: **v9.3.33**. Merges TagStudio, FileOrganizer, Local-File-Organizer, classifier, and mnamer into one desktop app.
+
+---
+
+## Table of Contents
+
+1. [Near-Term (v9.4 – v9.6)](#near-term-v94--v96)
+2. [Medium-Term (v10.x)](#medium-term-v10x)
+3. [Long-Term / Vision](#long-term--vision)
+4. [AI & Inference](#ai--inference)
+5. [Library & Tags](#library--tags)
+6. [Media Metadata](#media-metadata)
+7. [Cleanup & Safety](#cleanup--safety)
+8. [Performance & Scale](#performance--scale)
+9. [Automation & CLI](#automation--cli)
+10. [UX & Accessibility](#ux--accessibility)
+11. [Distribution & Packaging](#distribution--packaging)
+12. [Developer Ecosystem](#developer-ecosystem)
+13. [Competitive Research](#competitive-research)
+14. [Open-Source Reference Projects](#open-source-reference-projects)
+
+---
+
+## Near-Term (v9.4 – v9.6)
+
+High-impact, achievable improvements. Each item is scoped to a few days–one week of work.
+
+---
+
+## Medium-Term (v10.x)
+
+Larger features requiring non-trivial architecture or multi-week effort.
+
+---
+
+## Long-Term / Vision
+
+Strategic / aspirational features. Some require significant architecture changes or external dependencies.
+
+---
+
+## AI & Inference
+
+---
+
+## Library & Tags
+
+---
+
+## Media Metadata
+
+
+---
+
+## Cleanup & Safety
+
+
+---
+
+## Performance & Scale
+
+
+---
+
+## Automation & CLI
+
+
+---
+
+## UX & Accessibility
+
+
+---
+
+## Distribution & Packaging
+
+
+---
+
+## Developer Ecosystem
+
+---
+
+## Competitive Research
+
+| Tool | Stars | What We Watch | Key Gap to Close |
+|------|-------|---------------|-----------------|
+| **TagStudio** | 42k | Tag-based library model, non-destructive philosophy | Library format import/export for cross-migration |
+| **Hydrus Network** | ~12k | Tag implications/siblings, 500k+ scale, client-server | Tag graph at Hydrus scale (implications, siblings, DB layout) |
+| **Eagle App** | commercial | Collections, boards, color palette search, fast thumbnails | Collections panel + color-based search |
+| **Calibre** | 24k | Metadata-driven library, format conversion, ebook management | OpenLibrary/ebook mode; Calibre `.opf` sidecar compatibility |
+| **digiKam** | KDE | Face recognition training, geolocation clustering, RAW pipeline | Trained face recognition; geolocation clustering from EXIF GPS |
+| **FileBot** | commercial | Media renaming format grammar, multi-provider fallback, NFO gen | NFO generator; subtitle downloader; format string parity |
+| **Adobe Bridge** | commercial | Batch metadata workflows, saved searches, collection sync | Batch metadata spreadsheet editor |
+| **DEVONthink** | commercial | Smart groups, AI-assisted classification, bidirectional links | Bidirectional file relationships; smart groups |
+
+---
+
+## Open-Source Reference Projects
+
+### Related OSS Projects
+- https://github.com/hyperfield/ai-file-sorter — local+remote LLM file sorter, preview-before-apply, undo
+- https://github.com/QiuYannnn/Local-File-Organizer — Llama3.2 + LLaVA dual-modal (text + vision)
+- https://github.com/yousefebrahimi0/Offline-AI-File-Organizer — LM Studio + Mistral offline rename
+- https://github.com/thebearwithabite/ai-file-organizer — 3-tier dedup (size → MD5 → SHA256)
+- https://github.com/TagStudioDev/TagStudio — tag-based library UX for peer features
+- https://github.com/tagspaces/tagspaces — filename-encoded tag interop pattern
+- https://github.com/MrRajiii/file-organizer — PyQt5 threaded scanning reference
+- https://github.com/lunagray932-ctrl/file-organizer-renamer — 150+ format recognition + RAW photos
+- https://pypi.org/project/local-file-organizer/ — 307 tests, daemon/profiles/TUI — polished packaging
+- https://github.com/XIVIX134/AI-File-Organizer — multi-provider LLM abstraction pattern
+
+### Architectural Patterns Worth Studying
+- **Provider-abstraction layer** — one interface, adapters for each LLM backend, test double for offline CI (already partially implemented in `ai_providers.py`)
+- **Action DAG + dry-run renderer** — LLM produces proposed actions as JSON; GUI renders diff; user approves atomic apply
+- **Checkpointed scans** — large library scans write progress to SQLite so crash/resume is clean
+- **Hydrus tag-sibling/parent DB layout** — `tag_implications(antecedent, consequent)` + `tag_siblings(bad_tag, good_tag)` tables; query-time expansion
+- **Sidecar-tag coexistence** — write `.xmp` sidecars in TagStudio format alongside originals; read them back on re-open so tags survive outside UniFile
+
+## Research-Driven Additions
+
+No actionable items remain. All research-driven additions have been implemented.
+
+### 2026-08-08 Research Refresh
+
+- [ ] P2 — Decompose the main window and worker orchestration behind stable facades
+  Why: UniFile is concentrated in a 4,905-line, 175-method main window with a 1,346-line UI builder, while one LLM worker run method is 912 lines; this raises change and cancellation risk.
+  Evidence: AST inventory of unifile/main_window.py and unifile/workers.py on 2026-08-08; existing UI tests cover only a small portion of these modules.
+  Touches: scan/apply, library, media, cleanup, settings, worker lifecycle, public shims, contract tests, and module boundaries.
+  Acceptance: Bounded domain controllers are extracted behind stable facades; public imports and user-visible behavior remain compatible; contract tests cover scan/apply/library/media/cleanup flows; every worker has explicit cancellation, close, and error ownership; module complexity thresholds are recorded and enforced without a rewrite.
+  Complexity: XL
+
+- [ ] P2 — Synchronize governing documentation and public contract metadata
+  Why: CLAUDE.md reports v9.3.32 while source, README, SDK, Sphinx configuration, and changelog report v9.3.33; README API examples also drift from the live headless scan contract.
+  Evidence: CLAUDE.md, pyproject.toml, sdk/pyproject.toml, unifile/__init__.py, README.md, docs/conf.py, CHANGELOG.md, and release metadata inspected on 2026-08-08.
+  Touches: version checker, release audit, README examples/badges, CLAUDE.md status, SDK/docs metadata, API fixtures, and about/version surfaces.
+  Acceptance: A single release check validates every supported version string and public schema; README/API examples execute or validate against fixtures; drift fails the release gate with file-specific output; stale documentation is updated in the same release batch.
+  Complexity: S
+
+- [ ] P2 — Restore a zero-finding repository lint gate
+  Why: The configured ruff check reported six findings on 2026-08-08, including import ordering, unnecessary open mode, a late import, and an unused import.
+  Evidence: ruff check unifile tests baseline output for tests/test_hardening.py, unifile/metadata.py, unifile/tagging/library.py, and unifile/workers.py.
+  Touches: the four reported source/test files, ruff configuration if required, Makefile lint target, and contributor verification docs.
+  Acceptance: ruff check unifile tests exits 0 without broad ignores; the lint target is included in the documented verification sequence; any intentional compatibility import has a narrow documented exemption and a regression test.
+  Complexity: S
+
+- [ ] P3 — Make cron scheduling interoperable across Sunday aliases and local-time edge cases
+  Why: scheduler.py explicitly omits Sunday=7 and does not define timezone or DST behavior for local-time matching.
+  Evidence: unifile/scheduler.py parser and matcher logic reviewed on 2026-08-08; standard cron compatibility expectations.
+  Touches: cron parser/matcher, job schema, timezone handling, fixtures, scheduler diagnostics, and documentation.
+  Acceptance: Sunday accepts both 0 and 7; standard OR semantics are preserved; timezone and DST behavior is explicit; Sunday-alias and DST-boundary fixtures pass; invalid expressions receive actionable diagnostics.
+  Complexity: S
+
+## Audit-Identified Hardening
+
+No actionable hardening items remain.
+```
+
+</details>
