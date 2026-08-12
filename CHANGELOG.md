@@ -56,6 +56,8 @@ All notable changes to UniFile will be documented in this file.
 - A `make release-contract` gate that synchronizes package, SDK, docs, working-note,
   changelog, launch, and frozen-smoke version surfaces and exercises the documented
   CLI/headless scan action-plan contract against a disposable fixture.
+- Cron jobs now accept Sunday as either `0` or `7`, persist an explicit local/UTC/IANA
+  timezone, and define spring-forward gaps and fall-back duplicate occurrences.
 - Pointer-free offscreen Qt regression coverage for the main window and major panels across all themes, 8–20 px fonts, RTL, accessibility metadata, geometry, rendering, and Qt-warning checks.
 - Complete English and maintained Spanish Qt catalogs with `pylupdate6` extraction, `lrelease` packaging, runtime locale switching, plural handling, and a release validator for critical action labels and placeholders.
 - Versioned tag-library recovery contract with metadata-rich manifests, streaming checksum/SQLite validation, traversal and symlink rejection, secret-redacted config payloads, schema-upgrading restores, atomic staging, rollback, and JSON `backup-verify`/`restore --dry-run` CLI flows.

@@ -5,11 +5,14 @@ import json
 import logging
 import os
 import threading
+import time
 import uuid
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta, tzinfo
+from datetime import timezone as dt_timezone
 from email.message import EmailMessage
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from unifile.config import _APP_DATA_DIR, load_json_safe, save_json_safe
 from unifile.credentials import (
@@ -22,11 +25,89 @@ from unifile.network import NetworkError, send_smtp
 
 DEFAULT_SCHEDULE_FILE = os.path.join(_APP_DATA_DIR, "headless_jobs.json")
 CRON_FIELDS = ("minute", "hour", "day", "month", "weekday")
+LOCAL_TIMEZONE = "local"
+UTC_TIMEZONE = "UTC"
 _log = logging.getLogger(__name__)
 
 
 class CronExpressionError(ValueError):
     """Raised when a five-field cron expression is not supported."""
+
+
+def normalize_timezone(value: Any) -> str:
+    """Validate and normalize a job timezone name.
+
+    ``local`` follows the host's configured local timezone and ``UTC`` is
+    portable across hosts.  Any other value must be an IANA zone name that
+    ``zoneinfo`` can resolve.
+    """
+    text = str(value or LOCAL_TIMEZONE).strip()
+    if not text or text.casefold() == LOCAL_TIMEZONE:
+        return LOCAL_TIMEZONE
+    if text.casefold() in {"utc", "z"}:
+        return UTC_TIMEZONE
+    try:
+        ZoneInfo(text)
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        raise CronExpressionError(
+            "timezone must be 'local', 'UTC', or a resolvable IANA name "
+            "such as 'America/New_York'"
+        ) from exc
+    return text
+
+
+class _LocalTimezone(tzinfo):
+    """A DST-aware local timezone using the host C runtime timezone rules."""
+
+    @staticmethod
+    def _offset_seconds(local_time) -> int:
+        if local_time.tm_isdst > 0 and time.daylight:
+            return -time.altzone
+        return -time.timezone
+
+    @classmethod
+    def _valid_offsets(cls, naive: datetime) -> list[timedelta]:
+        fields = list(naive.timetuple())
+        offsets: dict[int, timedelta] = {}
+        for is_dst in (0, 1):
+            fields[-1] = is_dst
+            local_time = time.localtime(time.mktime(tuple(fields)))
+            if tuple(local_time[:6]) == tuple(naive.timetuple()[:6]):
+                seconds = cls._offset_seconds(local_time)
+                offsets[seconds] = timedelta(seconds=seconds)
+        return [offsets[key] for key in sorted(offsets)]
+
+    def utcoffset(self, value: datetime | None) -> timedelta:
+        if value is None:
+            return timedelta(seconds=-time.timezone)
+        naive = value.replace(tzinfo=None)
+        offsets = self._valid_offsets(naive)
+        if offsets:
+            return offsets[min(value.fold, len(offsets) - 1)]
+        # A nonexistent wall time is rejected by CronExpression.localize;
+        # return the C runtime's best-effort offset for ordinary conversions.
+        fields = list(naive.timetuple())
+        fields[-1] = -1
+        local_time = time.localtime(time.mktime(tuple(fields)))
+        return timedelta(seconds=self._offset_seconds(local_time))
+
+    def dst(self, value: datetime | None) -> timedelta:
+        offset = self.utcoffset(value)
+        return offset - timedelta(seconds=-time.timezone)
+
+    def tzname(self, value: datetime | None) -> str:
+        return time.tzname[1 if self.dst(value) else 0]
+
+
+_LOCAL_TZ = _LocalTimezone()
+
+
+def _timezone_info(name: str):
+    if name == LOCAL_TIMEZONE:
+        return _LOCAL_TZ
+    if name == UTC_TIMEZONE:
+        return dt_timezone.utc
+    return ZoneInfo(name)
 
 
 def _parse_field(value: str, minimum: int, maximum: int, field: str) -> tuple[set[int], bool]:
@@ -71,28 +152,59 @@ def _parse_field(value: str, minimum: int, maximum: int, field: str) -> tuple[se
 
 
 class CronExpression:
-    """Parse and match the standard five-field local-time cron form."""
+    """Parse and match a five-field cron expression in an explicit timezone.
 
-    def __init__(self, expression: str):
+    Naive datetimes are interpreted as wall-clock values in ``timezone``.
+    A nonexistent spring-forward wall time never matches.  An ambiguous
+    fall-back wall time matches both folds; callers that execute jobs should
+    retain the offset-aware timestamp to distinguish the two occurrences.
+    """
+
+    def __init__(self, expression: str, *, timezone: str = LOCAL_TIMEZONE):
         parts = str(expression).split()
         if len(parts) != 5:
             raise CronExpressionError("cron expression must have five fields")
-        ranges = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 6))
+        self.timezone = normalize_timezone(timezone)
+        self.tzinfo = _timezone_info(self.timezone)
+        ranges = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
         parsed = [
             _parse_field(value, low, high, field)
             for value, (low, high), field in zip(parts, ranges, CRON_FIELDS, strict=True)
         ]
         self.expression = " ".join(parts)
-        self.values = tuple(item[0] for item in parsed)
+        weekday_values, weekday_wildcard = parsed[-1]
+        weekday_values = {0 if value == 7 else value for value in weekday_values}
+        self.values = tuple(item[0] for item in parsed[:-1]) + (weekday_values,)
         self.wildcards = tuple(item[1] for item in parsed)
+        # Retain the normalized flag explicitly because the values tuple has
+        # already transformed the Sunday alias.
+        self.wildcards = (*self.wildcards[:-1], weekday_wildcard)
+
+    def localize(self, value: datetime) -> datetime | None:
+        """Convert *value* to the schedule timezone, rejecting gaps."""
+        if value.tzinfo is not None and value.utcoffset() is not None:
+            return value.astimezone(self.tzinfo)
+        naive = value.replace(tzinfo=None)
+        candidates = []
+        for fold in (0, 1):
+            candidate = naive.replace(tzinfo=self.tzinfo, fold=fold)
+            round_trip = candidate.astimezone(dt_timezone.utc).astimezone(self.tzinfo)
+            if round_trip.replace(tzinfo=None) == naive:
+                candidates.append(candidate)
+        if not candidates:
+            return None
+        return candidates[0]
 
     def matches(self, value: datetime) -> bool:
+        value = self.localize(value)
+        if value is None:
+            return False
         minute, hour, day, month, weekday = self.values
         if value.minute not in minute or value.hour not in hour or value.month not in month:
             return False
         day_match = value.day in day
-        # Python uses Monday=0; cron uses Sunday=0 (and accepts Sunday=7 in
-        # some implementations, which this compact parser intentionally omits).
+        # Python uses Monday=0; cron uses Sunday=0.  Sunday=7 was normalized
+        # during parsing, so both aliases follow the same match path.
         cron_weekday = (value.weekday() + 1) % 7
         weekday_match = cron_weekday in weekday
         # Cron treats day-of-month and day-of-week as an OR when both are
@@ -148,6 +260,14 @@ def _secure_email_settings(
 def _sanitize_job_for_storage(job: dict[str, Any], *, strict: bool) -> dict[str, Any]:
     normalized = dict(job)
     job_id = str(normalized.get("id", "")).strip()
+    try:
+        normalized["timezone"] = normalize_timezone(normalized.get("timezone", LOCAL_TIMEZONE))
+    except CronExpressionError:
+        if strict:
+            raise
+        # Keep a legacy invalid value visible so the scheduler can disable the
+        # job with an actionable status instead of silently changing intent.
+        normalized["timezone"] = str(normalized.get("timezone", LOCAL_TIMEZONE))
     normalized["email"] = _secure_email_settings(
         normalized.get("email"),
         job_id,
@@ -187,7 +307,8 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
     if not name or len(name) > 120:
         raise ValueError("job name is required and must be at most 120 characters")
     schedule = str(job.get("schedule", "")).strip()
-    CronExpression(schedule)
+    timezone_name = normalize_timezone(job.get("timezone", LOCAL_TIMEZONE))
+    CronExpression(schedule, timezone=timezone_name)
     action = str(job.get("action", "scan")).strip().lower()
     if action not in {"scan", "tag", "verify"}:
         raise ValueError("job action must be scan, tag, or verify")
@@ -199,6 +320,7 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
         "id": job_id,
         "name": name,
         "schedule": schedule,
+        "timezone": timezone_name,
         "action": action,
         "path": path,
         "enabled": bool(job.get("enabled", True)),
@@ -221,13 +343,26 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _same_minute(first: str, second: datetime) -> bool:
+def _same_minute(first: str, second: datetime, cron: CronExpression | None = None) -> bool:
+    """Compare execution instants at minute precision in a schedule zone."""
     if not first:
         return False
     try:
         previous = datetime.fromisoformat(first)
     except ValueError:
         return False
+    if cron is not None:
+        previous = cron.localize(previous)
+        second = cron.localize(second)
+        if previous is None or second is None:
+            return False
+    elif previous.tzinfo is None and second.tzinfo is not None:
+        previous = previous.replace(tzinfo=second.tzinfo)
+    elif previous.tzinfo is not None and second.tzinfo is None:
+        second = second.replace(tzinfo=previous.tzinfo)
+    if previous.tzinfo is not None and second.tzinfo is not None:
+        previous = previous.astimezone(dt_timezone.utc)
+        second = second.astimezone(dt_timezone.utc)
     return previous.replace(second=0, microsecond=0) == second.replace(second=0, microsecond=0)
 
 
@@ -263,7 +398,7 @@ def send_digest_email(settings: dict[str, Any], subject: str, body: str) -> bool
 
 
 class JobScheduler:
-    """Run validated jobs once per matching local cron minute in a daemon thread."""
+    """Run validated jobs once per matching cron minute in their timezones."""
 
     def __init__(
         self,
@@ -276,7 +411,7 @@ class JobScheduler:
         self.handler = handler
         self.path = path
         self.poll_seconds = max(1.0, float(poll_seconds))
-        self.now_fn = now_fn or datetime.now
+        self.now_fn = now_fn or (lambda: datetime.now().astimezone())
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.RLock()
@@ -291,8 +426,13 @@ class JobScheduler:
                 if not job.get("enabled", True):
                     continue
                 try:
-                    cron = CronExpression(job["schedule"])
-                    due = cron.matches(current) and not _same_minute(job.get("last_run", ""), current)
+                    cron = CronExpression(job["schedule"], timezone=job.get("timezone", LOCAL_TIMEZONE))
+                    local_current = cron.localize(current)
+                    due = (
+                        local_current is not None
+                        and cron.matches(local_current)
+                        and not _same_minute(job.get("last_run", ""), local_current, cron)
+                    )
                 except CronExpressionError as exc:
                     job["enabled"] = False
                     job["last_status"] = f"invalid schedule: {exc}"
@@ -300,7 +440,7 @@ class JobScheduler:
                     continue
                 if not due:
                     continue
-                job["last_run"] = current.isoformat()
+                job["last_run"] = local_current.isoformat()
                 try:
                     result = self.handler(job) or {}
                     job["last_status"] = "completed"

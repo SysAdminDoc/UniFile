@@ -20,10 +20,3 @@ Actionable work only. Historical and completed roadmap material is archived in C
   Touches: scan/apply, library, media, cleanup, settings, worker lifecycle, public shims, contract tests, and module boundaries.
   Acceptance: Bounded domain controllers are extracted behind stable facades; public imports and user-visible behavior remain compatible; contract tests cover scan/apply/library/media/cleanup flows; every worker has explicit cancellation, close, and error ownership; module complexity thresholds are recorded and enforced without a rewrite.
   Complexity: XL
-
-- [ ] P3 — Make cron scheduling interoperable across Sunday aliases and local-time edge cases
-  Why: scheduler.py explicitly omits Sunday=7 and does not define timezone or DST behavior for local-time matching.
-  Evidence: unifile/scheduler.py parser and matcher logic reviewed on 2026-08-08; standard cron compatibility expectations.
-  Touches: cron parser/matcher, job schema, timezone handling, fixtures, scheduler diagnostics, and documentation.
-  Acceptance: Sunday accepts both 0 and 7; standard OR semantics are preserved; timezone and DST behavior is explicit; Sunday-alias and DST-boundary fixtures pass; invalid expressions receive actionable diagnostics.
-  Complexity: S

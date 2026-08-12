@@ -517,6 +517,13 @@ establishes SHA-256 baselines; later runs report changed, missing, and unstable
 files without modifying the source tree. Export a JSON, CSV, or text diff with
 `--output`, or schedule a `verify` job through `/jobs` (for example `0 3 * * 0`
 for weekly checks) and set its `health_log` path for persistent log export.
+Scheduled jobs use local wall time by default; set the job's `timezone` to
+`UTC` or an IANA name such as `America/New_York` when the schedule must be
+portable. Sunday accepts both cron aliases `0` and `7`, and restricted
+day-of-month/day-of-week fields retain standard OR semantics. During daylight
+saving changes, nonexistent spring-forward wall times are skipped, while
+ambiguous fall-back times are evaluated once per actual offset-aware
+occurrence.
 
 ### Mobile Companion
 
