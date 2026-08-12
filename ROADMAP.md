@@ -13,10 +13,3 @@ Actionable work only. Historical and completed roadmap material is archived in C
 - [ ] **Hydrus tag-sibling/parent DB layout** — `tag_implications(antecedent, consequent)` + `tag_siblings(bad_tag, good_tag)` tables; query-time expansion
 
 - [ ] **Sidecar-tag coexistence** — write `.xmp` sidecars in TagStudio format alongside originals; read them back on re-open so tags survive outside UniFile
-
-- [ ] P2 — Decompose the main window and worker orchestration behind stable facades
-  Why: UniFile is concentrated in a 4,905-line, 175-method main window with a 1,346-line UI builder, while one LLM worker run method is 912 lines; this raises change and cancellation risk.
-  Evidence: AST inventory of unifile/main_window.py and unifile/workers.py on 2026-08-08; existing UI tests cover only a small portion of these modules.
-  Touches: scan/apply, library, media, cleanup, settings, worker lifecycle, public shims, contract tests, and module boundaries.
-  Acceptance: Bounded domain controllers are extracted behind stable facades; public imports and user-visible behavior remain compatible; contract tests cover scan/apply/library/media/cleanup flows; every worker has explicit cancellation, close, and error ownership; module complexity thresholds are recorded and enforced without a rewrite.
-  Complexity: XL

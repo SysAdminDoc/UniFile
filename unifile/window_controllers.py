@@ -8,6 +8,7 @@ references themselves.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from PyQt6.QtCore import QThread
@@ -45,6 +46,7 @@ class WorkerLifecycleController:
         self.owner = owner
         self._workers: dict[str, QThread] = {}
         self._connections: dict[str, Any] = {}
+        self._errors: dict[str, str] = {}
 
     def active_names(self) -> tuple[str, ...]:
         """Return active registrations in deterministic order."""
@@ -53,6 +55,10 @@ class WorkerLifecycleController:
     def worker(self, name: str) -> QThread | None:
         """Return the registered worker, if any."""
         return self._workers.get(str(name))
+
+    def last_error(self, name: str) -> str:
+        """Return the most recent optional worker error owned by this controller."""
+        return self._errors.get(str(name), "")
 
     def start(self, name: str, worker: QThread) -> QThread:
         """Register and start one worker, replacing a completed old worker."""
@@ -68,6 +74,7 @@ class WorkerLifecycleController:
         if hasattr(worker, "isRunning") and worker.isRunning():
             raise WorkerLifecycleError(f"worker {key!r} is already running")
         self._workers[key] = worker
+        self._errors.pop(key, None)
 
         def on_finished(*_args, _key=key, _worker=worker):
             if self._workers.get(_key) is _worker:
@@ -78,6 +85,18 @@ class WorkerLifecycleController:
         if finished is not None and hasattr(finished, "connect"):
             finished.connect(on_finished)
             self._connections[key] = on_finished
+
+        def on_error(*args, _key=key):
+            detail = next((arg for arg in reversed(args) if arg), "worker failed")
+            self._errors[_key] = str(detail)
+            callback = getattr(self.owner, "_on_worker_error", None)
+            if callable(callback):
+                callback(_key, self._errors[_key])
+
+        for signal_name in ("error", "failed"):
+            signal = getattr(worker, signal_name, None)
+            if signal is not None and hasattr(signal, "connect"):
+                signal.connect(on_error)
         worker.start()
         return worker
 
@@ -110,6 +129,9 @@ class WorkerLifecycleController:
                 self._bounded_wait(timeout_ms)
             ):
                 return False
+        close_method = getattr(worker, "close", None)
+        if callable(close_method):
+            close_method()
         self._workers.pop(key, None)
         self._connections.pop(key, None)
         return True
@@ -193,13 +215,124 @@ class ApplyController:
         return ApplyFilesWorker(work, check_hashes=check_hashes, dry_run=dry_run)
 
 
+class LibraryController:
+    """Own construction and lifecycle entry points for the Tag Library panel."""
+
+    @staticmethod
+    def create_panel(parent: Any = None):
+        from unifile.dialogs.tag_library import TagLibraryPanel
+
+        return TagLibraryPanel(parent)
+
+    @staticmethod
+    def close_panel(panel: Any) -> None:
+        close_library = getattr(panel, "close_library", None)
+        if callable(close_library):
+            close_library()
+
+
+@dataclass(frozen=True)
+class MediaApplyResult:
+    """Result of applying reviewed media metadata to selected entries."""
+
+    title: str
+    saved_entries: int
+
+
+class MediaController:
+    """Pure metadata-to-library boundary used by the media panel callback."""
+
+    _FIELDS = {
+        "title": "title",
+        "author": "author",
+        "artist": "artist",
+        "synopsis": "ai_summary",
+        "source_url": "url",
+        "publisher": "publisher",
+        "isbn": "isbn",
+        "language": "language",
+        "published": "published",
+        "cover_url": "cover_url",
+        "genres": "genre",
+        "id_imdb": "imdb_id",
+        "id_tmdb": "tmdb_id",
+    }
+
+    @staticmethod
+    def create_panel(parent: Any = None):
+        from unifile.dialogs.media_lookup import MediaLookupPanel
+
+        return MediaLookupPanel(parent)
+
+    @classmethod
+    def apply_metadata(
+        cls,
+        metadata: dict[str, Any],
+        library: Any,
+        selected_entry_ids: list[Any],
+    ) -> MediaApplyResult:
+        """Apply one reviewed result without depending on Qt table widgets."""
+        media_type = str(metadata.get("media_type", ""))
+        title = str(metadata.get("title", "") or metadata.get("series", ""))
+        fields = dict(cls._FIELDS)
+        if media_type == "episode":
+            fields.update({"series": "series", "season": "season", "episode": "episode", "date": "date"})
+        elif media_type in {"book", "audiobook"}:
+            fields["series"] = "series"
+
+        raw_genres = metadata.get("genres", [])
+        genres = [raw_genres] if isinstance(raw_genres, str) else list(raw_genres or [])
+        genre_tags = []
+        for genre in genres:
+            name = str(genre).strip()
+            if not name:
+                continue
+            tag = library.get_tag_by_name(name)
+            if not tag:
+                tag = library.add_tag(name, is_category=True, color_slug="purple")
+            if tag:
+                genre_tags.append(tag)
+
+        saved = 0
+        for entry_id in selected_entry_ids:
+            for source_key, field_key in fields.items():
+                value = metadata.get(source_key, "")
+                if value:
+                    if isinstance(value, list):
+                        value = "; ".join(str(item) for item in value)
+                    library.set_entry_field(entry_id, field_key, str(value))
+            if genre_tags:
+                library.add_tags_to_entry(entry_id, [tag.id for tag in genre_tags])
+            saved += 1
+        return MediaApplyResult(title=title, saved_entries=saved)
+
+
+class CleanupController:
+    """Own construction and tab selection for the inline cleanup surface."""
+
+    @staticmethod
+    def create_panel(parent: Any = None):
+        from unifile.dialogs.cleanup import CleanupPanel
+
+        return CleanupPanel(parent)
+
+    @staticmethod
+    def select_tab(panel: Any, index: int) -> None:
+        tabs = getattr(panel, "tabs", None)
+        if tabs is not None and hasattr(tabs, "setCurrentIndex"):
+            tabs.setCurrentIndex(max(0, int(index)))
+
+
 class WindowControllers:
-    """Composition root kept intentionally small for the ``UniFile`` facade."""
+    """Composition root for bounded window domain and worker facades."""
 
     def __init__(self, owner: Any = None):
         self.lifecycle = WorkerLifecycleController(owner)
         self.scan = ScanController()
         self.apply = ApplyController()
+        self.library = LibraryController()
+        self.media = MediaController()
+        self.cleanup = CleanupController()
 
     def close(self) -> bool:
         return self.lifecycle.close_all()

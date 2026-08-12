@@ -83,7 +83,6 @@ from unifile.config import (
 )
 from unifile.dialogs import (
     BeforeAfterDialog,
-    CleanupPanel,
     DestTreeDialog,
     DuplicateCompareDialog,
     DuplicatePanel,
@@ -95,8 +94,6 @@ from unifile.dialogs import (
     UndoTimelineDialog,
     _FileBrowserDialog,
 )
-from unifile.dialogs.media_lookup import MediaLookupPanel
-from unifile.dialogs.tag_library import TagLibraryPanel
 from unifile.dialogs_mixin import DialogsMixin
 from unifile.duplicates import ConflictResolver
 from unifile.engine import EventGrouper, RenameTemplateEngine, RuleEngine
@@ -1711,7 +1708,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._content_stack.addWidget(organizer_page)   # index 0
 
         # ── Page 1: Cleanup Tools (inline) ───────────────────────────
-        self._cleanup_panel = CleanupPanel()
+        self._cleanup_panel = self._controllers.cleanup.create_panel(self)
         self._cleanup_panel.undo_available.connect(
             lambda: self.btn_undo.setEnabled(True)
         )
@@ -1722,12 +1719,12 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         self._content_stack.addWidget(self._duplicate_panel)  # index 2
 
         # ── Page 3: Tag Library (from TagStudio integration) ─────────
-        self._tag_panel = TagLibraryPanel()
+        self._tag_panel = self._controllers.library.create_panel(self)
         self._tag_panel.library_opened.connect(self._on_tag_library_opened)
         self._content_stack.addWidget(self._tag_panel)  # index 3
 
         # ── Page 4: Media Lookup (from mnamer integration) ─────────────
-        self._media_panel = MediaLookupPanel()
+        self._media_panel = self._controllers.media.create_panel(self)
         self._media_panel.metadata_applied.connect(self._on_media_metadata_applied)
         self._content_stack.addWidget(self._media_panel)  # index 4
 
@@ -2904,66 +2901,21 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
             self._log("  Media Lookup: Tag Library not open — metadata not saved")
             return
         lib = self._tag_panel.library
-        media_type = meta.get("media_type", "")
-        title = meta.get("title", "") or meta.get("series", "")
-
-        # Create a genre tag for each genre
-        for genre in meta.get("genres", []):
-            tag = lib.get_tag_by_name(genre)
-            if not tag:
-                lib.add_tag(genre, is_category=True, color_slug="purple")
-
-        # Store metadata fields on any selected entries in the tag panel
-        fields_map = {
-            "title": "title",
-            "author": "author",
-            "artist": "artist",
-            "synopsis": "ai_summary",
-            "source_url": "url",
-            "publisher": "publisher",
-            "isbn": "isbn",
-            "language": "language",
-            "published": "published",
-            "cover_url": "cover_url",
-            "genres": "genre",
-            "id_imdb": "imdb_id",
-            "id_tmdb": "tmdb_id",
-        }
-        if media_type == "episode":
-            fields_map["series"] = "series"
-            fields_map["season"] = "season"
-            fields_map["episode"] = "episode"
-            fields_map["date"] = "date"
-        elif media_type in {"book", "audiobook"}:
-            fields_map["series"] = "series"
-
-        saved = 0
         rows = set(idx.row() for idx in self._tag_panel.tbl_entries.selectedIndexes())
-        for r in rows:
-            item = self._tag_panel.tbl_entries.item(r, 0)
-            if not item:
-                continue
-            entry_id = item.data(Qt.ItemDataRole.UserRole)
-            for src_key, field_key in fields_map.items():
-                val = meta.get(src_key, "")
-                if val:
-                    if isinstance(val, list):
-                        val = "; ".join(str(item) for item in val)
-                    lib.set_entry_field(entry_id, field_key, str(val))
-            # Apply genre tags
-            for genre in meta.get("genres", []):
-                tag = lib.get_tag_by_name(genre)
-                if tag:
-                    lib.add_tags_to_entry(entry_id, [tag.id])
-            saved += 1
+        selected_entry_ids = []
+        for row in rows:
+            item = self._tag_panel.tbl_entries.item(row, 0)
+            if item:
+                selected_entry_ids.append(item.data(Qt.ItemDataRole.UserRole))
+        result = self._controllers.media.apply_metadata(meta, lib, selected_entry_ids)
 
-        if saved:
-            self._log(f"  Media Lookup: applied metadata to {saved} entries")
+        if result.saved_entries:
+            self._log(f"  Media Lookup: applied metadata to {result.saved_entries} entries")
             self._tag_panel._refresh_tags()
             self._tag_panel._refresh_entries()
             self._tag_panel._update_stats()
         else:
-            self._log(f"  Media Lookup: {title} — metadata ready (select entries in Tag Library to apply)")
+            self._log(f"  Media Lookup: {result.title} — metadata ready (select entries in Tag Library to apply)")
 
     _LOG_MAX_BLOCKS = 10000
 
@@ -4898,6 +4850,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
     # ═══ CLEANUP TOOLS ═══════════════════════════════════════════════════════
     def _open_cleanup_tools(self):
         """Navigate to inline cleanup panel (first tab)."""
+        self._controllers.cleanup.select_tab(self._cleanup_panel, 0)
         self._on_sidebar_tool('cleanup', 0)
 
     def _open_cleanup_tab(self, tab_index: int = None, *, mode: str = None):
@@ -4905,6 +4858,7 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
         if mode == 'duplicates':
             self._on_sidebar_tool('duplicates')
             return
+        self._controllers.cleanup.select_tab(self._cleanup_panel, tab_index or 0)
         self._on_sidebar_tool('cleanup', tab_index or 0)
 
     # ═══ UNDO TIMELINE ═══════════════════════════════════════════════════════
@@ -4928,14 +4882,15 @@ class UniFile(ScanMixin, ApplyMixin, ThemeMixin, UndoMixin, FilterMixin,
                                        QSystemTrayIcon.MessageIcon.Information, 2000)
                 event.ignore()
                 return
-        if self._update_check_worker is not None and self._update_check_worker.isRunning():
-            self._update_check_worker.requestInterruption()
-            self._update_check_worker.wait(5000)
+        if not self._controllers.close():
+            self._log("Cannot close cleanly while a worker is still running; try again after cancellation")
+            event.ignore()
+            return
         self._save_settings()
         if self._watch_manager and self._watch_manager.is_active:
             self._watch_manager.stop()
         if hasattr(self, "_tag_panel"):
-            self._tag_panel.close_library()
+            self._controllers.library.close_panel(self._tag_panel)
         super().closeEvent(event)
 
 # ── Crash Handler ─────────────────────────────────────────────────────────────

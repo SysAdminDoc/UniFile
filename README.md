@@ -623,6 +623,7 @@ make translations # extract en.ts, compile maintained .qm catalogs, and validate
 make audit       # pip-audit --local
 make release-audit  # artifact-scoped SBOM/license/vulnerability gate for current ZIP/MSI/SDK outputs
 make release-contract  # synchronized version surfaces + live CLI/API scan contract
+make complexity  # bounded orchestration-module complexity budgets
 make benchmark-search  # reproducible disposable-library search and cancellation benchmark
 make build       # clean PyInstaller build + frozen --version/classify/GUI smoke + SHA-256
 make build-smoke # rerun frozen smoke/checksum against an existing dist/UniFile/UniFile.exe
