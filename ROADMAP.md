@@ -21,13 +21,6 @@ Actionable work only. Historical and completed roadmap material is archived in C
   Acceptance: Bounded domain controllers are extracted behind stable facades; public imports and user-visible behavior remain compatible; contract tests cover scan/apply/library/media/cleanup flows; every worker has explicit cancellation, close, and error ownership; module complexity thresholds are recorded and enforced without a rewrite.
   Complexity: XL
 
-- [ ] P2 — Synchronize governing documentation and public contract metadata
-  Why: CLAUDE.md reports v9.3.32 while source, README, SDK, Sphinx configuration, and changelog report v9.3.33; README API examples also drift from the live headless scan contract.
-  Evidence: CLAUDE.md, pyproject.toml, sdk/pyproject.toml, unifile/__init__.py, README.md, docs/conf.py, CHANGELOG.md, and release metadata inspected on 2026-08-08.
-  Touches: version checker, release audit, README examples/badges, CLAUDE.md status, SDK/docs metadata, API fixtures, and about/version surfaces.
-  Acceptance: A single release check validates every supported version string and public schema; README/API examples execute or validate against fixtures; drift fails the release gate with file-specific output; stale documentation is updated in the same release batch.
-  Complexity: S
-
 - [ ] P2 — Restore a zero-finding repository lint gate
   Why: The configured ruff check reported six findings on 2026-08-08, including import ordering, unnecessary open mode, a late import, and an unused import.
   Evidence: ruff check unifile tests baseline output for tests/test_hardening.py, unifile/metadata.py, unifile/tagging/library.py, and unifile/workers.py.

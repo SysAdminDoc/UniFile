@@ -3,7 +3,7 @@
 
 PY ?= python
 
-.PHONY: help install dev deps-check test cov lint typecheck docs audit format translations build build-smoke portable sdk release-audit benchmark-search clean run
+.PHONY: help install dev deps-check test cov lint typecheck docs audit format translations build build-smoke portable sdk release-audit release-contract benchmark-search clean run
 
 help:
 	@echo "UniFile developer targets:"
@@ -18,6 +18,7 @@ help:
 	@echo "  translations Extract the English Qt catalog, compile locale catalogs, and validate safety labels"
 	@echo "  audit       Run pip-audit against the local environment"
 	@echo "  release-audit  Audit current ZIP/MSI/SDK artifacts with SBOM, licenses, vulnerabilities, and hashes"
+	@echo "  release-contract Validate version surfaces and the documented CLI/API scan contract"
 	@echo "  benchmark-search  Measure bounded Tag Library search and cancellation on a disposable fixture"
 	@echo "  format      Auto-fix ruff issues"
 	@echo "  build       Clean, build, smoke-test, and checksum the PyInstaller exe"
@@ -77,6 +78,9 @@ sdk:
 
 release-audit:
 	$(PY) tools/release_audit.py
+
+release-contract:
+	$(PY) tools/release_contract.py
 
 benchmark-search:
 	$(PY) tools/benchmark_search.py
