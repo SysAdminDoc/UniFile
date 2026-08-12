@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 from datetime import datetime, timezone
+from typing import Protocol, runtime_checkable
 from urllib.parse import quote as _url_quote
 
 from unifile.config import _APP_DATA_DIR, save_json_safe
@@ -19,6 +20,33 @@ from unifile.credentials import (
 from unifile.network import NetworkError, redact_text, request_json
 
 _log = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class ProviderAdapter(Protocol):
+    """Stable text/vision contract consumed by :class:`ProviderChain`.
+
+    Concrete adapters deliberately expose only this small surface to the
+    rest of UniFile.  Transport details, credentials, and provider-specific
+    response parsing stay behind the adapter boundary.
+    """
+
+    provider_id: str
+
+    def classify(self, prompt: str, model: str | None = None,
+                 system: str = '', format: dict | None = None) -> str:
+        """Return a text response for *prompt*."""
+
+    def classify_with_vision(self, prompt: str, image_path: str,
+                             model: str | None = None) -> str:
+        """Return a response for *prompt* plus a local image."""
+
+    def is_available(self) -> bool:
+        """Return whether the backend is currently reachable."""
+
+    @property
+    def cost_stats(self) -> dict:
+        """Return bounded request/cost counters for diagnostics."""
 
 
 class AIRequestError(Exception):
@@ -886,21 +914,168 @@ class AIProvider:
             raise
 
 
+class _BackendAdapter(AIProvider):
+    """Named adapter base that pins a configured backend implementation."""
+
+    backend_type = ''
+
+    def __init__(self, config: dict, provider_id: str | None = None):
+        normalized = dict(config)
+        normalized['type'] = self.backend_type
+        super().__init__(normalized, provider_id=provider_id)
+
+
+class OllamaAdapter(_BackendAdapter):
+    """Adapter for the local Ollama REST API."""
+
+    backend_type = 'ollama'
+
+
+class OpenAICompatibleAdapter(_BackendAdapter):
+    """Adapter for OpenAI, Groq, LM Studio, and compatible REST APIs."""
+
+    backend_type = 'openai'
+
+
+class AnthropicAdapter(_BackendAdapter):
+    """Adapter for the native Anthropic Messages API."""
+
+    backend_type = 'anthropic'
+
+
+class GeminiAdapter(_BackendAdapter):
+    """Adapter for the native Google Gemini generateContent API."""
+
+    backend_type = 'gemini'
+
+
+# Compatibility-friendly name for callers that prefer the shorter spelling.
+OpenAIAdapter = OpenAICompatibleAdapter
+
+_ADAPTER_TYPES = {
+    'ollama': OllamaAdapter,
+    'openai': OpenAICompatibleAdapter,
+    'openai_compat': OpenAICompatibleAdapter,
+    'groq': OpenAICompatibleAdapter,
+    'anthropic': AnthropicAdapter,
+    'gemini': GeminiAdapter,
+}
+
+
+def create_provider_adapter(config: dict, provider_id: str | None = None) -> ProviderAdapter:
+    """Create the backend adapter selected by a provider configuration.
+
+    Unknown provider types retain the historical generic behavior so an
+    existing user configuration remains usable while new adapters can be
+    added without changing the chain contract.
+    """
+    backend = str(config.get('type', 'ollama')).strip().lower()
+    adapter_type = _ADAPTER_TYPES.get(backend)
+    if adapter_type is None:
+        return AIProvider(config, provider_id=provider_id)
+    return adapter_type(config, provider_id=provider_id)
+
+
+class OfflineProvider:
+    """Deterministic, network-free adapter for tests and offline workflows.
+
+    ``responses`` and ``vision_responses`` are consumed in order.  A single
+    string is also accepted and is reused for every request.  Every call is
+    recorded in :attr:`calls`, making the double useful for asserting prompt
+    and image boundaries without monkeypatching the transport layer.
+    """
+
+    def __init__(self, responses=None, vision_responses=None, *,
+                 provider_id: str = 'offline', available: bool = True):
+        self.provider_id = str(provider_id or 'offline')
+        self._responses = self._response_queue(responses)
+        self._vision_responses = self._response_queue(vision_responses)
+        self._available = bool(available)
+        self.calls: list[dict] = []
+        self._cost_tracker = {
+            'requests': 0,
+            'errors': 0,
+            'input_tokens': 0,
+            'output_tokens': 0,
+            'latency_ms_total': 0.0,
+        }
+
+    @staticmethod
+    def _response_queue(value) -> list:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        try:
+            return list(value)
+        except TypeError:
+            return [value]
+
+    @staticmethod
+    def _take(queue: list, default: str = '') -> str:
+        if not queue:
+            return default
+        value = queue.pop(0)
+        return str(value) if value is not None else ''
+
+    def _record(self, call: dict, queue: list) -> str:
+        self.calls.append(call)
+        self._cost_tracker['requests'] += 1
+        return self._take(queue)
+
+    def classify(self, prompt: str, model: str | None = None,
+                 system: str = '', format: dict | None = None) -> str:
+        return self._record({
+            'operation': 'text',
+            'prompt': str(prompt),
+            'model': model,
+            'system': str(system or ''),
+            'format': format,
+        }, self._responses)
+
+    def classify_with_vision(self, prompt: str, image_path: str,
+                             model: str | None = None) -> str:
+        return self._record({
+            'operation': 'vision',
+            'prompt': str(prompt),
+            'image_path': str(image_path),
+            'model': model,
+        }, self._vision_responses)
+
+    def is_available(self) -> bool:
+        self.calls.append({'operation': 'availability'})
+        return self._available
+
+    @property
+    def cost_stats(self) -> dict:
+        return dict(self._cost_tracker)
+
+
+# Familiar test-double spelling for embedding projects.
+FakeAIProvider = OfflineProvider
+
+
 class ProviderChain:
     """Tries providers in priority order, falling back on failure."""
 
-    def __init__(self, providers: dict | None = None):
+    def __init__(self, providers: dict | None = None,
+                 adapters: dict[str, ProviderAdapter] | None = None):
         self._providers = providers or load_providers()
-        self._instances: dict[str, AIProvider] = {}
+        self._adapters = dict(adapters or {})
+        self._instances: dict[str, ProviderAdapter] = {}
 
-    def _get_instance(self, key: str) -> AIProvider | None:
+    def _get_instance(self, key: str) -> ProviderAdapter | None:
         if key not in self._instances:
+            injected = self._adapters.get(key)
+            if injected is not None:
+                self._instances[key] = injected
+                return injected
             cfg = self._providers.get(key)
             if cfg and cfg.get('enabled'):
-                self._instances[key] = AIProvider(cfg, provider_id=key)
+                self._instances[key] = create_provider_adapter(cfg, provider_id=key)
         return self._instances.get(key)
 
-    def _ordered_providers(self, task: str = "text") -> list[tuple[str, AIProvider]]:
+    def _ordered_providers(self, task: str = "text") -> list[tuple[str, ProviderAdapter]]:
         """Return enabled providers sorted by priority."""
         items = []
         for key, cfg in self._providers.items():

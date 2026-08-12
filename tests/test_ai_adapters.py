@@ -116,3 +116,63 @@ def test_native_adapters_encode_vision_images_without_network(tmp_path, monkeypa
     image_part = payload["contents"][0]["parts"][0]["inline_data"]
     assert image_part["mime_type"] == "image/jpeg"
     assert image_part["data"]
+
+
+def test_provider_factory_exposes_named_backend_adapters():
+    assert isinstance(
+        ai_providers.create_provider_adapter({"type": "ollama"}),
+        ai_providers.OllamaAdapter,
+    )
+    assert isinstance(
+        ai_providers.create_provider_adapter({"type": "openai"}),
+        ai_providers.OpenAICompatibleAdapter,
+    )
+    assert isinstance(
+        ai_providers.create_provider_adapter({"type": "anthropic"}),
+        ai_providers.AnthropicAdapter,
+    )
+    assert isinstance(
+        ai_providers.create_provider_adapter({"type": "gemini"}),
+        ai_providers.GeminiAdapter,
+    )
+
+
+def test_provider_chain_accepts_network_free_injected_adapter(monkeypatch):
+    adapter = ai_providers.OfflineProvider(
+        responses=['{"category": "Notes"}'],
+        provider_id="offline-test",
+    )
+
+    def fail_network(*_args, **_kwargs):
+        raise AssertionError("offline provider attempted network access")
+
+    monkeypatch.setattr(ai_providers, "ai_request", fail_network)
+    chain = ai_providers.ProviderChain(
+        {
+            "offline": {
+                "type": "offline",
+                "enabled": True,
+                "priority": 1,
+                "model": "deterministic",
+                "vision_model": "deterministic-vision",
+            }
+        },
+        adapters={"offline": adapter},
+    )
+
+    result, provider = chain.classify(
+        "Classify this file",
+        system="Use JSON",
+        format={"type": "object"},
+    )
+
+    assert result == '{"category": "Notes"}'
+    assert provider == "offline"
+    assert adapter.calls == [{
+        "operation": "text",
+        "prompt": "Classify this file",
+        "model": None,
+        "system": "Use JSON",
+        "format": {"type": "object"},
+    }]
+    assert isinstance(adapter, ai_providers.ProviderAdapter)

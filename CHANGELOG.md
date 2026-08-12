@@ -117,6 +117,7 @@ All notable changes to UniFile will be documented in this file.
 - Multiple Libraries: switch registered Tag Libraries from the sidebar while keeping each library's Ollama settings, rules, and theme preference scoped to its own `.unifile` folder.
 - Natural Language Rules: compile one plain-language routing request into a validated local action DAG, preview exact file moves, and apply only after explicit approval with collision-safe destinations and undo operations.
 - Native Anthropic Messages and Google Gemini `generateContent` adapters with text/vision support, structured JSON requests, provider-specific authentication, and token accounting in the fallback chain.
+- Provider adapters now share an explicit text/vision contract, named backend factories, and a deterministic `OfflineProvider`/`FakeAIProvider` test double that can be injected into `ProviderChain` without network access.
 - AI Provider Health dashboard with local latency/error history, background reachability probes, token totals, optional estimated token cost, and per-provider latency sparklines.
 - Batched vision inference now queues up to 32 images per multimodal request, preserves indexed result order, and retries failed images individually before rule fallback; the batch size is configurable in Ollama settings.
 - Few-shot correction learning now keeps the 10 most recent manual folder/file category overrides in a local JSONL store, safely quotes them in Ollama/provider prompts, and includes them in rules-bundle export/import.

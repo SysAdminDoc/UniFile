@@ -607,6 +607,13 @@ Manifest-backed plugins live in a folder containing `plugin.yaml` and a Python e
 
 Outbound provider calls share the bounded `unifile.network` policy: HTTP(S) URLs are validated, responses are size-limited, only safe methods retry, and diagnostics redact credentials and payloads. Provider health counters expose request, failure, timeout, cancellation, and latency totals without retaining URLs or request bodies. Local Ollama endpoints are explicitly scoped to the configured local service.
 
+Provider integrations use the `ProviderAdapter` text/vision contract. The built-in
+Ollama, OpenAI-compatible, Anthropic, and Gemini adapters are selected from the
+provider configuration, while `OfflineProvider` (also exported as
+`FakeAIProvider`) lets tests and embedded callers inject deterministic responses
+without network access. `ProviderChain(..., adapters={...})` is the supported
+injection point for custom or offline adapters.
+
 Developer checks:
 
 ```bash
