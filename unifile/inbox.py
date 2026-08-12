@@ -66,17 +66,26 @@ def iter_inbox_files(*, recursive: bool = True) -> list[str]:
     if not is_inbox_enabled() or not os.path.isdir(path):
         return []
     files = []
+    def _is_metadata_sidecar(path: str) -> bool:
+        # UniFile writes ``<filename>.<extension>.xmp`` beside the source.
+        # Treat that companion as metadata, not as a second inbox asset;
+        # standalone XMP preset files remain eligible when no source exists.
+        return path.casefold().endswith('.xmp') and os.path.isfile(path[:-4])
+
     if recursive:
         for root, dirs, names in os.walk(path, followlinks=False):
             dirs[:] = [name for name in dirs if not name.startswith('.')]
             files.extend(
                 os.path.join(root, name) for name in names
-                if not name.startswith('.') and os.path.isfile(os.path.join(root, name))
+                if not name.startswith('.')
+                and os.path.isfile(os.path.join(root, name))
+                and not _is_metadata_sidecar(os.path.join(root, name))
             )
     else:
         try:
             files = [entry.path for entry in os.scandir(path)
-                     if entry.is_file(follow_symlinks=False)]
+                     if entry.is_file(follow_symlinks=False)
+                     and not _is_metadata_sidecar(entry.path)]
         except OSError:
             return []
     return sorted(files, key=os.path.normcase)

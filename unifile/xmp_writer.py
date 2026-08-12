@@ -112,6 +112,35 @@ def _set_bag(desc: ET.Element, ns_prefix: str, local: str, values: list) -> None
         li.text = str(v)
 
 
+def _bag_values(desc: ET.Element, ns_prefix: str, local: str) -> list[str]:
+    """Return text values from an RDF Bag/Seq/Alt element."""
+    element = desc.find(f'{ns_prefix}{local}')
+    if element is None:
+        return []
+    collection = next(
+        (element.find(f'{_RDF}{name}') for name in ('Bag', 'Seq', 'Alt')
+         if element.find(f'{_RDF}{name}') is not None),
+        None,
+    )
+    if collection is None:
+        return []
+    return [str(child.text).strip() for child in collection
+            if child.text and child.text.strip()]
+
+
+def _dedupe_text(values) -> list[str]:
+    """Keep non-empty text in first-seen order, case-insensitively."""
+    result = []
+    seen = set()
+    for value in values or []:
+        text = str(value).strip()
+        key = text.casefold()
+        if text and key not in seen:
+            seen.add(key)
+            result.append(text)
+    return result
+
+
 def _remove_value(desc: ET.Element, ns_prefix: str, local: str) -> None:
     element = desc.find(f'{ns_prefix}{local}')
     if element is not None:
@@ -182,6 +211,10 @@ def write_sidecar(file_path: str,
         subjects.extend(t for t in tags if t and t not in subjects)
     if subjects:
         _set_bag(desc, _DC, 'subject', subjects)
+    if tags:
+        # Keep a UniFile-owned copy so later writes can replace only UniFile's
+        # tags while preserving keywords authored by other applications.
+        _set_bag(desc, _UF, 'Tags', _dedupe_text(tags))
 
     # xmp:Label
     if category:
@@ -259,6 +292,73 @@ def read_sidecar(file_path: str) -> dict:
         result['fields'] = custom_fields
 
     return result
+
+
+def read_sidecar_tags(file_path: str) -> list[str]:
+    """Read interoperable XMP keyword tags from a file's adjacent sidecar.
+
+    TagStudio stores tags as names in its library rather than defining an
+    XMP sidecar schema.  UniFile therefore uses the standard ``dc:subject``
+    bag, which is understood by common metadata tools, and keeps a private
+    ``uf:Tags`` bag to distinguish UniFile-managed values when updating an
+    existing sidecar.  Both bags are accepted on read so external keywords
+    and UniFile tags coexist.
+    """
+    sidecar = _sidecar_path(file_path)
+    if not os.path.isfile(sidecar):
+        return []
+    try:
+        raw = _strip_xpacket(open(sidecar, 'rb').read())
+        root = ET.fromstring(raw)
+        desc = _find_desc(root)
+        if desc is None:
+            return []
+    except Exception:
+        return []
+    subjects = _bag_values(desc, _DC, 'subject')
+    category = next(
+        (desc.find(f'{namespace}{local}').text.strip()
+         for namespace, local in ((_UF, 'Category'), (_XMP, 'Label'))
+         if desc.find(f'{namespace}{local}') is not None
+         and desc.find(f'{namespace}{local}').text
+         and desc.find(f'{namespace}{local}').text.strip()),
+        '',
+    )
+    if category:
+        subjects = [value for value in subjects
+                    if value.casefold() != category.casefold()]
+    return _dedupe_text([*subjects, *_bag_values(desc, _UF, 'Tags')])
+
+
+def write_sidecar_tags(file_path: str, tags: list[str] | None = None) -> bool:
+    """Merge UniFile tags into the adjacent XMP sidecar without data loss.
+
+    The original file is never modified.  Existing ``dc:subject`` values
+    outside the previous UniFile-managed set are preserved, while the
+    current UniFile set is written to both standard keywords and ``uf:Tags``.
+    Passing an empty list removes only the previously managed values.
+    """
+    sidecar = _sidecar_path(file_path)
+    root, desc = _load_sidecar_root(sidecar)
+    managed_before = set(
+        value.casefold() for value in _bag_values(desc, _UF, 'Tags')
+    )
+    external_subjects = [
+        value for value in _bag_values(desc, _DC, 'subject')
+        if value.casefold() not in managed_before
+    ]
+    current_tags = _dedupe_text(tags)
+    subjects = _dedupe_text([*external_subjects, *current_tags])
+    if subjects:
+        _set_bag(desc, _DC, 'subject', subjects)
+    else:
+        _remove_value(desc, _DC, 'subject')
+    if current_tags:
+        _set_bag(desc, _UF, 'Tags', current_tags)
+    else:
+        _remove_value(desc, _UF, 'Tags')
+    _set_text(desc, _XMP, 'ModifyDate', _iso_now())
+    return _write_sidecar_root(sidecar, root)
 
 
 def _xmp_element_value(element: ET.Element) -> str:

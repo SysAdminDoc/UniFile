@@ -476,12 +476,66 @@ class TagLibrary:
 
     # ── Entry CRUD ────────────────────────────────────────────────────────────
 
+    def _sync_entry_tags_from_sidecar(self, entry: Entry, file_path: Path,
+                                      *, commit: bool = True) -> bool:
+        """Union adjacent XMP keyword tags into an entry without file writes."""
+        from unifile.xmp_writer import read_sidecar_tags
+
+        try:
+            sidecar_tags = read_sidecar_tags(str(file_path))
+        except Exception:
+            logger.debug("Could not read XMP tags for %s", file_path, exc_info=True)
+            return False
+        if not sidecar_tags:
+            return False
+
+        existing_names = {str(tag.name).casefold() for tag in entry.tags}
+        changed = False
+        for name in sidecar_tags:
+            normalized = str(name).strip()
+            if not normalized or normalized.casefold() in existing_names:
+                continue
+            tag = self._session.execute(
+                select(Tag).where(func.lower(Tag.name) == normalized.casefold())
+            ).scalar_one_or_none()
+            if tag is None:
+                tag = Tag(name=normalized, is_category=False, is_hidden=False)
+                self._session.add(tag)
+                self._session.flush()
+            entry.tags.add(tag)
+            existing_names.add(normalized.casefold())
+            changed = True
+        if changed and commit:
+            self._session.commit()
+        return changed
+
+    @staticmethod
+    def _entry_tag_names(entry: Entry) -> list[str]:
+        return sorted(
+            {str(tag.name).strip() for tag in entry.tags if str(tag.name).strip()},
+            key=str.casefold,
+        )
+
+    def _write_entry_sidecar_tags(self, entry: Entry) -> bool:
+        """Persist the current entry tags to a compatible adjacent XMP file."""
+        from unifile.xmp_writer import sidecar_path, write_sidecar_tags
+
+        path = str(entry.path)
+        tags = self._entry_tag_names(entry)
+        if not tags and not os.path.isfile(sidecar_path(path)):
+            return True
+        ok = write_sidecar_tags(path, tags)
+        if not ok:
+            logger.warning("Could not write XMP tags for %s", path)
+        return ok
+
     def add_entry(self, file_path: str) -> Entry | None:
         p = Path(file_path)
         existing = self._session.execute(
             select(Entry).where(Entry.path == p)
         ).scalar_one_or_none()
         if existing:
+            self._sync_entry_tags_from_sidecar(existing, p)
             return existing
 
         stat = p.stat() if p.exists() else None
@@ -497,6 +551,7 @@ class TagLibrary:
         self._session.add(entry)
         self._session.flush()
         self._replace_entry_colors(entry.id, p, commit=False)
+        self._sync_entry_tags_from_sidecar(entry, p, commit=False)
         self._session.commit()
         return entry
 
@@ -506,15 +561,17 @@ class TagLibrary:
             batch = file_paths[i:i + batch_size]
             batch_paths = [Path(fp) for fp in batch]
             # Fetch all already-present paths in one query (avoids N+1)
-            existing_paths: set[Path] = set(
-                self._session.execute(
-                    select(Entry.path).where(Entry.path.in_(batch_paths))
-                ).scalars().all()
-            )
+            existing_entries = list(self._session.execute(
+                select(Entry).where(Entry.path.in_(batch_paths))
+            ).scalars().all())
+            existing_paths = {entry.path for entry in existing_entries}
             new_entries = []
             for fp in batch:
                 p = Path(fp)
                 if p in existing_paths:
+                    existing = next((item for item in existing_entries if item.path == p), None)
+                    if existing:
+                        self._sync_entry_tags_from_sidecar(existing, p, commit=False)
                     continue
                 stat = p.stat() if p.exists() else None
                 entry = Entry(
@@ -532,6 +589,7 @@ class TagLibrary:
             self._session.flush()
             for entry, path in new_entries:
                 self._replace_entry_colors(entry.id, path, commit=False)
+                self._sync_entry_tags_from_sidecar(entry, path, commit=False)
             self._session.commit()
         return count
 
@@ -582,14 +640,20 @@ class TagLibrary:
         return indexed
 
     def get_entry(self, entry_id: int) -> Entry | None:
-        return self._session.execute(
+        entry = self._session.execute(
             select(Entry).options(joinedload(Entry.tags)).where(Entry.id == entry_id)
         ).unique().scalar_one_or_none()
+        if entry:
+            self._sync_entry_tags_from_sidecar(entry, Path(entry.path))
+        return entry
 
     def get_entry_by_path(self, path: str) -> Entry | None:
-        return self._session.execute(
+        entry = self._session.execute(
             select(Entry).options(joinedload(Entry.tags)).where(Entry.path == Path(path))
         ).unique().scalar_one_or_none()
+        if entry:
+            self._sync_entry_tags_from_sidecar(entry, Path(path))
+        return entry
 
     def get_all_entries(self, limit: int = 1000, offset: int = 0) -> list[Entry]:
         return list(self._session.execute(
@@ -634,6 +698,7 @@ class TagLibrary:
             if tag:
                 entry.tags.add(tag)
         self._session.commit()
+        self._write_entry_sidecar_tags(entry)
         return True
 
     def remove_tags_from_entry(self, entry_id: int, tag_ids: list[int]) -> bool:
@@ -647,6 +712,7 @@ class TagLibrary:
             if tag:
                 entry.tags.discard(tag)
         self._session.commit()
+        self._write_entry_sidecar_tags(entry)
         return True
 
     def get_entries_by_tag(self, tag_id: int) -> list[Entry]:

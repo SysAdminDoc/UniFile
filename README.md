@@ -62,6 +62,10 @@ Full tag-based file management adapted from TagStudio's SQLAlchemy models:
 | Tag Search | Real-time search across tags and entries |
 
 The tag library stores data in `.unifile/unifile_tags.sqlite` within your library directory — non-destructive, no files are modified.
+When an adjacent `<filename>.<extension>.xmp` exists, its standard `dc:subject`
+keywords are imported additively when an entry is opened. Tag assignments also
+write the current UniFile tags back to that XMP sidecar without touching the
+original file; third-party keywords remain intact across later updates.
 Tag Library and local index databases share an explicit SQLite policy: WAL,
 10-second busy timeout, foreign keys enabled, NORMAL synchronous mode, and
 automatic checkpoints every 1,000 pages. ORM sessions are thread-owned;
