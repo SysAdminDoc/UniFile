@@ -28,6 +28,8 @@ All notable changes to UniFile will be documented in this file.
 - Button text contrast fixed across all themes: light-background themes (Catppuccin, Dracula, Nord, High Contrast) now use dark text on accent/green buttons instead of invisible white-on-pastel.
 - Danger button uses theme tokens instead of hardcoded dark-theme hex values.
 - Theme/font/protected-paths saves converted to atomic `save_json_safe`.
+- Ruff import ordering, redundant file-open mode, and late-import findings are
+  resolved; `make lint` now exits cleanly across `unifile` and `tests`.
 - Extension mismatch scanner expanded to cover `.jar`, `.apk`, `.epub`, `.pptx`, `.odt`, `.cbz` and other ZIP-based formats.
 - Removed dead `_OLLAMA_DEFAULTS` / `_OLLAMA_SETTINGS_FILE` from classifier.py.
 - Removed duplicate `_conn = None` assignment in semantic.py close().

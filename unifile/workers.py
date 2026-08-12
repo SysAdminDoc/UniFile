@@ -70,13 +70,13 @@ from unifile.metadata import (
     MetadataExtractor,
     _extract_file_content,
 )
-from unifile.network import request_bytes
 from unifile.naming import (
     _ASSET_FOLDER_NAMES,
     _beautify_name,
     _extract_name_hints,
     _is_id_only_folder,
 )
+from unifile.network import request_bytes
 from unifile.nexa_backend import (
     is_nexa_available,
     load_nexa_settings,

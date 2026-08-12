@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys as _sys
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -87,8 +88,6 @@ except ImportError:
 
 # ── Zone.Identifier / Mark-of-the-Web provenance ─────────────────────────────
 
-import sys as _sys
-
 def _read_zone_identifier_url(filepath: str) -> str:
     """Read the HostUrl or ReferrerUrl from NTFS Zone.Identifier ADS.
     Returns the URL string or '' on non-Windows / no ADS / failure."""
@@ -96,7 +95,7 @@ def _read_zone_identifier_url(filepath: str) -> str:
         return ''
     ads_path = filepath + ':Zone.Identifier'
     try:
-        with open(ads_path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(ads_path, encoding='utf-8', errors='replace') as f:
             content = f.read(4096)
     except (OSError, PermissionError):
         return ''

@@ -206,6 +206,7 @@ def test_safe_name_prevents_traversal():
 
 def test_is_protected_blocks_mount_points():
     import sys
+
     from unifile.config import is_protected
     if sys.platform == 'win32':
         assert is_protected('C:\\') is True

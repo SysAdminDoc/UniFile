@@ -21,13 +21,6 @@ Actionable work only. Historical and completed roadmap material is archived in C
   Acceptance: Bounded domain controllers are extracted behind stable facades; public imports and user-visible behavior remain compatible; contract tests cover scan/apply/library/media/cleanup flows; every worker has explicit cancellation, close, and error ownership; module complexity thresholds are recorded and enforced without a rewrite.
   Complexity: XL
 
-- [ ] P2 — Restore a zero-finding repository lint gate
-  Why: The configured ruff check reported six findings on 2026-08-08, including import ordering, unnecessary open mode, a late import, and an unused import.
-  Evidence: ruff check unifile tests baseline output for tests/test_hardening.py, unifile/metadata.py, unifile/tagging/library.py, and unifile/workers.py.
-  Touches: the four reported source/test files, ruff configuration if required, Makefile lint target, and contributor verification docs.
-  Acceptance: ruff check unifile tests exits 0 without broad ignores; the lint target is included in the documented verification sequence; any intentional compatibility import has a narrow documented exemption and a regression test.
-  Complexity: S
-
 - [ ] P3 — Make cron scheduling interoperable across Sunday aliases and local-time edge cases
   Why: scheduler.py explicitly omits Sunday=7 and does not define timezone or DST behavior for local-time matching.
   Evidence: unifile/scheduler.py parser and matcher logic reviewed on 2026-08-08; standard cron compatibility expectations.
