@@ -23,7 +23,7 @@ Installation
 Build the wheel from the repository with ``make sdk`` and install it into an
 embedding application's environment::
 
-   pip install dist/sdk/unifile_sdk-9.3.33-py3-none-any.whl
+   pip install dist/sdk/unifile_sdk-9.3.34-py3-none-any.whl
 
 The public imports are::
 

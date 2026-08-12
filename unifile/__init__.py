@@ -1,2 +1,2 @@
-"""UniFile v9.3.33 — Unified AI-Powered File Organization Platform."""
-__version__ = "9.3.33"
+"""UniFile v9.3.34 — Unified AI-Powered File Organization Platform."""
+__version__ = "9.3.34"

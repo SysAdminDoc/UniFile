@@ -527,7 +527,7 @@ class TagLibrary:
         ok = write_sidecar_tags(path, tags)
         if not ok:
             logger.warning("Could not write XMP tags for %s", path)
-        return ok
+        return bool(ok)
 
     def add_entry(self, file_path: str) -> Entry | None:
         p = Path(file_path)

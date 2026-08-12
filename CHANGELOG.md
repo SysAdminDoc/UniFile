@@ -2,6 +2,17 @@
 
 All notable changes to UniFile will be documented in this file.
 
+## [v9.3.34] - Roadmap Drain
+
+### Added
+- A typed provider-adapter contract with named Ollama, OpenAI-compatible, Anthropic, and Gemini adapters plus an injectable deterministic offline test double.
+- Tag Library XMP tag coexistence: standard `dc:subject` keywords are imported on reopen and UniFile-managed tags are updated without modifying source files or removing third-party keywords.
+
+### Fixed
+- Cron schedules now honor local/UTC/IANA time zones, Sunday `0`/`7` aliases, spring-forward gaps, and both fall-back occurrences.
+- Desktop worker and panel ownership now runs through focused lifecycle, scan/apply, library/media, and cleanup controllers with a checked complexity budget.
+- The release metadata/public scan contract and zero-finding Ruff gate are enforced in the checked-in developer commands.
+
 ## [v9.3.33] - Action Plan & Ecosystem Drain
 
 ### Security
