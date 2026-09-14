@@ -8,6 +8,16 @@
 ![AI Powered](https://img.shields.io/badge/AI-Ollama%20LLM-e879f9)
 ![Tags](https://img.shields.io/badge/Tags-SQLAlchemy-orange)
 
+<p align="center">
+  <a href="https://ko-fi.com/X8K126YVER">
+    <img height="42" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy me a coffee on Ko-fi" />
+  </a>
+</p>
+
+<p align="center">
+  <sub><em>If this project helps you, a coffee helps me keep working on it.</em></sub>
+</p>
+
 > Unified AI-powered file organization platform — combining tag-based library management, 7-level classification, LLM intelligence, cleanup tools, duplicate detection, and media metadata into a single premium dark-themed desktop app.
 
 ![Screenshot](screenshot.png)
